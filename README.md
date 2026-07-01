@@ -2,32 +2,62 @@
 
 Enchan CLI is a local terminal chat interface for Enchan-backed and Ollama-backed GGUF runtimes.
 
-This publish tree contains only the CLI source and lightweight runtime scaffolding. Native runtime binaries are not committed here; install or attach platform artifacts under `backend/bin/<platform>/`.
+This repository contains the CLI source and installer scripts. Native Enchan Llama runtime binaries are distributed from the private `EnchanTheory/Enchan-Llama` GitHub Release and installed into `backend/bin/<platform>/`.
 
-## Supported runtime folders
+## Prerequisites
 
-- Windows x64: `backend/bin/win-x64/`
-- Apple Silicon macOS: `backend/bin/macos-arm64/`
+Because the repositories are private, install requires an authenticated GitHub CLI session.
 
-For `--backend enchan`, the runtime folder must contain the Enchan Llama executable and its required native libraries:
-
-- Windows: `llama-server.exe`, `enchan.dll`, and required DLLs
-- macOS arm64: `llama-server`, `libenchan.dylib`, and required dylibs
-
-## Python
-
-The `enchan` command is a Node.js launcher for the Python backend.
-
-Set `ENCHAN_PYTHON` if you want to use a specific Python executable:
-
-```powershell
-$env:ENCHAN_PYTHON = "C:\path\to\python.exe"
-enchan --backend ollama
+```bash
+gh auth login
 ```
 
-On macOS/Linux, the launcher uses `python3` when `ENCHAN_PYTHON` is not set. On Windows, it uses `python`.
+Required commands:
+
+- GitHub CLI: `gh`
+- Git: `git`
+- Node.js/npm: `node`, `npm`
+- Python: `python` on Windows or `python3` on macOS, or set `ENCHAN_PYTHON`
+
+## One-Command Install
+
+### Windows PowerShell
+
+```powershell
+gh repo clone EnchanTheory/Enchan-CLI "$env:USERPROFILE\Enchan-CLI"; cd "$env:USERPROFILE\Enchan-CLI"; .\install.ps1
+```
+
+The installer downloads `enchan-llama-win-x64.zip` from `EnchanTheory/Enchan-Llama` release `v0.1.0`, extracts it to `backend/bin/win-x64/`, and registers the `enchan` command with `npm link`.
+
+### Apple Silicon macOS
+
+```bash
+gh repo clone EnchanTheory/Enchan-CLI ~/Enchan-CLI && cd ~/Enchan-CLI && chmod +x ./install.sh && ./install.sh
+```
+
+The installer downloads `enchan-llama-macos-arm64.zip` from `EnchanTheory/Enchan-Llama` release `v0.1.0`, extracts it to `backend/bin/macos-arm64/`, marks runtime executables executable, and registers the `enchan` command with `npm link`.
+
+## Runtime Assets
+
+Runtime assets are published in the private Enchan Llama release:
+
+- Repo: `EnchanTheory/Enchan-Llama`
+- Tag: `v0.1.0`
+- Windows asset: `enchan-llama-win-x64.zip`
+- macOS asset: `enchan-llama-macos-arm64.zip`
+
+Expected runtime layout after install:
+
+```text
+backend/bin/win-x64/llama-server.exe
+backend/bin/win-x64/enchan.dll
+backend/bin/macos-arm64/llama-server
+backend/bin/macos-arm64/libenchan.dylib
+```
 
 ## Usage
+
+Start the interactive CLI:
 
 ```bash
 enchan
@@ -40,18 +70,29 @@ enchan --backend ollama
 enchan --backend enchan --gguf-model /path/to/model.gguf
 ```
 
-Useful one-shot mode:
+One-shot mode:
 
 ```bash
 enchan --backend ollama --ask "Summarize this repository" --plain
 ```
 
-## Runtime Notes
+## Python Selection
 
-- `ollama` backend calls a local Ollama API and can start `ollama serve` when allowed.
-- `enchan` backend starts the packaged Enchan Llama runtime from `backend/bin/<platform>/`.
-- Local memory is loaded from `memory/guidelines/` and `memory/knowledge/`.
-- Session logs are written under `logs/sessions/`; logs are ignored by git.
+The `enchan` command is a Node.js launcher for the Python backend.
+
+Set `ENCHAN_PYTHON` to force a specific Python executable:
+
+```powershell
+$env:ENCHAN_PYTHON = "C:\path\to\python.exe"
+enchan --backend ollama
+```
+
+```bash
+export ENCHAN_PYTHON=/opt/homebrew/bin/python3
+enchan --backend ollama
+```
+
+If `ENCHAN_PYTHON` is not set, the launcher uses `python` on Windows and `python3` on macOS/Linux.
 
 ## Commands
 
