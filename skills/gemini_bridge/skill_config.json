@@ -1,0 +1,5 @@
+{
+  "name": "gemini_bridge",
+  "description": "Delegates complex tasks (code refactoring, debugging, major features, system-wide analysis, memory consolidation) to the globally installed Gemini CLI (gemini-3.5-flash). Use this when the prompt requires advanced reasoning or direct workspace edits that you cannot perform stably.",
+  "entrypoint": "python skills/gemini_bridge/bridge.py"
+}

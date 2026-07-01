@@ -1,0 +1,14 @@
+{
+  "name": "enchan-cli",
+  "version": "1.0.0",
+  "description": "Global Interactive CLI for the Enchan Transformer",
+  "main": "bin/enchan.js",
+  "bin": {
+    "enchan": "bin/enchan.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Enchan Theory Project",
+  "license": "MIT"
+}
