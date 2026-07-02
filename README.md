@@ -63,17 +63,16 @@ Start the interactive CLI:
 enchan
 ```
 
-Select a backend at startup, or pass one explicitly:
+Select a backend at startup:
 
 ```bash
-enchan --backend ollama
-enchan --backend enchan --gguf-model /path/to/model.gguf
+enchan
 ```
 
 One-shot mode:
 
 ```bash
-enchan --backend ollama --ask "Summarize this repository" --plain
+enchan --ask "Summarize this repository" --plain
 ```
 
 ## Python Selection
@@ -84,12 +83,12 @@ Set `ENCHAN_PYTHON` to force a specific Python executable:
 
 ```powershell
 $env:ENCHAN_PYTHON = "C:\path\to\python.exe"
-enchan --backend ollama
+enchan
 ```
 
 ```bash
 export ENCHAN_PYTHON=/opt/homebrew/bin/python3
-enchan --backend ollama
+enchan
 ```
 
 If `ENCHAN_PYTHON` is not set, the launcher uses `python` on Windows and `python3` on macOS/Linux.

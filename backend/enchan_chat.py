@@ -383,7 +383,7 @@ def select_startup_backend(default_backend: str) -> str:
     ollama_ready = shutil.which("ollama") is not None
 
     choices = [
-        ("enchan", "Local: Enchan llama secure engine", True),
+        ("enchan", "Local: Enchan Llama", True),
         ("ollama", "Local: Ollama API chat", ollama_ready),
     ]
 
@@ -588,15 +588,15 @@ def main():
     default_backend = local_cfg.get("backend", "enchan")
     if default_backend not in {"ollama", "enchan"}:
         default_backend = "enchan"
-    parser.add_argument("--backend", choices=["ollama", "enchan"], default=default_backend, help="runtime backend: ollama uses local Ollama; enchan runs custom secure C++ engine with integrated stabilization")
+    parser.add_argument("--backend", choices=["ollama", "enchan"], default=default_backend, help="runtime backend: ollama uses local Ollama; enchan uses Enchan Llama")
     parser.add_argument("--gguf-model", default="", help="path to GGUF model for --backend enchan (interactive startup shows a model picker when omitted)")
     parser.add_argument("--screen-strength", type=float, default=local_cfg.get("screen_strength", 0.2), help="screening strength for --backend enchan (default: 0.2)")
     parser.add_argument("--H-c", type=float, default=local_cfg.get("H_c", 1.6), help="scaling depth H_c for --backend enchan (default: 1.6)")
     parser.add_argument("--m", type=float, default=local_cfg.get("m", 1.5), help="sharpness power m for --backend enchan (default: 1.5)")
-    parser.add_argument("--no-ram-guard", action="store_true", help="disable Enchan llama system RAM reserve guard")
+    parser.add_argument("--no-ram-guard", action="store_true", help="disable Enchan Llama system RAM reserve guard")
     parser.add_argument("--ram-reserve-ratio", type=float, default=local_cfg.get("ram_reserve_ratio", 0.05), help="fraction of physical RAM to keep free for --backend enchan (default: 0.05)")
     parser.add_argument("--ram-reserve-gb", type=float, default=local_cfg.get("ram_reserve_gb", 1.6), help="minimum GiB of physical RAM to keep free for --backend enchan (default: 1.6)")
-    parser.add_argument("--ram-pressure-action", choices=["warn", "kill"], default=local_cfg.get("ram_pressure_action", "warn"), help="what to do when Enchan llama crosses the RAM reserve (default: warn)")
+    parser.add_argument("--ram-pressure-action", choices=["warn", "kill"], default=local_cfg.get("ram_pressure_action", "warn"), help="what to do when Enchan Llama crosses the RAM reserve (default: warn)")
     parser.add_argument("--llama-mmap", choices=["on", "off"], default=local_cfg.get("llama_mmap", "off"), help="memory-map GGUF model files for --backend enchan (default: off)")
     parser.add_argument("--llama-fit", action="store_true", default=local_cfg.get("llama_fit", False), help="enable llama.cpp --fit memory fitting for --backend enchan")
     parser.add_argument("--ollama-model", default=local_cfg.get("ollama_model", DEFAULT_OLLAMA_MODEL), help=f"Ollama model name for --backend ollama (default: {DEFAULT_OLLAMA_MODEL})")
@@ -656,14 +656,10 @@ def main():
 
     if not plain_output:
         print("=" * 70)
-        print(f"  Enchan CLI (Ultimate End-to-End Pipeline)")
-        print(f"  [Backend] {backend_mode}")
-        if backend_mode == "enchan":
-            print("  [External] Enchan Llama Secure C++ Engine")
-        else:
-            print("  [External] Ollama API")
+        header_line = f"  Enchan CLI [Backend] {backend_mode}"
         if agent_mode:
-            print("  [Agent] Deterministic ReAct Tool Execution")
+            header_line += " [Agent]"
+        print(header_line)
         print("=" * 70)
     
     if backend_mode == "enchan":
@@ -724,11 +720,6 @@ def main():
         args.gguf_model = gguf_model_path
 
         model_name_short = f"enchan:{gguf_model_path}"
-        if not plain_output:
-            print(f"\n[System] Using Enchan Llama Secure C++ Engine: {gguf_model_path}")
-            
-        if not plain_output:
-            print("[System] Enchan Llama engine will load on the first prompt.")
     else:
         model = None
         tokenizer = None
@@ -754,15 +745,11 @@ def main():
                 local_cfg["ollama_model"] = chosen
                 save_local_config(local_cfg)
         model_name_short = f"ollama:{args.ollama_model}"
-        if not plain_output:
-            print(f"\n[System] Using Ollama API: {args.ollama_host} / {args.ollama_model}")
     
     if not plain_output:
-        print("[System] Initialization complete.")
         active_model_disp = MODEL_ID if backend_mode == 'hf' else (args.gguf_model if (backend_mode == 'enchan' and args.gguf_model) else args.ollama_model)
-        model_state_label = "Selected Model" if backend_mode == "enchan" else "Loaded Model"
-        print(f"  * {model_state_label}: {active_model_disp}")
-        print("  * Type 'exit' or 'quit' to close.")
+        print(f"  * Selected Model: {active_model_disp}")
+        print("  * Type 'exit' to close.")
         print("  * Type '/help' to show CLI commands.")
         if agent_mode:
             print("  * Agent mode enabled: ReAct tool calls will be executed locally.")
@@ -782,9 +769,6 @@ def main():
             "agent_mode": agent_mode,
         },
     )
-    if not plain_output:
-        print(f"[System] Session log: {session_log_path}")
-
     ensure_memory_dirs()
     startup_memory_context = load_memory_context()
     append_session_event(
@@ -839,6 +823,14 @@ def main():
             "/resume", "/compress", "/model", "/status", "/set",
             "/delegate", "/help", "/new", "/exit", "/quit",
         )
+
+        @kb.add('/')
+        def _(event):
+            buffer = event.current_buffer
+            start_of_input = not buffer.document.text_before_cursor
+            buffer.insert_text('/')
+            if start_of_input:
+                buffer.start_completion(select_first=False)
 
         @kb.add('enter')  # Standard Enter is triggered (captures both Enter and Shift+Enter at terminal level)
         def _(event):
@@ -957,6 +949,7 @@ def main():
             key_bindings=kb, 
             style=style, 
             completer=completer,
+            complete_while_typing=True,
             reserve_space_for_menu=6
         )
 

@@ -278,7 +278,6 @@ def handle_cli_command(
         print("\n[Status]")
         print(f"  Model: {model_id}")
         print(f"  Backend: {generation_config.get('backend', 'enchan')}")
-        print(f"  Session log: {session_log_path}")
         print(f"  Chat history messages: {len(chat_history)}")
         print(f"  Pending file context chars: {len(file_context)}")
         print(f"  Last loaded files: {len(loaded_files)}")

@@ -334,7 +334,7 @@ def shutdown_enchan_llama() -> None:
         _ram_guard_stop = None
 
     if _server_process is not None:
-        print("[System] Terminating Enchan Llama background engine...")
+        print("[System] Terminating Enchan Llama...")
         process = _server_process
         process_pid = process.pid
 
@@ -735,7 +735,7 @@ def start_enchan_llama_server(
             job_memory_limit = max(1, available_memory - reserve_bytes)
 
     if not quiet:
-        print(f"[System] Launching Enchan Llama secure engine (CUDA-Accelerated)...")
+        print("[System] Launching Enchan Llama...")
         print(f"  * Engine: {exe_path}")
         print(f"  * Model Tag: {model_path}")
         print(f"  * Resolved GGUF Blob: {model_file.resolve()}")
@@ -824,7 +824,7 @@ def start_enchan_llama_server(
             _current_context_size = ctx_size
             if not quiet:
                 print(
-                    f"[System] Enchan Llama engine is active on {host} "
+                    f"[System] Enchan Llama is active on {host} "
                     f"(ctx={ctx_size}, batch={batch_size}, ubatch={ubatch_size})"
                 )
             return True

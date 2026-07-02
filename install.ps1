@@ -41,8 +41,10 @@ try {
     Write-Warning "Python was not found. Install Python or set ENCHAN_PYTHON to the Python executable."
 }
 
+Write-Host "Installing Python UI dependencies"
+& $Python -m pip install --user prompt_toolkit rich
+
 npm link
 
-Write-Host "Enchan CLI installed. Try: enchan --backend ollama"
-Write-Host "For Enchan runtime: enchan --backend enchan --gguf-model <path-to-model.gguf>"
+Write-Host "Enchan CLI installed. Try: enchan"
 

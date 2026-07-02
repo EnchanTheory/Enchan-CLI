@@ -75,5 +75,4 @@ echo "Installing Python UI dependencies"
 
 npm link
 
-echo "Enchan CLI installed. Try: enchan --backend ollama"
-echo "For Enchan runtime: enchan --backend enchan --gguf-model <path-to-model.gguf>"
+echo "Enchan CLI installed. Try: enchan"
