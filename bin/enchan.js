@@ -62,11 +62,65 @@ function runUpdate() {
     }
 }
 
+function gitOutput(args) {
+    const result = spawnSync('git', args, {
+        cwd: cliRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        shell: false,
+        env: process.env
+    });
+    if (result.status !== 0) {
+        return '';
+    }
+    return String(result.stdout || '').trim();
+}
+
+function notifyUpdateAvailableAsync() {
+    if (!fs.existsSync(path.join(cliRoot, '.git')) || !commandExists('git')) {
+        return;
+    }
+
+    const currentBranch = gitOutput(['branch', '--show-current']);
+    if (!currentBranch) {
+        return;
+    }
+
+    const remoteRef = `origin/${currentBranch}`;
+    const fetch = spawn('git', ['fetch', '--quiet', 'origin', currentBranch], {
+        cwd: cliRoot,
+        stdio: 'ignore',
+        shell: false,
+        env: process.env,
+        detached: false
+    });
+    fetch.unref();
+
+    const timer = setTimeout(() => {
+        fetch.kill();
+    }, 5000);
+    timer.unref();
+
+    fetch.on('exit', (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+            return;
+        }
+        const local = gitOutput(['rev-parse', 'HEAD']);
+        const remote = gitOutput(['rev-parse', remoteRef]);
+        if (local && remote && local !== remote) {
+            console.log('\n[Info] Update available. Run: enchan update');
+        }
+    });
+}
+
 const args = process.argv.slice(2);
 if (args[0] === 'update' || args[0] === 'self-update') {
     runUpdate();
     process.exit(0);
 }
+
+notifyUpdateAvailableAsync();
 
 const pythonPath = resolvePython();
 const backendArgs = [backendScript, ...args];

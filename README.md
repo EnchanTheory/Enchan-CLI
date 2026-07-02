@@ -45,7 +45,9 @@ After installation, update the checkout and refresh the linked command with:
 enchan update
 ```
 
-This runs `git pull --ff-only` in the install directory, then reruns the platform installer. If the installed command is older and does not yet support `enchan update`, update once manually from the install directory:
+This runs `git pull --ff-only` in the install directory, then reruns the platform installer. Normal `enchan` startup checks for updates in the background and prints a short notice when a newer commit is available.
+
+If the installed command is older and does not yet support `enchan update`, update once manually from the install directory:
 
 ```powershell
 cd "$env:USERPROFILE\.enchan"
