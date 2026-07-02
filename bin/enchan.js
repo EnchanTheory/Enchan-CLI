@@ -12,6 +12,13 @@ function resolvePython() {
         return process.env.ENCHAN_PYTHON;
     }
 
+    const venvPython = process.platform === 'win32'
+        ? path.join(cliRoot, '.venv', 'Scripts', 'python.exe')
+        : path.join(cliRoot, '.venv', 'bin', 'python');
+    if (fs.existsSync(venvPython)) {
+        return venvPython;
+    }
+
     return process.platform === 'win32' ? 'python' : 'python3';
 }
 

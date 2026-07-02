@@ -47,6 +47,8 @@ enchan update
 
 This runs `git pull --ff-only` in the install directory, then reruns the platform installer. Normal `enchan` startup checks for updates in the background and prints a short notice when a newer commit is available.
 
+The installer keeps Python dependencies in a local `.venv`, recreates that environment when `requirements.txt` changes, and tracks native runtime files with a manifest so obsolete runtime files can be pruned when the runtime asset changes.
+
 If the installed command is older and does not yet support `enchan update`, update once manually from the install directory:
 
 ```powershell
