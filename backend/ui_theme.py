@@ -1,8 +1,11 @@
 import json
+import os
 import re
+import select
 import shutil
 import sys
 import time
+
 
 def strip_emojis(text: str) -> str:
     # Remove common emoji ranges (Emoticons, Weather symbols, Dingbats, etc.)
@@ -22,6 +25,7 @@ def strip_emojis(text: str) -> str:
     )
     return emoji_pattern.sub('', text)
 
+
 PROMPT_TOOLKIT_STYLE = {
     "bottom-toolbar": "noinherit bg:default fg:default",
     "completion-menu": "bg:#2a2a2a fg:#d2c8c8",
@@ -32,10 +36,12 @@ PROMPT_TOOLKIT_STYLE = {
     "scrollbar.background": "bg:#1e1e1e",
     "scrollbar.button": "bg:#a59164",
 }
+
 ANSI_RESET = "\x1b[0m"
 ANSI_GOLD = "\x1b[1;38;2;165;145;100m"
 ANSI_WHITE = "\x1b[38;2;210;200;200m"
 ANSI_WARN = "\x1b[38;2;180;100;100m"
+
 try:
     import msvcrt
 except ImportError:
@@ -47,13 +53,21 @@ try:
 except ImportError:
     PROMPT_TOOLKIT_STYLE_AVAILABLE = False
 
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.text import Text
+    RICH_AVAILABLE = True
+    console = Console()
+except ImportError:
+    RICH_AVAILABLE = False
+    console = None
+
 
 def make_prompt_style():
     if not PROMPT_TOOLKIT_STYLE_AVAILABLE:
         return None
     return Style.from_dict(PROMPT_TOOLKIT_STYLE)
-
-
 
 
 def styled_input(prompt_text: str, default_val: str = "", completer=None) -> str:
@@ -69,6 +83,7 @@ def styled_input(prompt_text: str, default_val: str = "", completer=None) -> str
             pass
     return input(prompt_text).strip()
 
+
 def print_response_header(label: str, body: str | None = None, line_char: str = "-") -> None:
     width = shutil.get_terminal_size().columns
     print("\n\x1b[90m" + line_char * width + "\x1b[0m")
@@ -78,16 +93,13 @@ def print_response_header(label: str, body: str | None = None, line_char: str = 
         print(f"[{label}]:\n{body}")
 
 
-def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_idx: int = 0) -> int:
-    """
-    Displays an interactive arrow-key menu.
-    options: list of (label, description, is_selectable)
-    Returns the selected index, or -1 if cancelled/invalid.
-    """
-    import unicodedata
+def _read_raw_char(fd: int) -> str:
+    ch = os.read(fd, 1).decode(errors="ignore")
+    return ch or ""
 
-    if not options:
-        return -1
+
+def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int) -> None:
+    import unicodedata
 
     def visual_len(text: str) -> int:
         return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
@@ -105,13 +117,71 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
             w += cw
         return res + "..."
 
+    term_width = shutil.get_terminal_size().columns
+    for i, (label, desc, ready) in enumerate(options):
+        status = "" if ready else " (Unavailable)"
+        if i == highlighted_idx:
+            cursor = ">"
+            color_start = ANSI_GOLD
+            bullet = "*"
+        else:
+            cursor = " "
+            color_start = ANSI_WHITE if ready else "\x1b[38;2;120;120;120m"
+            bullet = "-"
+        line_text = f"  {cursor} {bullet} {label} | {desc}{status}"
+        line_text = truncate_visual(line_text, term_width - 2)
+        sys.stdout.write(f"\r\x1b[K{color_start}{line_text}{ANSI_RESET}\n")
+    sys.stdout.flush()
+
+
+def _read_posix_escape_sequence() -> str:
+    """Read a full ANSI escape sequence without blocking on standalone ESC.
+
+    Reads from the raw file descriptor with os.read so select() reflects real
+    terminal state. sys.stdin's buffering can otherwise hide the bytes after
+    ESC and collapse arrow keys into a bare ESC on macOS terminals.
+    """
+    fd = sys.stdin.fileno()
+    seq = "\x1b"
+    while True:
+        ready, _, _ = select.select([fd], [], [], 0.01)
+        if not ready:
+            break
+
+        ch = _read_raw_char(fd)
+        if not ch:
+            break
+        seq += ch
+
+        # Common cursor keys: ESC [ A/B/C/D and ESC O A/B/C/D.
+        if len(seq) >= 3 and seq[1] in ("[", "O") and seq[-1].isalpha():
+            break
+
+        # Extended CSI sequences such as ESC [ 1 ; 2 C end with @ through ~.
+        if len(seq) >= 3 and seq[1] == "[" and "@" <= seq[-1] <= "~":
+            break
+
+        if len(seq) >= 16:
+            break
+    return seq
+
+
+def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_idx: int = 0) -> int:
+    """
+    Displays an interactive arrow-key menu.
+    options: list of (label, description, is_selectable)
+    Returns the selected index, or -1 if cancelled/invalid.
+    """
+    if not options:
+        return -1
+
     selectable_indices = [i for i, (_, _, ready) in enumerate(options) if ready]
     if not selectable_indices:
         return -1
     if default_idx < 0 or default_idx >= len(options) or not options[default_idx][2]:
         default_idx = selectable_indices[0]
 
-    is_interactive = sys.stdin.isatty() and (msvcrt is not None or (sys.platform != "win32"))
+    is_interactive = sys.stdin.isatty() and (msvcrt is not None or sys.platform != "win32")
 
     if not is_interactive:
         print(f"\n[{title}]")
@@ -119,8 +189,7 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
             marker = "*" if i - 1 == default_idx else " "
             status = "" if ready else " (Unavailable)"
             color_start = "\x1b[38;2;210;200;200m" if ready else "\x1b[38;2;120;120;120m"
-            color_end = ANSI_RESET
-            print(f"  {color_start}{i}. {label:<20} {marker} {desc}{status}{color_end}")
+            print(f"  {color_start}{i}. {label:<20} {marker} {desc}{status}{ANSI_RESET}")
 
         default_index = default_idx + 1
         try:
@@ -139,28 +208,25 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
     num_options = len(options)
     current_idx = default_idx
 
-    def draw_menu(highlighted_idx: int):
-        term_width = shutil.get_terminal_size().columns
-        for i, (label, desc, ready) in enumerate(options):
-            is_highlighted = i == highlighted_idx
-            status = "" if ready else " (Unavailable)"
-
-            if is_highlighted:
-                cursor = ">"
-                color_start = ANSI_GOLD
-                bullet = "*"
-            else:
-                cursor = " "
-                color_start = ANSI_WHITE if ready else "\x1b[38;2;120;120;120m"
-                bullet = "-"
-
-            color_end = ANSI_RESET
-            line_text = f"  {cursor} {bullet} {label} | {desc}{status}"
-            line_text = truncate_visual(line_text, term_width - 2)
-            sys.stdout.write(f"\r\x1b[K{color_start}{line_text}{color_end}\n")
+    def draw_menu() -> None:
+        _draw_menu_lines(options, current_idx)
+        sys.stdout.write(f"\x1b[{num_options}A")
         sys.stdout.flush()
 
-    draw_menu(current_idx)
+    def finish_with(result: int) -> int:
+        sys.stdout.write(f"\x1b[{num_options}B\r\n")
+        sys.stdout.flush()
+        return result
+
+    def move_selection(delta: int) -> None:
+        nonlocal current_idx
+        orig_idx = current_idx
+        while True:
+            current_idx = (current_idx + delta) % num_options
+            if options[current_idx][2] or current_idx == orig_idx:
+                break
+
+    _draw_menu_lines(options, current_idx)
     sys.stdout.write(f"\x1b[{num_options}A")
     sys.stdout.flush()
 
@@ -172,31 +238,18 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
                     if key in (b"\x00", b"\xe0"):
                         special_key = msvcrt.getch()
                         if special_key == b"H":
-                            orig_idx = current_idx
-                            while True:
-                                current_idx = (current_idx - 1) % num_options
-                                if options[current_idx][2] or current_idx == orig_idx:
-                                    break
-                            draw_menu(current_idx)
-                            sys.stdout.write(f"\x1b[{num_options}A")
-                            sys.stdout.flush()
+                            move_selection(-1)
+                            draw_menu()
                         elif special_key == b"P":
-                            orig_idx = current_idx
-                            while True:
-                                current_idx = (current_idx + 1) % num_options
-                                if options[current_idx][2] or current_idx == orig_idx:
-                                    break
-                            draw_menu(current_idx)
-                            sys.stdout.write(f"\x1b[{num_options}A")
-                            sys.stdout.flush()
+                            move_selection(1)
+                            draw_menu()
+                        elif special_key in (b"K", b"M"):
+                            # Left/right arrows do not select anything in a vertical menu.
+                            continue
                     elif key == b"\r":
-                        sys.stdout.write(f"\x1b[{num_options}B\n")
-                        sys.stdout.flush()
-                        return current_idx
+                        return finish_with(current_idx)
                     elif key in (b"\x03", b"\x1b"):
-                        sys.stdout.write(f"\x1b[{num_options}B\n")
-                        sys.stdout.flush()
-                        return -1
+                        return finish_with(-1)
                 else:
                     time.sleep(0.01)
         else:
@@ -206,45 +259,36 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
-                tty.setraw(sys.stdin.fileno())
+                tty.setraw(fd)
                 while True:
-                    ch = sys.stdin.read(1)
+                    ch = _read_raw_char(fd)
                     if ch == "\x1b":
-                        ch2 = sys.stdin.read(2)
-                        if ch2 == "[A":
-                            orig_idx = current_idx
-                            while True:
-                                current_idx = (current_idx - 1) % num_options
-                                if options[current_idx][2] or current_idx == orig_idx:
-                                    break
-                            draw_menu(current_idx)
-                            sys.stdout.write(f"\x1b[{num_options}A")
-                            sys.stdout.flush()
-                        elif ch2 == "[B":
-                            orig_idx = current_idx
-                            while True:
-                                current_idx = (current_idx + 1) % num_options
-                                if options[current_idx][2] or current_idx == orig_idx:
-                                    break
-                            draw_menu(current_idx)
-                            sys.stdout.write(f"\x1b[{num_options}A")
-                            sys.stdout.flush()
+                        seq = _read_posix_escape_sequence()
+
+                        if seq in ("\x1b[A", "\x1bOA"):
+                            move_selection(-1)
+                            draw_menu()
+                        elif seq in ("\x1b[B", "\x1bOB"):
+                            move_selection(1)
+                            draw_menu()
+                        elif seq in ("\x1b[C", "\x1bOC", "\x1b[D", "\x1bOD"):
+                            # Ignore horizontal arrows instead of treating them as cancel.
+                            continue
+                        elif seq == "\x1b":
+                            return finish_with(-1)
                         else:
-                            sys.stdout.write(f"\x1b[{num_options}B\r\n")
-                            sys.stdout.flush()
-                            return -1
+                            # Unknown escape sequences are fully consumed and ignored so
+                            # their tail bytes cannot leak into later prompts.
+                            continue
                     elif ch in ("\r", "\n"):
-                        sys.stdout.write(f"\x1b[{num_options}B\r\n")
-                        sys.stdout.flush()
-                        return current_idx
+                        return finish_with(current_idx)
                     elif ch == "\x03":
-                        sys.stdout.write(f"\x1b[{num_options}B\r\n")
-                        sys.stdout.flush()
-                        return -1
+                        return finish_with(-1)
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except (KeyboardInterrupt, SystemExit):
         sys.exit(0)
+
 
 def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
     """
@@ -297,14 +341,17 @@ def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
-                tty.setraw(sys.stdin.fileno())
+                tty.setraw(fd)
                 while True:
-                    ch = sys.stdin.read(1)
+                    ch = _read_raw_char(fd)
                     if ch == "\x1b":
-                        ch2 = sys.stdin.read(2)
-                        if ch2 in ("[D", "[C"):
+                        seq = _read_posix_escape_sequence()
+                        if seq in ("\x1b[D", "\x1bOD", "\x1b[C", "\x1bOC"):
                             selected_yes = not selected_yes
                             draw()
+                        elif seq == "\x1b":
+                            sys.stdout.write("\r\n")
+                            return False
                     elif ch in ("\r", "\n"):
                         sys.stdout.write("\r\n")
                         return selected_yes
@@ -318,14 +365,7 @@ def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     except (KeyboardInterrupt, SystemExit):
         sys.exit(0)
-try:
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    RICH_AVAILABLE = True
-    console = Console()
-except ImportError:
-    RICH_AVAILABLE = False
+
 
 def print_agent_action(tool_name: str, args: dict):
     color = "rgb(150,150,150)" if tool_name == "execute_command" else "rgb(165,145,100)"
@@ -335,14 +375,15 @@ def print_agent_action(tool_name: str, args: dict):
         content.append(f"⚙  Agent Action  {tool_name}\n\n", style=f"bold {color}")
         content.append(f"{args_str}", style=color)
         console.print()
-        console.print(Panel(content, border_style=color, padding=(0, 1)))      
+        console.print(Panel(content, border_style=color, padding=(0, 1)))
     else:
         ansi_color = "150;150;150" if tool_name == "execute_command" else "165;145;100"
         print(f"\n\x1b[38;2;{ansi_color}m╭────────────────────────────────────────\x1b[0m")
-        print(f"\x1b[38;2;{ansi_color}m│\x1b[0m ⚙  Agent Action  {tool_name}") 
+        print(f"\x1b[38;2;{ansi_color}m│\x1b[0m ⚙  Agent Action  {tool_name}")
         print(f"\x1b[38;2;{ansi_color}m│\x1b[0m")
         print(f"\x1b[38;2;{ansi_color}m│\x1b[0m {json.dumps(args, ensure_ascii=False)}")
         print(f"\x1b[38;2;{ansi_color}m╰────────────────────────────────────────\x1b[0m")
+
 
 class StreamingObservation:
     def __init__(self, tool_name: str):
@@ -413,11 +454,10 @@ def stream_agent_observation(tool_name: str) -> StreamingObservation:
     return StreamingObservation(tool_name)
 
 
-def print_agent_observation(tool_name: str, ok: bool, observation: str):       
-    observation_text = f"Observation: [{tool_name}] ok={ok}\n{observation}"    
+def print_agent_observation(tool_name: str, ok: bool, observation: str):
+    observation_text = f"Observation: [{tool_name}] ok={ok}\n{observation}"
     display_obs = strip_emojis(observation)
     icon = "✓" if ok else "✗"
-
     color_border = "rgb(150,150,150)" if tool_name == "execute_command" else "rgb(165,145,100)"
 
     if RICH_AVAILABLE:
@@ -435,23 +475,28 @@ def print_agent_observation(tool_name: str, ok: bool, observation: str):
         print(f"\x1b[38;2;{ansi_color}m╰────────────────────────────────────────\x1b[0m")
     return observation_text
 
+
 class DummyStatus:
     def __init__(self, text):
         self.text = text
+
     def start(self):
         print(f"\x1b[3;38;2;150;150;150m{self.text}\x1b[0m", end="", flush=True)
+
     def stop(self):
         print("\r\x1b[K", end="", flush=True)
+
     def update(self, text):
         self.text = text
         print("\r\x1b[K", end="", flush=True)
         print(f"\x1b[3;38;2;150;150;150m{self.text}\x1b[0m", end="", flush=True)
 
+
 def get_spinner_status(text: str = "Thinking... (esc to cancel)"):
     if RICH_AVAILABLE:
         return console.status(f"[italic rgb(150,150,150)]{text}[/]", spinner="dots", spinner_style="rgb(150,150,150)")
-    else:
-        return DummyStatus(text)
+    return DummyStatus(text)
+
 
 def print_python_execution(exit_code: int, stdout: str, stderr: str):
     icon = "✓" if exit_code == 0 else "✗"
@@ -459,16 +504,13 @@ def print_python_execution(exit_code: int, stdout: str, stderr: str):
         content = Text()
         content.append(f"{icon}  Python Execution  exit_code={exit_code}\n\n", style="bold rgb(150,150,150)")
         if stdout:
-            content.append(f"[stdout]\n", style="rgb(150,150,150)")
+            content.append("[stdout]\n", style="rgb(150,150,150)")
             content.append(f"{stdout}\n", style="rgb(210,200,200)")
         if stderr:
-            content.append(f"[stderr]\n", style="rgb(180,100,100)")
+            content.append("[stderr]\n", style="rgb(180,100,100)")
             content.append(f"{stderr}\n", style="rgb(180,100,100)")
-        
-        # Remove trailing newline if present
-        if len(content) > 0 and str(content)[-1] == '\n':
+        if len(content) > 0 and str(content)[-1] == "\n":
             content.right_crop(1)
-            
         console.print(Panel(content, border_style="rgb(150,150,150)", padding=(0, 1)))
     else:
         print(f"\x1b[38;2;150;150;150m╭────────────────────────────────────────\x1b[0m")
@@ -484,20 +526,19 @@ def print_python_execution(exit_code: int, stdout: str, stderr: str):
                 print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m{line}\x1b[0m")
         print(f"\x1b[38;2;150;150;150m╰────────────────────────────────────────\x1b[0m")
 
+
 def print_python_timeout(timeout_sec: int, stdout: str, stderr: str):
     if RICH_AVAILABLE:
         content = Text()
         content.append(f"⚠  Python Timeout  {timeout_sec}s\n\n", style="bold rgb(150,150,150)")
         if stdout:
-            content.append(f"[stdout]\n", style="rgb(150,150,150)")
+            content.append("[stdout]\n", style="rgb(150,150,150)")
             content.append(f"{stdout}\n", style="rgb(210,200,200)")
         if stderr:
-            content.append(f"[stderr]\n", style="rgb(180,100,100)")
+            content.append("[stderr]\n", style="rgb(180,100,100)")
             content.append(f"{stderr}\n", style="rgb(180,100,100)")
-            
-        if len(content) > 0 and str(content)[-1] == '\n':
+        if len(content) > 0 and str(content)[-1] == "\n":
             content.right_crop(1)
-            
         console.print(Panel(content, border_style="rgb(150,150,150)", padding=(0, 1)))
     else:
         print(f"\x1b[38;2;150;150;150m╭────────────────────────────────────────\x1b[0m")

@@ -46,13 +46,34 @@ echo "Installing runtime to: $bin_dir"
 unzip -o "$zip_path" -d "$bin_dir" >/dev/null
 chmod +x "$bin_dir/llama-server" "$bin_dir/llama-cli" "$bin_dir/llama-quantize" 2>/dev/null || true
 
+# macOS ships versioned dylibs as "libX.M.N.P.dylib" plus a "libX.M.dylib" symlink that
+# dependents actually resolve. Zipping the runtime drops those symlinks, so the engine fails
+# to load with a dyld "Library not loaded: @rpath/libX.M.dylib" error. Each dylib's install id
+# (LC_ID_DYLIB) is exactly the name dependents look up, so recreate a symlink for it.
+if command -v otool >/dev/null 2>&1; then
+  echo "Linking runtime library versions"
+  (
+    cd "$bin_dir"
+    for lib in *.dylib; do
+      [[ -f "$lib" && ! -L "$lib" ]] || continue
+      id_name="$(basename "$(otool -D "$lib" 2>/dev/null | tail -n +2 | head -1)")"
+      [[ -n "$id_name" && "$id_name" != "$lib" ]] && ln -sf "$lib" "$id_name"
+    done
+  )
+else
+  echo "[Warning] otool not found; skipping dylib version linking. If the engine fails to load, install Xcode Command Line Tools (xcode-select --install)." >&2
+fi
+
 python_bin="${ENCHAN_PYTHON:-python3}"
 if ! "$python_bin" --version >/dev/null 2>&1; then
   echo "Python was not found. Install Python 3 or set ENCHAN_PYTHON to the Python executable." >&2
+  exit 1
 fi
+
+echo "Installing Python UI dependencies"
+"$python_bin" -m pip install --user prompt_toolkit rich
 
 npm link
 
 echo "Enchan CLI installed. Try: enchan --backend ollama"
 echo "For Enchan runtime: enchan --backend enchan --gguf-model <path-to-model.gguf>"
-

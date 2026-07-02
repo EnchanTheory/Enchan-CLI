@@ -130,6 +130,23 @@ def get_physical_memory_status() -> tuple[int, int] | None:
                 return int(status.ullTotalPhys), int(status.ullAvailPhys)
         except Exception:
             return None
+    elif sys.platform == "darwin":
+        # macOS has no SC_AVPHYS_PAGES; total comes from sysconf and available is
+        # derived from vm_stat (free + inactive + speculative pages are reclaimable).
+        try:
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            total = os.sysconf("SC_PHYS_PAGES") * page_size
+            out = subprocess.run(
+                ["vm_stat"], capture_output=True, text=True, timeout=2
+            ).stdout
+            avail_pages = 0
+            for key in ("Pages free", "Pages inactive", "Pages speculative"):
+                match = re.search(rf"{key}:\s+(\d+)\.", out)
+                if match:
+                    avail_pages += int(match.group(1))
+            return int(total), int(avail_pages * page_size)
+        except Exception:
+            return None
     else:
         try:
             pages = os.sysconf("SC_PHYS_PAGES")

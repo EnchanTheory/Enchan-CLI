@@ -17,6 +17,9 @@ import shutil
 import argparse
 import subprocess
 import threading
+import json
+import urllib.request
+import urllib.error
 from pathlib import Path
 try:
     import msvcrt
@@ -75,6 +78,15 @@ def format_count(n: int) -> str:
     if n >= 1_000:
         return f"{n / 1_000:.1f}k"
     return str(n)
+
+def format_size(num_bytes: float) -> str:
+    """Human-readable byte size, e.g. 4.3 GB."""
+    size = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{int(size)} B" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
 
 def strip_thought_blocks(text: str) -> str:
     """Removes <thought>...</thought> and <think>...</think> blocks to keep multi-turn context clean."""
@@ -468,7 +480,7 @@ def standalone_ollama_pull(model_name: str) -> bool:
     total_size = sum(layer.get("size", 0) for layer in layers)
     downloaded_size = 0
 
-    print(f"[System] Downloading {len(layers)} layers (Total: {format_count(total_size)} bytes)...")
+    print(f"[System] Downloading {len(layers)} layers (Total: {format_size(total_size)})...")
 
     for layer in layers:
         digest = layer.get("digest")
@@ -503,7 +515,7 @@ def standalone_ollama_pull(model_name: str) -> bool:
                             bar_length = 30
                             filled_length = int(bar_length * percent // 100)
                             bar = '█' * filled_length + '░' * (bar_length - filled_length)
-                            sys.stdout.write(f"\r[Downloading] {bar} {percent}% ")
+                            sys.stdout.write(f"\r[Downloading] {bar} {percent}% ({format_size(downloaded_size)} / {format_size(total_size)}) ")
                             sys.stdout.flush()
         except Exception as e:
             print(f"\n[Error] Failed to download blob {digest[:15]}: {e}")
@@ -519,6 +531,56 @@ def standalone_ollama_pull(model_name: str) -> bool:
     print("\n[System] Download complete! Model integrated into Ollama storage.\n")
     return True
 
+ENCHAN_DEFAULT_DOWNLOAD_MODEL = "gemma4:e2b-it-qat"
+ENCHAN_DEFAULT_DOWNLOAD_SIZE = "~4.3 GB"
+
+
+def list_installed_ollama_models(host: str) -> list:
+    """Return installed Ollama model tags via the API, falling back to local manifests."""
+    try:
+        url = host.rstrip("/") + "/api/tags"
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        models = []
+        try:
+            manifest_root = Path.home() / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library"
+            if manifest_root.exists():
+                for model_dir in manifest_root.iterdir():
+                    if model_dir.is_dir():
+                        for tag_file in model_dir.iterdir():
+                            if tag_file.is_file():
+                                models.append(f"{model_dir.name}:{tag_file.name}")
+        except Exception:
+            pass
+        return models
+
+
+def select_startup_model(host: str, title: str = "Select Model") -> Optional[str]:
+    """Let the user pick an installed model or download the default one.
+
+    Returns the chosen model tag (which may still need downloading), or None if cancelled.
+    When no models are installed, the only option is to download the default model.
+    """
+    installed = list_installed_ollama_models(host)
+    options = [(name, "installed", True) for name in installed]
+    offer_download = ENCHAN_DEFAULT_DOWNLOAD_MODEL not in installed
+    if offer_download:
+        options.append(
+            (
+                f"Download {ENCHAN_DEFAULT_DOWNLOAD_MODEL} ({ENCHAN_DEFAULT_DOWNLOAD_SIZE})",
+                "from registry.ollama.ai",
+                True,
+            )
+        )
+    selected_idx = interactive_menu(title, options, default_idx=0)
+    if selected_idx < 0:
+        return None
+    if offer_download and selected_idx == len(options) - 1:
+        return ENCHAN_DEFAULT_DOWNLOAD_MODEL
+    return installed[selected_idx]
+
 def main():
     local_cfg = load_local_config()
 
@@ -527,7 +589,7 @@ def main():
     if default_backend not in {"ollama", "enchan"}:
         default_backend = "enchan"
     parser.add_argument("--backend", choices=["ollama", "enchan"], default=default_backend, help="runtime backend: ollama uses local Ollama; enchan runs custom secure C++ engine with integrated stabilization")
-    parser.add_argument("--gguf-model", default=local_cfg.get("gguf_model", ""), help="path to GGUF model for --backend enchan")
+    parser.add_argument("--gguf-model", default="", help="path to GGUF model for --backend enchan (interactive startup shows a model picker when omitted)")
     parser.add_argument("--screen-strength", type=float, default=local_cfg.get("screen_strength", 0.2), help="screening strength for --backend enchan (default: 0.2)")
     parser.add_argument("--H-c", type=float, default=local_cfg.get("H_c", 1.6), help="scaling depth H_c for --backend enchan (default: 1.6)")
     parser.add_argument("--m", type=float, default=local_cfg.get("m", 1.5), help="sharpness power m for --backend enchan (default: 1.5)")
@@ -624,11 +686,22 @@ def main():
         model = None
         tokenizer = None
         
-        # Determine GGUF model path (fallback to ollama_model if gguf_model is not specified)
-        gguf_model_path = args.gguf_model if args.gguf_model else args.ollama_model
-        
-        # Check if the model can be resolved (either direct file or in Ollama registry)
+        # Determine which model to use. An explicit --gguf-model always wins; otherwise
+        # let the user pick an installed model or download the default in interactive mode.
         resolved_path = None
+        interactive_startup = (not plain_output) and sys.stdin.isatty()
+        if args.gguf_model:
+            gguf_model_path = args.gguf_model
+        elif interactive_startup:
+            chosen = select_startup_model(args.ollama_host, "Select Enchan Model")
+            if not chosen:
+                print("[System] Model selection cancelled.")
+                sys.exit(1)
+            gguf_model_path = chosen
+        else:
+            gguf_model_path = args.ollama_model
+
+        # Resolve the chosen model to a direct file or an Ollama blob.
         if gguf_model_path:
             if Path(gguf_model_path).exists():
                 resolved_path = gguf_model_path
@@ -639,18 +712,16 @@ def main():
                 except Exception:
                     pass
 
-        # Auto-download default model if it cannot be resolved
-        if not resolved_path:
-            default_model = "gemma4:e2b-it-qat"
-            if standalone_ollama_pull(default_model):
-                gguf_model_path = default_model
-                args.gguf_model = default_model
-                # Update config so it remembers the downloaded model
-                local_cfg["gguf_model"] = default_model
-                save_local_config(local_cfg)
-            else:
-                print("[Error] Failed to initialize default model. Please specify a valid --gguf-model.")
+        # Only the designated default model is auto-downloaded. Any other model is
+        # assumed to already exist in the user's environment and is used as-is.
+        if not resolved_path and gguf_model_path == ENCHAN_DEFAULT_DOWNLOAD_MODEL:
+            if not standalone_ollama_pull(gguf_model_path):
+                print("[Error] Failed to download the default model. Please specify a valid --gguf-model.")
                 sys.exit(1)
+
+        # Use the resolved model for this run. The interactive picker (or an explicit
+        # --gguf-model) chooses the model each launch, so it is not persisted to config.
+        args.gguf_model = gguf_model_path
 
         model_name_short = f"enchan:{gguf_model_path}"
         if not plain_output:
@@ -661,15 +732,30 @@ def main():
     else:
         model = None
         tokenizer = None
-        model_name_short = f"ollama:{args.ollama_model}"
-        if not plain_output:
-            print(f"\n[System] Using Ollama API: {args.ollama_host} / {args.ollama_model}")
         if not ensure_ollama_running(args.ollama_host, auto_start=not args.no_ollama_start, quiet=plain_output):
             if not plain_output:
                 print("[Error] Ollama API is not available. Start Ollama manually or check --ollama-host.")
             else:
                 print("[Error] Ollama API is not available.")
             return
+        # If the configured model is not installed, let the user pick another (or download the default).
+        interactive_startup = (not plain_output) and sys.stdin.isatty()
+        if interactive_startup:
+            installed = list_installed_ollama_models(args.ollama_host)
+            if args.ollama_model not in installed:
+                chosen = select_startup_model(args.ollama_host, "Select Ollama Model")
+                if not chosen:
+                    print("[System] Model selection cancelled.")
+                    return
+                if chosen not in installed and not standalone_ollama_pull(chosen):
+                    print("[Error] Failed to download the selected model.")
+                    return
+                args.ollama_model = chosen
+                local_cfg["ollama_model"] = chosen
+                save_local_config(local_cfg)
+        model_name_short = f"ollama:{args.ollama_model}"
+        if not plain_output:
+            print(f"\n[System] Using Ollama API: {args.ollama_host} / {args.ollama_model}")
     
     if not plain_output:
         print("[System] Initialization complete.")

@@ -24,7 +24,7 @@ Required commands:
 ### Windows PowerShell
 
 ```powershell
-gh repo clone EnchanTheory/Enchan-CLI "$env:USERPROFILE\Enchan-CLI"; cd "$env:USERPROFILE\Enchan-CLI"; .\install.ps1
+gh repo clone EnchanTheory/Enchan-CLI "$env:USERPROFILE\.enchan"; cd "$env:USERPROFILE\.enchan"; .\install.ps1
 ```
 
 The installer downloads `enchan-llama-win-x64.zip` from `EnchanTheory/Enchan-Llama` release `v0.1.0`, extracts it to `backend/bin/win-x64/`, and registers the `enchan` command with `npm link`.
@@ -32,7 +32,7 @@ The installer downloads `enchan-llama-win-x64.zip` from `EnchanTheory/Enchan-Lla
 ### Apple Silicon macOS
 
 ```bash
-gh repo clone EnchanTheory/Enchan-CLI ~/Enchan-CLI && cd ~/Enchan-CLI && chmod +x ./install.sh && ./install.sh
+gh repo clone EnchanTheory/Enchan-CLI ~/.enchan && cd ~/.enchan && chmod +x ./install.sh && ./install.sh
 ```
 
 The installer downloads `enchan-llama-macos-arm64.zip` from `EnchanTheory/Enchan-Llama` release `v0.1.0`, extracts it to `backend/bin/macos-arm64/`, marks runtime executables executable, and registers the `enchan` command with `npm link`.

@@ -27,7 +27,7 @@ from agent_loop import run_agent_loop
 from memory_store import build_memory_prompt_section
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-DEFAULT_OLLAMA_MODEL = "gemma4"
+DEFAULT_OLLAMA_MODEL = "gemma4:e2b-it-qat"
 
 # --- Local Helpers to prevent circular imports ---
 def sanitize_for_json(text: str) -> str:

@@ -16,6 +16,7 @@ _archive/
 ollama/
 node_modules/
 npm-debug.log*
+enchan_config.json
 .DS_Store
 Thumbs.db
 backend/bin/*
