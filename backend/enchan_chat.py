@@ -821,7 +821,7 @@ def main():
 
         slash_commands = (
             "/resume", "/compress", "/model", "/status", "/set",
-            "/delegate", "/help", "/new", "/exit", "/quit",
+            "/help", "/new", "/exit",
         )
 
         @kb.add('/')
@@ -874,10 +874,6 @@ def main():
             else:
                 buffer.start_completion(select_first=True)
 
-        @kb.add('escape', eager=True)
-        def _(event):
-            # Escキー押下で入力プロンプトを中断し、プロセスを強制終了する
-            event.app.exit(result='exit')
 
         @kb.add('c-j')              # Ctrl+Enter inserts newline (Break line)
         def _(event):
@@ -907,11 +903,9 @@ def main():
                         "exit_layer": ("Set force early exit layer index (HF only)", None),
                         "exit_thresh": ("Set early exit threshold probability (HF only)", None),
                     }),
-                    "/delegate": ("Delegate a task to codex, gemini, or claude", None),
                     "/help": ("Show help menu and available commands", None),
                     "/new": ("Start a new session (clears chat history and file context)", None),
                     "/exit": ("Exit the CLI", None),
-                    "/quit": ("Exit the CLI", None),
                 }
 
             def get_completions(self, document, complete_event):

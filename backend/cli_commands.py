@@ -120,7 +120,7 @@ def print_cli_help():
     print("  /set top_p <value>    Set top_p, e.g. /set top_p 0.9")
     print("  /set input <tokens>   Set max_input_tokens, e.g. /set input 4096")
     print("  /set max <tokens>     Set max_new_tokens, e.g. /set max 1024")
-    print("  /exit, /quit          Exit the CLI.")
+    print("  /exit                 Exit the CLI.")
     print("\n[Smart Reading]")
     print("  Paste or drag a file path and Enchan will read it directly.")
     print("  Large files are compressed internally with Enchan Engine; compressed context is hidden from display and logs.")
@@ -246,7 +246,6 @@ def handle_cli_command(
             if backend_mode == "enchan":
                 from enchan_llama_backend import shutdown_enchan_llama
                 shutdown_enchan_llama()
-                print("[System] Enchan Llama will load the selected model on the next prompt.")
 
             # Save this to enchan_config.json to persist!
             local_cfg = load_local_config()

@@ -334,7 +334,6 @@ def shutdown_enchan_llama() -> None:
         _ram_guard_stop = None
 
     if _server_process is not None:
-        print("[System] Terminating Enchan Llama...")
         process = _server_process
         process_pid = process.pid
 
@@ -408,9 +407,7 @@ def shutdown_enchan_llama() -> None:
     _current_loaded_model = None
     _current_server_port = DEFAULT_ENCHAN_LLAMA_PORT
     _current_context_size = 0
-    if shutdown_ok:
-        print("[System] Engine shut down successfully.")
-    else:
+    if not shutdown_ok:
         print("[Warning] Engine shutdown requested, but a llama-server process or port is still releasing.")
 
 
