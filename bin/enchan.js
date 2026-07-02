@@ -46,19 +46,7 @@ function runChecked(command, args, options = {}) {
     }
 }
 
-function runUpdate() {
-    if (!fs.existsSync(path.join(cliRoot, '.git'))) {
-        console.error('[Enchan CLI] Cannot update: this install is not a Git checkout. Reinstall from EnchanTheory/Enchan-CLI once.');
-        process.exit(1);
-    }
-    if (!commandExists('git')) {
-        console.error('[Enchan CLI] Cannot update: git was not found on PATH.');
-        process.exit(1);
-    }
-
-    console.log('[Enchan CLI] Updating source...');
-    runChecked('git', ['pull', '--ff-only'], { cwd: cliRoot });
-
+function runInstaller() {
     console.log('[Enchan CLI] Refreshing install...');
     if (process.platform === 'win32') {
         const installScript = path.join(cliRoot, 'install.ps1');
@@ -68,6 +56,30 @@ function runUpdate() {
         const installScript = path.join(cliRoot, 'install.sh');
         runChecked('bash', [installScript], { cwd: cliRoot });
     }
+}
+
+function runUpdate(updateArgs = []) {
+    if (!fs.existsSync(path.join(cliRoot, '.git'))) {
+        console.error('[Enchan CLI] Cannot update: this install is not a Git checkout. Reinstall from EnchanTheory/Enchan-CLI once.');
+        process.exit(1);
+    }
+    if (!commandExists('git')) {
+        console.error('[Enchan CLI] Cannot update: git was not found on PATH.');
+        process.exit(1);
+    }
+
+    const repair = updateArgs.includes('--repair');
+    const before = gitOutput(['rev-parse', 'HEAD']);
+    console.log('[Enchan CLI] Updating source...');
+    runChecked('git', ['pull', '--ff-only'], { cwd: cliRoot });
+    const after = gitOutput(['rev-parse', 'HEAD']);
+
+    if (!repair && before && after && before === after) {
+        console.log('[Enchan CLI] Already up to date.');
+        return;
+    }
+
+    runInstaller();
 }
 
 function gitOutput(args) {
@@ -124,7 +136,7 @@ function notifyUpdateAvailableAsync() {
 
 const args = process.argv.slice(2);
 if (args[0] === 'update' || args[0] === 'self-update') {
-    runUpdate();
+    runUpdate(args.slice(1));
     process.exit(0);
 }
 

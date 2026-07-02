@@ -43,6 +43,27 @@ PY
   fi
 }
 
+enchan_linked() {
+  global_root="$(npm root -g 2>/dev/null || true)"
+  [[ -n "$global_root" ]] || return 1
+  package_path="$global_root/enchan-cli"
+  [[ -e "$package_path" ]] || return 1
+  expected="$script_dir"
+  resolved="$(python3 - <<PY
+import os
+print(os.path.realpath('$package_path'))
+PY
+)"
+  [[ "$resolved" == "$expected" ]]
+}
+
+ensure_npm_link() {
+  if enchan_linked; then
+    echo "Enchan command already linked"
+  else
+    npm link
+  fi
+}
 require_command gh
 require_command node
 require_command npm
@@ -128,6 +149,6 @@ else
   fi
 fi
 
-npm link
+ensure_npm_link
 
 echo "Enchan CLI installed. Try: enchan"

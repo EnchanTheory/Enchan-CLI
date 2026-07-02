@@ -45,7 +45,9 @@ After installation, update the checkout and refresh the linked command with:
 enchan update
 ```
 
-This runs `git pull --ff-only` in the install directory, then reruns the platform installer. Normal `enchan` startup checks for updates in the background and prints a short notice when a newer commit is available.
+This runs `git pull --ff-only` in the install directory. When new commits are applied, Enchan refreshes the installer-managed assets; when the checkout is already current, it exits without reinstalling. Normal `enchan` startup checks for updates in the background and prints a short notice when a newer commit is available.
+
+To force a local asset repair without waiting for source changes, run `enchan update --repair`.
 
 The installer keeps Python dependencies in a local `.venv`, recreates that environment when `requirements.txt` changes, and tracks native runtime files with a manifest so obsolete runtime files can be pruned when the runtime asset changes.
 

@@ -48,6 +48,29 @@ function Get-ZipFileList($ZipFile) {
     }
 }
 
+function Test-EnchanLinked {
+    $GlobalRoot = (& npm root -g 2>$null).Trim()
+    if (-not $GlobalRoot) {
+        return $false
+    }
+    $PackagePath = Join-Path $GlobalRoot "enchan-cli"
+    if (-not (Test-Path $PackagePath)) {
+        return $false
+    }
+    $Item = Get-Item -LiteralPath $PackagePath -Force
+    $Target = if ($Item.Target) { [string]$Item.Target } else { $Item.FullName }
+    $ResolvedTarget = [System.IO.Path]::GetFullPath($Target).TrimEnd("\", "/")
+    $Expected = [System.IO.Path]::GetFullPath($ScriptDir).TrimEnd("\", "/")
+    return $ResolvedTarget.Equals($Expected, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Ensure-NpmLink {
+    if (Test-EnchanLinked) {
+        Write-Host "Enchan command already linked"
+    } else {
+        npm link
+    }
+}
 Require-Command gh
 Require-Command node
 Require-Command npm
@@ -108,6 +131,6 @@ if ($env:ENCHAN_PYTHON) {
     }
 }
 
-npm link
+Ensure-NpmLink
 
 Write-Host "Enchan CLI installed. Try: enchan"
