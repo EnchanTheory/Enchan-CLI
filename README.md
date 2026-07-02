@@ -37,6 +37,28 @@ gh repo clone EnchanTheory/Enchan-CLI ~/.enchan && cd ~/.enchan && chmod +x ./in
 
 The installer downloads `enchan-llama-macos-arm64.zip` from `EnchanTheory/Enchan-Llama` release `v0.1.0`, extracts it to `backend/bin/macos-arm64/`, marks runtime executables executable, and registers the `enchan` command with `npm link`.
 
+## Update
+
+After installation, update the checkout and refresh the linked command with:
+
+```bash
+enchan update
+```
+
+This runs `git pull --ff-only` in the install directory, then reruns the platform installer. If the installed command is older and does not yet support `enchan update`, update once manually from the install directory:
+
+```powershell
+cd "$env:USERPROFILE\.enchan"
+git pull --ff-only
+.\install.ps1
+```
+
+```bash
+cd ~/.enchan
+git pull --ff-only
+./install.sh
+```
+
 ## Runtime Assets
 
 Runtime assets are published in the private Enchan Llama release:
@@ -103,6 +125,7 @@ Inside the interactive CLI:
 - `/resume`: resume a prior session log
 - `/clear`: clear current chat context
 - `/exit`: exit cleanly
+- `enchan update`: update the installed checkout and refresh the command
 
 ## Repository Scope
 
