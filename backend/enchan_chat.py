@@ -747,6 +747,10 @@ def main():
         model_name_short = f"ollama:{args.ollama_model}"
     
     if not plain_output:
+        update_notice_path = CLI_DIR / ".enchan-update-available"
+        if update_notice_path.exists():
+            update_notice_path.unlink(missing_ok=True)
+            print("[Info] Update available. Run: enchan update")
         active_model_disp = MODEL_ID if backend_mode == 'hf' else (args.gguf_model if (backend_mode == 'enchan' and args.gguf_model) else args.ollama_model)
         print(f"  * Selected Model: {active_model_disp}")
         print("  * Type 'exit' to close.")

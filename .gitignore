@@ -21,4 +21,4 @@ enchan_config.json
 Thumbs.db
 backend/bin/*
 !backend/bin/.gitkeep
-
+.enchan-update-available

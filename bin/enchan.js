@@ -6,6 +6,7 @@ const path = require('path');
 
 const cliRoot = path.join(__dirname, '..');
 const backendScript = path.join(cliRoot, 'backend', 'enchan_chat.py');
+const updateNoticePath = path.join(cliRoot, '.enchan-update-available');
 
 function resolvePython() {
     if (process.env.ENCHAN_PYTHON) {
@@ -116,7 +117,7 @@ function notifyUpdateAvailableAsync() {
         const local = gitOutput(['rev-parse', 'HEAD']);
         const remote = gitOutput(['rev-parse', remoteRef]);
         if (local && remote && local !== remote) {
-            console.log('\n[Info] Update available. Run: enchan update');
+            try { fs.writeFileSync(updateNoticePath, '1', 'utf8'); } catch (_) {}
         }
     });
 }
