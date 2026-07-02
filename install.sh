@@ -123,7 +123,6 @@ else
     rm -rf "$venv_dir"
     echo "Creating Python environment"
     "$base_python" -m venv "$venv_dir"
-    "$venv_python" -m pip install --upgrade pip
     "$venv_python" -m pip install -r "$requirements_path"
     printf '%s\n' "$req_hash" > "$venv_hash_path"
   fi

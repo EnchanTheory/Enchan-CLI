@@ -103,7 +103,6 @@ if ($env:ENCHAN_PYTHON) {
         }
         Write-Host "Creating Python environment"
         & $BasePython -m venv $VenvDir
-        & $VenvPython -m pip install --upgrade pip
         & $VenvPython -m pip install -r $RequirementsPath
         Set-Content -LiteralPath $VenvHashPath -Value $RequirementsHash -Encoding UTF8
     }
