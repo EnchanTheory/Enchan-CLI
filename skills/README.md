@@ -48,6 +48,8 @@ Required fields:
 - `methods`: JSON-RPC methods exposed by the skill. Each method should declare an `input` JSON Schema.
 - `host_capabilities`: host callbacks this skill may call. Use the minimum needed set.
 
+The host validates the practical JSON Schema subset used for skill contracts: object inputs, `required`, `properties`, `type`, `enum`, and `default`.
+
 Supported host callback capabilities:
 
 - `host.log`: stream progress text to the caller.

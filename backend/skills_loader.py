@@ -1,3 +1,4 @@
+import atexit
 import json
 import os
 import shlex
@@ -196,6 +197,70 @@ def _runtime_command(runtime: Any) -> list[str]:
     return _command_parts(command)
 
 
+def _schema_for_method(manifest: dict[str, Any], method: str) -> dict[str, Any]:
+    methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
+    method_spec = methods.get(method) if isinstance(methods.get(method), dict) else {}
+    input_schema = method_spec.get("input") if isinstance(method_spec.get("input"), dict) else {}
+    return input_schema
+
+
+def _validate_and_apply_defaults(schema: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
+    if not schema:
+        return dict(params)
+    schema_type = schema.get("type")
+    if schema_type and schema_type != "object":
+        raise SkillManifestError("Skill method input schema must be an object schema.")
+
+    validated = dict(params)
+    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
+    for key, prop_schema in properties.items():
+        if key not in validated and isinstance(prop_schema, dict) and "default" in prop_schema:
+            validated[key] = prop_schema["default"]
+
+    required = schema.get("required") if isinstance(schema.get("required"), list) else []
+    missing = [key for key in required if key not in validated]
+    if missing:
+        raise SkillManifestError(f"Missing required skill params: {', '.join(str(key) for key in missing)}")
+
+    for key, value in validated.items():
+        prop_schema = properties.get(key)
+        if isinstance(prop_schema, dict):
+            _validate_schema_value(key, value, prop_schema)
+    return validated
+
+
+def _validate_schema_value(key: str, value: Any, schema: dict[str, Any]):
+    allowed = schema.get("enum")
+    if isinstance(allowed, list) and value not in allowed:
+        raise SkillManifestError(f"Skill param '{key}' must be one of: {', '.join(map(str, allowed))}")
+
+    expected = schema.get("type")
+    if not expected:
+        return
+    expected_types = expected if isinstance(expected, list) else [expected]
+    if any(_matches_json_type(value, type_name) for type_name in expected_types):
+        return
+    raise SkillManifestError(f"Skill param '{key}' must be type {expected}, got {type(value).__name__}.")
+
+
+def _matches_json_type(value: Any, type_name: str) -> bool:
+    if type_name == "string":
+        return isinstance(value, str)
+    if type_name == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if type_name == "number":
+        return (isinstance(value, int) or isinstance(value, float)) and not isinstance(value, bool)
+    if type_name == "boolean":
+        return isinstance(value, bool)
+    if type_name == "object":
+        return isinstance(value, dict)
+    if type_name == "array":
+        return isinstance(value, list)
+    if type_name == "null":
+        return value is None
+    return True
+
+
 def _legacy_manifest(skill_dir: Path, config: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": config.get("name", skill_dir.name),
@@ -287,18 +352,21 @@ def run_skill(skill_name: str, argument: str = "", *, method: str = DEFAULT_LEGA
         if not command:
             return f"[Error] Skill '{skill_name}' configuration has no runtime command defined."
 
-        print(f"\n[System] Launching skill '{skill_name}'...")
-        print(f"[System] Command: {' '.join(command)}")
-        print("-" * 60)
-
         if manifest.get("legacy"):
+            print(f"\n[System] Launching skill '{skill_name}'...")
+            print(f"[System] Command: {' '.join(command)}")
+            print("-" * 60)
             return _run_legacy_skill(skill_name, command, argument)
 
         methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
         if method not in methods:
             return f"[Error] Skill '{skill_name}' has no method '{method}'. Available methods: {', '.join(methods.keys())}"
 
-        call_params = params if isinstance(params, dict) else {"argument": argument}
+        raw_params = params if isinstance(params, dict) else {"argument": argument}
+        call_params = _validate_and_apply_defaults(_schema_for_method(manifest, method), raw_params)
+        print(f"\n[System] Launching skill '{skill_name}'...")
+        print(f"[System] Command: {' '.join(command)}")
+        print("-" * 60)
         session = _session_for(skill_name, command, manifest)
         response = session.call(method, call_params)
 
@@ -331,6 +399,17 @@ def _session_for(skill_name: str, command: list[str], manifest: dict[str, Any]) 
             session = JsonRpcSkillSession(skill_name, command, manifest.get("host_capabilities", []))
             _SESSIONS[skill_name] = session
         return session
+
+
+def close_all_sessions():
+    with _SESSIONS_LOCK:
+        sessions = list(_SESSIONS.values())
+        _SESSIONS.clear()
+    for session in sessions:
+        session.close()
+
+
+atexit.register(close_all_sessions)
 
 
 def _run_legacy_skill(skill_name: str, command: list[str], argument: str) -> str:
