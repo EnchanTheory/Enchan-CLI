@@ -73,6 +73,7 @@ function runUpdate(updateArgs = []) {
     console.log('[Enchan CLI] Updating source...');
     runChecked('git', ['pull', '--ff-only'], { cwd: cliRoot });
     const after = gitOutput(['rev-parse', 'HEAD']);
+    clearUpdateNotice();
 
     if (!repair && before && after && before === after) {
         console.log('[Enchan CLI] Already up to date.');
@@ -82,56 +83,76 @@ function runUpdate(updateArgs = []) {
     runInstaller();
 }
 
-function gitOutput(args) {
-    const result = spawnSync('git', args, {
+function gitResult(args, options = {}) {
+    return spawnSync('git', args, {
         cwd: cliRoot,
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
         shell: false,
-        env: process.env
+        env: process.env,
+        timeout: options.timeoutMs || undefined
     });
+}
+
+function gitOutput(args, options = {}) {
+    const result = gitResult(args, options);
     if (result.status !== 0) {
         return '';
     }
     return String(result.stdout || '').trim();
 }
 
-function notifyUpdateAvailableAsync() {
+function upstreamRef() {
+    return gitOutput(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
+}
+
+function upstreamRemote(upstream) {
+    return upstream ? upstream.split('/')[0] : '';
+}
+
+function clearUpdateNotice() {
+    try { fs.rmSync(updateNoticePath, { force: true }); } catch (_) {}
+}
+
+function writeUpdateNotice() {
+    try { fs.writeFileSync(updateNoticePath, '1', 'utf8'); } catch (_) {}
+}
+
+function isFastForwardUpdateAvailable(upstream) {
+    const local = gitOutput(['rev-parse', 'HEAD']);
+    const remote = gitOutput(['rev-parse', upstream]);
+    if (!local || !remote || local === remote) {
+        return false;
+    }
+    const result = gitResult(['merge-base', '--is-ancestor', 'HEAD', upstream]);
+    return result.status === 0;
+}
+
+function refreshUpdateNotice({ timeoutMs } = {}) {
     if (!fs.existsSync(path.join(cliRoot, '.git')) || !commandExists('git')) {
         return;
     }
 
-    const currentBranch = gitOutput(['branch', '--show-current']);
-    if (!currentBranch) {
+    const upstream = upstreamRef();
+    const remote = upstreamRemote(upstream);
+    if (!upstream || !remote) {
         return;
     }
 
-    const remoteRef = `origin/${currentBranch}`;
-    const fetch = spawn('git', ['fetch', '--quiet', 'origin', currentBranch], {
-        cwd: cliRoot,
-        stdio: 'ignore',
-        shell: false,
-        env: process.env,
-        detached: false
-    });
-    fetch.unref();
+    const fetch = gitResult(['fetch', '--quiet', remote], { timeoutMs });
+    if (fetch.status !== 0) {
+        return;
+    }
 
-    const timer = setTimeout(() => {
-        fetch.kill();
-    }, 5000);
-    timer.unref();
+    if (isFastForwardUpdateAvailable(upstream)) {
+        writeUpdateNotice();
+    } else {
+        clearUpdateNotice();
+    }
+}
 
-    fetch.on('exit', (code) => {
-        clearTimeout(timer);
-        if (code !== 0) {
-            return;
-        }
-        const local = gitOutput(['rev-parse', 'HEAD']);
-        const remote = gitOutput(['rev-parse', remoteRef]);
-        if (local && remote && local !== remote) {
-            try { fs.writeFileSync(updateNoticePath, '1', 'utf8'); } catch (_) {}
-        }
-    });
+function notifyUpdateAvailableAsync() {
+    setTimeout(() => refreshUpdateNotice({ timeoutMs: 5000 }), 0).unref();
 }
 
 const args = process.argv.slice(2);
@@ -140,6 +161,7 @@ if (args[0] === 'update' || args[0] === 'self-update') {
     process.exit(0);
 }
 
+refreshUpdateNotice({ timeoutMs: 2500 });
 notifyUpdateAvailableAsync();
 
 const pythonPath = resolvePython();
