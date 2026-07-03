@@ -1,0 +1,100 @@
+Enchan CLI Research & Evaluation License v1.0
+=============================================
+
+Copyright (c) 2026 Mitsuhiro Kobayashi
+All rights reserved.
+
+Purpose
+-------
+This repository is provided to facilitate private evaluation, academic review,
+non-commercial research, and reproducible testing of Enchan CLI and its related
+local runtime integration.
+
+Definitions
+-----------
+"Materials" means all contents of this repository, including but not limited to:
+source code, scripts, text, configuration files, installer scripts, command-line
+interfaces, runtime integration code, documentation, and any other files.
+
+"Non-Commercial" means not primarily intended for or directed toward commercial
+advantage or monetary compensation.
+
+"Evaluation Use" means installing, running, inspecting, and testing the Materials
+to evaluate Enchan CLI behavior, reproduce diagnostics, or review the implementation.
+
+License Grant (Limited)
+-----------------------
+Subject to the terms below, you are granted a non-exclusive, non-transferable,
+revocable license to:
+
+1) Read, download, copy, install, and execute the Materials for Evaluation Use and
+   Non-Commercial research or education purposes.
+
+2) Share brief excerpts, benchmark observations, issue reports, or review comments
+   for Non-Commercial scientific discussion or review, provided attribution is given.
+
+Restrictions
+------------
+You may NOT, and you may not permit others to:
+
+A) Commercial Use:
+   Use the Materials, or any derivative work, for commercial purposes.
+
+B) Integration / Deployment:
+   Integrate, embed, link, or incorporate any portion of the Materials into any
+   product, service, SDK, library, engine, solver, simulation platform, hosted
+   system, or production system.
+
+C) Derivative Distribution:
+   Distribute modified versions or derivatives of the Materials, including modified
+   source code or modified documentation, except for minimal excerpts necessary for
+   academic review or critique, with attribution.
+
+D) Model Training / Dataset Use:
+   Use the Materials as training data, fine-tuning data, evaluation data, or as part
+   of a dataset for machine learning models intended for deployment or commercial use.
+
+E) Patent Rights:
+   This license does NOT grant any patent license. No rights are granted under any
+   patents or patent applications, whether currently filed or filed in the future.
+   Any implied patent license is expressly disclaimed.
+
+F) Circumvention:
+   Remove or alter notices, attributions, license text, or restrictions, or attempt
+   to circumvent the above limitations.
+
+Attribution
+-----------
+When sharing Evaluation outputs or referencing this repository, you must provide
+attribution in a reasonable manner, including:
+
+- Author name (Mitsuhiro Kobayashi), and
+- Repository name and version/tag (for example, Enchan CLI v1.0.0), and
+- A link to the repository if shared online.
+
+No Endorsement
+--------------
+You may not state or imply that the author endorses your work, organization, or
+results without prior written permission.
+
+Termination
+-----------
+Any breach of this license automatically terminates your rights. Upon termination,
+you must cease use and delete all copies of the Materials in your possession or
+control, except where retention is required by law.
+
+Disclaimer
+----------
+THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE
+LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE
+MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+
+Contact (Commercial / Integration)
+----------------------------------
+For permissions beyond this license, including commercial use, integration, or
+derivative distribution, contact:
+
+enchan.theory@gmail.com

@@ -155,6 +155,7 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
 def print_cli_help():
     print("\n[Commands]")
     print("  /help                 Show this help.")
+    print("  /license              Show repository license terms.")
     print("  /new                  Start a new session and clear current context.")
     print("  /status               Show active model, backend, context, and generation settings.")
     print("  /resume [num|name]    Resume a saved session.")
@@ -172,6 +173,15 @@ def print_cli_help():
     print("  Ask naturally: summaries, characters, errors, settings, code behavior, or document analysis.")
     print("\n[Agent Tools]")
     print("  Enchan chooses tools when local evidence helps. Common tools include read_document, search_pattern, replace_text, write_text_file, and execute_command.")
+
+
+def print_license():
+    license_path = CLI_DIR / "LICENSE"
+    try:
+        print()
+        print(license_path.read_text(encoding="utf-8").rstrip())
+    except Exception as e:
+        print(f"[Error] Failed to read LICENSE: {e}")
 
 
 def handle_cli_command(
@@ -295,6 +305,9 @@ def handle_cli_command(
         print_cli_help()
         return True, file_context, False
 
+    if command == "/license":
+        print_license()
+        return True, file_context, False
     if command == "/new":
         chat_history.clear()
         file_context = ""
@@ -517,4 +530,3 @@ def handle_cli_command(
 
     print(f"[Error] Unknown command: {command}. Type /help for available commands.")
     return True, file_context, False
-

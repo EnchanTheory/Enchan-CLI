@@ -251,7 +251,7 @@ from cli_commands import (
 
 KNOWN_SLASH_COMMANDS = frozenset({
     "/resume", "/compress", "/model", "/status", "/set",
-    "/help", "/new", "/exit", "/quit", "/delegate",
+    "/help", "/license", "/new", "/exit", "/quit", "/delegate",
 })
 
 
@@ -921,6 +921,7 @@ def main():
                         "exit_thresh": ("Set early exit threshold probability (HF only)", None),
                     }),
                     "/help": ("Show help menu and available commands", None),
+                    "/license": ("Show repository license terms", None),
                     "/new": ("Start a new session (clears chat history and file context)", None),
                     "/exit": ("Exit the CLI", None),
                 }
@@ -1236,5 +1237,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

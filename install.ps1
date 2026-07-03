@@ -1,8 +1,9 @@
 $ErrorActionPreference = "Stop"
 
-$RuntimeRepo = "EnchanTheory/Enchan-Llama"
-$RuntimeTag = "v0.1.0"
-$RuntimeAsset = "enchan-llama-win-x64.zip"
+$RuntimeRepo = "EnchanTheory/Enchan-CLI"
+$RuntimeTag = "llamacpp-b9840-enchan-20260703"
+$RuntimeAsset = "enchan-cli-runtime-win-x64.zip"
+$RuntimeAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$RuntimeTag/$RuntimeAsset"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinDir = Join-Path $ScriptDir "backend\bin\win-x64"
 $TmpDir = Join-Path $env:TEMP ("enchan-cli-install-" + [guid]::NewGuid().ToString("N"))
@@ -21,6 +22,27 @@ function Require-Command($Name) {
     }
 }
 
+
+function Download-RuntimeAsset {
+    try {
+        Invoke-WebRequest -Uri $RuntimeAssetUrl -OutFile $ZipPath -UseBasicParsing -ErrorAction Stop
+        $Magic = [System.IO.File]::ReadAllBytes($ZipPath)
+        if ($Magic.Length -ge 2 -and $Magic[0] -eq 0x50 -and $Magic[1] -eq 0x4b) {
+            return
+        }
+        Write-Host "Direct runtime download did not return a zip; trying GitHub CLI fallback"
+    } catch {
+        Write-Host "Direct runtime download failed; trying GitHub CLI fallback"
+    }
+
+    Require-Command gh
+    try {
+        gh auth status | Out-Null
+    } catch {
+        throw "Runtime asset is not publicly downloadable and GitHub CLI is not authenticated. Run: gh auth login"
+    }
+    gh release download $RuntimeTag --repo $RuntimeRepo --pattern $RuntimeAsset --dir $TmpDir --clobber
+}
 function Remove-RuntimeManifestFiles {
     if (-not (Test-Path $RuntimeManifest)) {
         return
@@ -71,26 +93,20 @@ function Ensure-NpmLink {
         npm link
     }
 }
-Require-Command gh
 Require-Command node
 Require-Command npm
 Require-Command git
 
-try {
-    gh auth status | Out-Null
-} catch {
-    throw "GitHub CLI is not authenticated. Run: gh auth login"
-}
 
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 
 $RuntimeReady = (Test-Path (Join-Path $BinDir "llama-server.exe")) -and (Test-Path (Join-Path $BinDir "enchan.dll")) -and (Test-Path $RuntimeMarker) -and (Test-Path $RuntimeManifest) -and ((Get-Content -LiteralPath $RuntimeMarker -Raw).Trim() -eq $RuntimeMarkerValue)
 if ($RuntimeReady) {
-    Write-Host "Enchan Llama runtime already installed: $RuntimeAsset"
+    Write-Host "Enchan runtime already installed: $RuntimeAsset"
 } else {
-    Write-Host "Downloading Enchan Llama runtime: $RuntimeAsset"
-    gh release download $RuntimeTag --repo $RuntimeRepo --pattern $RuntimeAsset --dir $TmpDir --clobber
+    Write-Host "Downloading Enchan runtime: $RuntimeAsset"
+    Download-RuntimeAsset
 
     Write-Host "Installing runtime to: $BinDir"
     $ManifestEntries = Get-ZipFileList $ZipPath

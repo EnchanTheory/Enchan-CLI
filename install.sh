@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-runtime_repo="EnchanTheory/Enchan-Llama"
-runtime_tag="v0.1.0"
-runtime_asset="enchan-llama-macos-arm64.zip"
+runtime_repo="EnchanTheory/Enchan-CLI"
+runtime_tag="llamacpp-b9840-enchan-20260703"
+runtime_asset="enchan-cli-runtime-macos-arm64.zip"
+runtime_asset_url="https://github.com/$runtime_repo/releases/download/$runtime_tag/$runtime_asset"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bin_dir="$script_dir/backend/bin/macos-arm64"
 tmp_dir="$(mktemp -d)"
@@ -23,6 +24,21 @@ require_command() {
   fi
 }
 
+
+download_runtime_asset() {
+  if curl -fsSL "$runtime_asset_url" -o "$zip_path" && unzip -tq "$zip_path" >/dev/null 2>&1; then
+    return 0
+  fi
+  rm -f "$zip_path"
+
+  echo "Direct runtime download failed; trying GitHub CLI fallback" >&2
+  require_command gh
+  gh auth status >/dev/null || {
+    echo "Runtime asset is not publicly downloadable and GitHub CLI is not authenticated. Run: gh auth login" >&2
+    exit 1
+  }
+  gh release download "$runtime_tag" --repo "$runtime_repo" --pattern "$runtime_asset" --dir "$tmp_dir" --clobber
+}
 remove_runtime_manifest_files() {
   [[ -f "$runtime_manifest" ]] || return 0
   while IFS= read -r rel; do
@@ -64,7 +80,7 @@ ensure_npm_link() {
     npm link
   fi
 }
-require_command gh
+require_command curl
 require_command node
 require_command npm
 require_command git
@@ -80,18 +96,14 @@ if [[ "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 
-gh auth status >/dev/null || {
-  echo "GitHub CLI is not authenticated. Run: gh auth login" >&2
-  exit 1
-}
 
 mkdir -p "$bin_dir"
 
 if [[ -x "$bin_dir/llama-server" && -f "$bin_dir/libenchan.dylib" && -f "$runtime_marker" && -f "$runtime_manifest" && "$(cat "$runtime_marker")" == "$runtime_marker_value" ]]; then
-  echo "Enchan Llama runtime already installed: $runtime_asset"
+  echo "Enchan runtime already installed: $runtime_asset"
 else
-  echo "Downloading Enchan Llama runtime: $runtime_asset"
-  gh release download "$runtime_tag" --repo "$runtime_repo" --pattern "$runtime_asset" --dir "$tmp_dir" --clobber
+  echo "Downloading Enchan runtime: $runtime_asset"
+  download_runtime_asset
 
   echo "Installing runtime to: $bin_dir"
   unzip -Z1 "$zip_path" > "$runtime_manifest.tmp"
