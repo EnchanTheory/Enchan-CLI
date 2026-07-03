@@ -90,7 +90,15 @@ function Ensure-NpmLink {
     if (Test-EnchanLinked) {
         Write-Host "Enchan command already linked"
     } else {
-        npm link
+        Push-Location $ScriptDir
+        try {
+            npm link
+            if ($LASTEXITCODE -ne 0) {
+                throw "npm link failed with exit code $LASTEXITCODE"
+            }
+        } finally {
+            Pop-Location
+        }
     }
 }
 Require-Command node

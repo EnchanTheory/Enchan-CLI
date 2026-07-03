@@ -77,7 +77,7 @@ ensure_npm_link() {
   if enchan_linked; then
     echo "Enchan command already linked"
   else
-    npm link
+    (cd "$script_dir" && npm link)
   fi
 }
 require_command curl
