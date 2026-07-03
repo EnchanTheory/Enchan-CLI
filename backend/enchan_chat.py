@@ -249,6 +249,22 @@ from cli_commands import (
     handle_cli_command,
 )
 
+KNOWN_SLASH_COMMANDS = frozenset({
+    "/resume", "/compress", "/model", "/status", "/set",
+    "/help", "/new", "/exit", "/quit", "/delegate",
+})
+
+
+def first_input_token(user_input: str) -> str:
+    stripped = user_input.strip()
+    if not stripped:
+        return ""
+    return stripped.split(maxsplit=1)[0].lower()
+
+
+def is_known_slash_command(user_input: str) -> bool:
+    return first_input_token(user_input) in KNOWN_SLASH_COMMANDS
+
 if not COSMIC_AVAILABLE:
     print("[Warning] Could not load Enchan Engine DLL. External context compression will be disabled.")
 
@@ -823,10 +839,7 @@ def main():
     if PROMPT_TOOLKIT_AVAILABLE and single_turn_prompt is None:
         kb = KeyBindings()
 
-        slash_commands = (
-            "/resume", "/compress", "/model", "/status", "/set",
-            "/help", "/new", "/exit",
-        )
+        slash_commands = tuple(sorted(KNOWN_SLASH_COMMANDS))
 
         @kb.add('/')
         def _(event):
@@ -1045,7 +1058,7 @@ def main():
             if not user_input.strip():
                 continue
 
-            if backend_mode == "enchan" and not user_input.strip().startswith("/"):
+            if backend_mode == "enchan" and not is_known_slash_command(user_input):
                 def preload_enchan_engine():
                     try:
                         from enchan_llama_backend import ensure_enchan_llama_for_request
@@ -1062,7 +1075,7 @@ def main():
                 enchan_preload_thread.start()
 
             append_session_event(session_log_path, {"type": "input", "content": user_input})
-            if user_input.strip().startswith("/"):
+            if is_known_slash_command(user_input):
                 handled, file_context, should_exit = handle_cli_command(
                     user_input,
                     chat_history,
