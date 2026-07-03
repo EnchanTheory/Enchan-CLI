@@ -170,6 +170,14 @@ def parse_agent_tool_call(text: str) -> Optional[dict]:
                 args["overwrite"] = parsed_arg[2]
         elif tool_name == "web_search":
             args = {"query": first_arg}
+        elif tool_name == "use_skill":
+            args = {"skill_name": first_arg}
+            if len(parsed_arg) > 1:
+                args["argument"] = parsed_arg[1]
+            if len(parsed_arg) > 2:
+                args["method"] = parsed_arg[2]
+            if len(parsed_arg) > 3 and isinstance(parsed_arg[3], dict):
+                args["params"] = parsed_arg[3]
         else:
             args = {"value": first_arg}
         return {"tool": tool_name, "args": args}
@@ -967,12 +975,14 @@ def tool_list_skills(args: dict) -> dict:
 
 
 def tool_use_skill(args: dict) -> dict:
-    skill_name = args.get("skill_name")
+    skill_name = args.get("skill_name") or args.get("name")
     argument = args.get("argument") or args.get("value") or ""
+    method = args.get("method") or "invoke"
+    params = args.get("params") if isinstance(args.get("params"), dict) else None
     if not skill_name:
         return {"ok": False, "error": "use_skill requires 'skill_name'."}
-    if not argument:
-        return {"ok": False, "error": "use_skill requires an 'argument' explaining the goal or details."}
+    if params is None and not argument:
+        return {"ok": False, "error": "use_skill requires either 'params' for a typed method or an 'argument' string."}
     from contextlib import redirect_stderr, redirect_stdout
     from skills_loader import run_skill
     from ui_theme import stream_agent_observation
@@ -982,7 +992,7 @@ def tool_use_skill(args: dict) -> dict:
     content = ""
     try:
         with redirect_stdout(stream), redirect_stderr(stream):
-            content = run_skill(skill_name, argument)
+            content = run_skill(str(skill_name), str(argument), method=str(method), params=params)
         returned_content = str(content or "").strip()
         if returned_content and returned_content not in stream.getvalue():
             stream.write(("\n" if stream.getvalue().strip() else "") + returned_content + "\n")
@@ -1001,7 +1011,6 @@ def tool_use_skill(args: dict) -> dict:
         else:
             content = captured_output
     return {"ok": ok, "content": content, "displayed": True}
-
 
 def _load_local_config() -> dict:
     config_path = CLI_DIR / "enchan_config.json"
