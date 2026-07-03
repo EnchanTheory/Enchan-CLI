@@ -50,6 +50,51 @@ def save_local_config(config: dict):
     except Exception as e:
         print(f"[Warning] Failed to save config: {e}")
 
+
+def _is_gguf_file(path: str | Path) -> bool:
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"GGUF"
+    except Exception:
+        return False
+
+
+def filter_enchan_gguf_models(models: list[str]) -> list[str]:
+    """Keep only installed Ollama tags that resolve to a GGUF model blob."""
+    try:
+        from enchan_llama_backend import resolve_ollama_model_to_blob
+    except Exception:
+        return []
+
+    gguf_models = []
+    for model_name in models:
+        try:
+            resolved_path, _ = resolve_ollama_model_to_blob(model_name)
+        except Exception:
+            resolved_path = None
+        if resolved_path and _is_gguf_file(resolved_path):
+            gguf_models.append(model_name)
+    return gguf_models
+
+
+def list_installed_ollama_models(host: str) -> list[str]:
+    """Return installed Ollama model tags via the API, falling back to local manifests."""
+    try:
+        url = host.rstrip("/") + "/api/tags"
+        with urllib.request.urlopen(url, timeout=3) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return [m["name"] for m in data.get("models", [])]
+    except Exception:
+        models = []
+        manifest_root = Path.home() / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library"
+        if manifest_root.exists():
+            for model_dir in manifest_root.iterdir():
+                if model_dir.is_dir():
+                    for tag_file in model_dir.iterdir():
+                        if tag_file.is_file():
+                            models.append(f"{model_dir.name}:{tag_file.name}")
+        return models
+
 def sync_generation_config_to_active_model(generation_config: dict, active_model_name: str, backend_mode: str):
     """Loads official model recommendations, merges with user-set JSON overrides, and updates generation_config in-place."""
     local_cfg = load_local_config()
@@ -179,33 +224,18 @@ def handle_cli_command(
             return True, file_context, False
         
         host = generation_config.get("ollama_host", "http://localhost:11434")
-        try:
-            url = host.rstrip("/") + "/api/tags"
-            with urllib.request.urlopen(url, timeout=3) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                models = [m["name"] for m in data.get("models", [])]
-        except Exception as e:
-            models = []
-            try:
-                manifest_root = Path.home() / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library"
-                if manifest_root.exists():
-                    for model_dir in manifest_root.iterdir():
-                        if model_dir.is_dir():
-                            for tag_file in model_dir.iterdir():
-                                if tag_file.is_file():
-                                    models.append(f"{model_dir.name}:{tag_file.name}")
-            except Exception:
-                pass
-
-            if not models:
-                print(f"[Error] Failed to fetch Ollama models (and local manifest fallback failed): {e}")
-                return True, file_context, False
+        models = list_installed_ollama_models(host)
+        if backend_mode == "enchan":
+            models = filter_enchan_gguf_models(models)
         
         if not models:
-            print("[System] No models found installed in Ollama.")
+            if backend_mode == "enchan":
+                print("[System] No GGUF models found installed in Ollama.")
+            else:
+                print("[System] No models found installed in Ollama.")
             return True, file_context, False
             
-        current_model = generation_config.get("ollama_model")
+        current_model = generation_config.get("gguf_model") if backend_mode == "enchan" else generation_config.get("ollama_model")
         selected_model = None
         if len(parts) == 1:
             default_idx = 0
