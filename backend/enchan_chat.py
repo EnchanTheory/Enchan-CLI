@@ -11,7 +11,6 @@ logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 import uuid
 from pathlib import Path
-from typing import Optional
 
 from interactive_input import create_interactive_session
 
@@ -62,12 +61,6 @@ if not COSMIC_AVAILABLE:
     print("[Warning] Could not load Enchan Engine DLL. External context compression will be disabled.")
 
 
-from python_runner import (
-    wants_python_file_execution,
-    run_python_file_from_prompt,
-)
-
-
 def main():
     local_cfg = load_local_config()
 
@@ -97,7 +90,7 @@ def main():
         except Exception:
             pass
             
-    plain_output = bool(args.plain or single_turn_requested)
+    plain_output = bool(args.plain and single_turn_requested)
     backend_mode = "ollama" if single_turn_requested and args.backend == "hf" else args.backend
 
     session_id = uuid.uuid4().hex
