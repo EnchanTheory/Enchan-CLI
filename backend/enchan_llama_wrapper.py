@@ -9,6 +9,7 @@ import time
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 
 def listen_for_shutdown(port, p):
+    s = None
     try:
         s = socket.socket()
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -16,11 +17,18 @@ def listen_for_shutdown(port, p):
         s.listen(1)
         # We only expect one connection ever
         conn, addr = s.accept()
-        conn.recv(1024)
-        conn.close()
-        s.close()
+        try:
+            conn.recv(1024)
+        finally:
+            conn.close()
     except Exception:
         pass
+    finally:
+        if s is not None:
+            try:
+                s.close()
+            except Exception:
+                pass
     
     if sys.platform == "win32":
         try:

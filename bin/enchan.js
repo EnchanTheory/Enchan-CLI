@@ -181,7 +181,8 @@ child.on('error', (err) => {
 });
 
 child.on('exit', (code, signal) => {
-    if (code !== 0) {
+    if (code !== 0 && signal !== 'SIGINT') {
         console.error(`[Enchan CLI] Python backend exited with code ${code} (signal: ${signal})`);
     }
+    process.exit(code !== null ? code : 0);
 });
