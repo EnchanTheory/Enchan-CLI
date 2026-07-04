@@ -118,7 +118,7 @@ enchan --ask "Summarize this repository" --plain
 
 ## Enchan Engine (Attention Screening)
 
-While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprietary **Enchan Cosmic Engine** directly into the core Attention calculations. This mechanism mathematically relaxes the over-concentration of Attention scores and is designed to mitigate the model fixating too rigidly on a single context path.
+While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprietary **Enchan Cosmic Engine** directly into the core Attention calculations. This mechanism is based on the **working hypothesis** that mathematically relaxing the over-concentration of Attention scores can mitigate the model fixating too rigidly on a single context path.
 
 To customize the screening strength from the command line (e.g., setting it to `0.4`):
 
@@ -153,7 +153,7 @@ This is not a claim that a small model becomes a large model. The point is narro
 
 ### How it changes the output
 
-By selectively reducing matrix-level Attention over-concentration, the engine broadens the probability distribution of alternative candidates.
+Under this working hypothesis, by selectively reducing matrix-level Attention over-concentration, the engine is designed to broaden the probability distribution of alternative candidates.
 
 *The downstream vocabulary examples below show representative observed behavior under this intervention; they are not a direct one-step Softmax over the representative attention table above.*
 
