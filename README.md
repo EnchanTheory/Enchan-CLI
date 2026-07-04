@@ -122,7 +122,7 @@ While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprie
 
 ### Representative Attention Distribution
 
-The engine applies a non-linear tension function ($S$) to the raw Attention logits before the Softmax operation. Here is how it alters a representative attention distribution:
+The engine applies a non-linear tension response to the raw Attention logits before the Softmax operation. In the simplified example below, `S` denotes the screening strength.
 
 | Context Token | Raw Logit | S=0.0 (Standard) | S=0.2 (Moderate) | S=1.0 (Extreme) |
 | :--- | :--- | :--- | :--- | :--- |
@@ -131,15 +131,25 @@ The engine applies a non-linear tension function ($S$) to the raw Attention logi
 | `or` | 2.7 | 0.25% | 0.45% | 3.51% |
 | `not` | 6.1 | 8.98% | 11.86% | 27.13% |
 
-*The following table is an illustrative, simplified view of how the screening changes attention-score concentration before Softmax. It is not intended to expose the exact proprietary kernel or reproduce the full end-to-end vocabulary distribution.*
+*The table above is an illustrative, simplified view of how the screening changes attention-score concentration before Softmax. It is not intended to expose the exact proprietary kernel or reproduce the full end-to-end vocabulary distribution.*
 
-At $S=0.2$, the dominant logit ($8.2$) is selectively suppressed. The Softmax weight of `be` drops from $84.23\%$ to $78.70\%$, gently redistributing the probability mass to the surrounding context without breaking the monotonic ranking.
+At `S=0.2`, the dominant logit (`8.2`) is selectively suppressed. The Softmax weight of `be` drops from `84.23%` to `78.70%`, gently redistributing probability mass to the surrounding context without breaking the monotonic ranking.
+
+### Toy View: Attention Peak Relaxation
+
+The following toy model illustrates the intuition behind Enchan Screening.
+
+A small model can form a sharp probability peak over a small number of semantic candidates. Enchan Screening relaxes that peak so the distribution becomes less rigid and neighboring candidates can surface.
+
+![Toy probability distribution showing Enchan relaxation](docs/images/toy_attention_distribution.png)
+
+This is not a claim that a small model becomes a large model. The point is narrower: Enchan Screening reduces Attention over-concentration and gives the model more room to express alternatives already present in its own distribution.
 
 ### How it changes the output
 
-By dynamically shaving off this Attention concentration at the matrix level, the engine broadens the probability distribution of alternative candidates. 
+By selectively reducing matrix-level Attention over-concentration, the engine broadens the probability distribution of alternative candidates.
 
-*The downstream vocabulary examples below show representative observed behavior under this intervention; they are not a direct one-step Softmax over the attention table above.*
+*The downstream vocabulary examples below show representative observed behavior under this intervention; they are not a direct one-step Softmax over the representative attention table above.*
 
 For example, given the prompt `"To be, or not to be, that is the [MASK]"` (Example measured output):
 
