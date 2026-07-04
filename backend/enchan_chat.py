@@ -635,6 +635,23 @@ def main():
     
     sync_generation_config_to_active_model(generation_config, active_model_name, backend_mode)
     
+    # Re-apply explicit command-line overrides to prevent them from being wiped out by sync logic
+    explicit_overrides = getattr(args, "explicit_overrides", {})
+    if "temperature" in explicit_overrides:
+        generation_config["temperature"] = explicit_overrides["temperature"]
+    if "top_p" in explicit_overrides:
+        generation_config["top_p"] = explicit_overrides["top_p"]
+    if "top_k" in explicit_overrides:
+        generation_config["top_k"] = explicit_overrides["top_k"]
+    if "presence_penalty" in explicit_overrides:
+        generation_config["presence_penalty"] = explicit_overrides["presence_penalty"]
+    if "yarn_factor" in explicit_overrides:
+        generation_config["yarn_factor"] = explicit_overrides["yarn_factor"]
+    if "max_new_tokens" in explicit_overrides:
+        generation_config["max_new_tokens"] = explicit_overrides["max_new_tokens"]
+    if "ollama_ctx" in explicit_overrides:
+        generation_config["max_input_tokens"] = explicit_overrides["ollama_ctx"]
+    
     if agent_mode:
         generation_config["temperature"] = 0.1
         generation_config["top_p"] = 1.0
