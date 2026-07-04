@@ -40,6 +40,8 @@ if hasattr(sys.stdout, "reconfigure"):
 # --- Path Resolution for Imports ---
 BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent
+if str(CLI_DIR) not in sys.path:
+    sys.path.insert(0, str(CLI_DIR))
 
 
 from session_log import (

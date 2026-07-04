@@ -169,7 +169,10 @@ const backendArgs = [backendScript, ...args];
 
 const child = spawn(pythonPath, backendArgs, {
     stdio: 'inherit',
-    env: process.env
+    env: {
+        ...process.env,
+        PYTHONPATH: [cliRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)
+    }
 });
 
 child.on('error', (err) => {
