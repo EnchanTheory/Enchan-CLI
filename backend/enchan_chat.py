@@ -119,9 +119,6 @@ def main():
                 except ValueError:
                     pass
 
-        model = None
-        tokenizer = None
-        
         resolved_path = None
         interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
         if args.gguf_model:
@@ -151,10 +148,7 @@ def main():
                 sys.exit(1)
 
         args.gguf_model = gguf_model_path
-        model_name_short = f"enchan:{gguf_model_path}"
     else:
-        model = None
-        tokenizer = None
         if not ensure_ollama_running(args.ollama_host, auto_start=not args.no_ollama_start, quiet=plain_output):
             if not plain_output:
                 print("[Error] Ollama API is not available. Start Ollama manually or check --ollama-host.")
@@ -176,7 +170,6 @@ def main():
                 args.ollama_model = chosen
                 local_cfg["ollama_model"] = chosen
                 save_local_config(local_cfg)
-        model_name_short = f"ollama:{args.ollama_model}"
     
     if not plain_output:
         update_notice_path = CLI_DIR / ".enchan-update-available"

@@ -55,7 +55,7 @@ def _assistant_event(
     event = {
         "type": "message",
         "role": "assistant",
-        "content": response_text,
+        "content": strip_thought_blocks(response_text),
         "backend": backend,
     }
     if single_turn:
