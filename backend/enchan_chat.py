@@ -283,7 +283,12 @@ def run_python_file_from_prompt(
 def response_model_label(generation_config: dict) -> str:
     backend_mode = generation_config.get("backend", "enchan")
     if backend_mode == "enchan":
-        val = generation_config.get("gguf_model") or "Local GGUF"
+        # The model path might be long, so let's try to get just the filename or just rely on 'model_id' parsing
+        model_id = generation_config.get("model_id", "")
+        if model_id.startswith("enchan:"):
+            import os
+            return os.path.basename(model_id[7:])
+        return generation_config.get("gguf_model") or "Local GGUF"
     else:
         val = generation_config.get("ollama_model") or "Ollama API"
     return str(val)
@@ -298,7 +303,8 @@ def response_label(generation_config: dict) -> str:
 
 
 def print_agent_turn_header(generation_config: dict) -> None:
-    pass
+    from ui_theme import print_response_header
+    print_response_header(response_label(generation_config))
 
 
 def main():
