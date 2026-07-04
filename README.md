@@ -120,6 +120,12 @@ enchan --ask "Summarize this repository" --plain
 
 While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprietary **Enchan Cosmic Engine** directly into the core Attention calculations. This mechanism mathematically relaxes the over-concentration of Attention scores and is designed to mitigate the model fixating too rigidly on a single context path.
 
+To customize the screening strength from the command line (e.g., setting it to `0.4`):
+
+```bash
+enchan --screen-strength 0.4
+```
+
 ### Representative Attention Distribution
 
 The engine applies a non-linear tension response to the raw Attention logits before the Softmax operation. In the simplified example below, `S` denotes the screening strength.
