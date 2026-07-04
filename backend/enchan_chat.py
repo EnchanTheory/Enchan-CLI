@@ -93,9 +93,6 @@ def main():
     plain_output = bool(args.plain and single_turn_requested)
     backend_mode = "ollama" if single_turn_requested and args.backend == "hf" else args.backend
 
-    session_id = uuid.uuid4().hex
-    session_log_path = new_session_log_path()
-
     agent_mode = bool(args.agent)
 
     if not plain_output:
