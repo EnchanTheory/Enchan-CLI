@@ -14,7 +14,6 @@ import time
 import re
 import uuid
 import shutil
-import argparse
 import subprocess
 import threading
 import json
@@ -52,22 +51,29 @@ from session_log import (
     get_session_metadata,
 )
 
+# --- New Modular Zen Imports ---
+from backend.tokenizer_bridge import (
+    estimate_text_tokens_rough,
+    count_text_tokens,
+    RunningModelTokenizer,
+    load_enchan_tokenizer_for_ollama,
+)
+from backend.ollama_registry import (
+    format_size,
+    standalone_ollama_pull,
+    list_installed_ollama_models,
+    ENCHAN_DEFAULT_DOWNLOAD_MODEL,
+    ENCHAN_DEFAULT_DOWNLOAD_SIZE,
+)
+from backend.startup_selection import (
+    select_startup_backend,
+    select_startup_model,
+)
+from backend.thinking import strip_thought_blocks
+from backend.cli_args import parse_args
+
 MODEL_ID = "google/gemma-4-e2b-it"
 
-def estimate_text_tokens_rough(text: str) -> int:
-    if not text:
-        return 0
-    cjk_count = sum(
-        1
-        for ch in text
-        if "\u3040" <= ch <= "\u30ff"
-        or "\u3400" <= ch <= "\u4dbf"
-        or "\u4e00" <= ch <= "\u9fff"
-        or "\uf900" <= ch <= "\ufaff"
-    )
-    if cjk_count:
-        return max(1, cjk_count + ((len(text) - cjk_count) // 4))
-    return max(1, len(text) // 4)
 
 def sanitize_for_json(text: str) -> str:
     return text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
@@ -79,142 +85,12 @@ def format_count(n: int) -> str:
         return f"{n / 1_000:.1f}k"
     return str(n)
 
-def format_size(num_bytes: float) -> str:
-    """Human-readable byte size, e.g. 4.3 GB."""
-    size = float(num_bytes)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024 or unit == "GB":
-            return f"{int(size)} B" if unit == "B" else f"{size:.1f} {unit}"
-        size /= 1024
-    return f"{size:.1f} GB"
-
-def strip_thought_blocks(text: str) -> str:
-    """Removes <thought>...</thought> and <think>...</think> blocks to keep multi-turn context clean."""
-    if not text:
-        return text
-    text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    return text.strip()
-
-class RunningModelTokenizer:
-    """現在ロードされて動作中のモデル（Ollamaまたはllama-server）のAPIを直接使ってトークン化を行う軽量クラス"""
-    def __init__(self, backend_type: str = "", host: str = "", model_name: str = ""):
-        self._backend_type = backend_type
-        self._host = host
-        self._model_name = model_name
-
-    def _get_active_config(self) -> tuple[str, str, str]:
-        # Dynamically fetch config to support hot-swapping models/backends in the same session!
-        from cli_commands import load_local_config
-        local_cfg = load_local_config()
-        backend_mode = local_cfg.get("backend", self._backend_type or "enchan")
-        
-        if backend_mode == "enchan":
-            host = "http://localhost:8080"
-            model = local_cfg.get("gguf_model", self._model_name)
-        else:
-            host = local_cfg.get("ollama_host", self._host or "http://localhost:11434")
-            model = local_cfg.get("ollama_model", self._model_name)
-            
-        return backend_mode, host, model
-
-    def encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
-        if not text:
-            return []
-        import urllib.request
-        import json
-        
-        backend_mode, host, model = self._get_active_config()
-        
-        if backend_mode == "enchan":
-            url = f"{host}/tokenize"
-            payload = {"content": text}
-        else:
-            url = f"{host}/api/tokenize"
-            payload = {"model": model, "prompt": text}
-            
-        try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return data.get("tokens", [])
-        except Exception:
-            # Simple fallback estimation
-            from enchan_chat import estimate_text_tokens_rough
-            return [0] * estimate_text_tokens_rough(text)
-
-    def decode(self, token_ids: list[int], skip_special_tokens: bool = True) -> str:
-        if not token_ids:
-            return ""
-        import urllib.request
-        import json
-        
-        backend_mode, host, model = self._get_active_config()
-        
-        if backend_mode == "enchan":
-            url = f"{host}/detokenize"
-            payload = {"tokens": token_ids}
-        else:
-            url = f"{host}/api/detokenize"
-            payload = {"model": model, "tokens": token_ids}
-            
-        try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"}
-            )
-            with urllib.request.urlopen(req, timeout=1.5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                return data.get("content", "") or data.get("prompt", "")
-        except Exception:
-            return f"[Detokenize Fallback: {len(token_ids)} tokens]"
-
-    def apply_chat_template(self, messages: list[dict], add_generation_prompt: bool = True, tokenize: bool = False) -> str:
-        _, _, model = self._get_active_config()
-        name = str(model).lower()
-        is_qwen = "qwen" in name
-        is_llama = "llama" in name or "enchan" in name
-        is_gemma = "gemma" in name or (not is_qwen and not is_llama)
-        
-        formatted = ""
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "model":
-                role = "assistant"
-                
-            if is_gemma:
-                formatted += f"<start_of_turn>{role}\n{content}<end_of_turn>\n"
-            elif is_qwen:
-                formatted += f"<|im_start|>{role}\n{content}<|im_end|>\n"
-            elif is_llama:
-                formatted += f"<|start_header_id|>{role}<|end_header_id|>\n\n{content}<|eot_id|>"
-                
-        if add_generation_prompt:
-            if is_gemma:
-                formatted += "<start_of_turn>model\n"
-            elif is_qwen:
-                formatted += "<|im_start|>assistant\n"
-            elif is_llama:
-                formatted += "<|start_header_id|>assistant<|end_header_id|>\n\n"
-                
-        return formatted
-
-def load_enchan_tokenizer_for_ollama(model_name: str = ""):
-    return RunningModelTokenizer()
 
 from reading_agent import execute_reading_pipeline
 from context_compression import (
     COSMIC_AVAILABLE,
     compress_context,
     compress_chat_history,
-    count_text_tokens,
-    format_count,
     print_source_metrics,
 )
 from agent_tools import (
@@ -276,7 +152,6 @@ def is_known_slash_command(user_input: str) -> bool:
 if not COSMIC_AVAILABLE:
     print("[Warning] Could not load Enchan Engine DLL. External context compression will be disabled.")
 
-# --- Hugging Face Backend (Dynamically Loaded) ---
 
 def build_agent_goal_prompt(goal: str, memory_context: str = "") -> str:
     memory_section = build_memory_prompt_section(memory_context)
@@ -403,54 +278,17 @@ def run_python_file_from_prompt(
         )
 
 
-def select_startup_backend(default_backend: str) -> str:
-    ollama_ready = shutil.which("ollama") is not None
-
-    choices = [
-        ("enchan", "Local: Enchan Llama", True),
-        ("ollama", "Local: Ollama API chat", ollama_ready),
-    ]
-
-    valid_choices = {name for name, _, ready in choices if ready}
-    default_backend = default_backend if default_backend in valid_choices else "enchan"
-    
-    current_idx = 0
-    for i, (name, _, _) in enumerate(choices):
-        if name == default_backend:
-            current_idx = i
-            break
-
-    # Alias check for text input fallback
-    is_interactive = sys.stdin.isatty() and (msvcrt is not None or (sys.platform != "win32"))
-    if not is_interactive:
-        # Re-implementing text fallback alias check just for backend since interactive_menu is generic
-        # but interactive_menu already handles basic digits. We'll let interactive_menu do it.
-        pass
-
-    selected_idx = interactive_menu("Backend Selection", choices, default_idx=current_idx)
-    if selected_idx >= 0:
-        return choices[selected_idx][0]
-    return default_backend
-
 def response_model_label(generation_config: dict) -> str:
-    model_id = str(generation_config.get("model_id") or generation_config.get("ollama_model") or "model")
-    if model_id.startswith("ollama:"):
-        model_id = model_id[len("ollama:"):]
-    elif model_id.startswith("enchan:"):
-        model_id = model_id[len("enchan:"):]
-    if model_id.endswith(".gguf") or "\\" in model_id or "/" in model_id:
-        model_id = Path(model_id).stem
-    return model_id or "model"
+    backend_mode = generation_config.get("backend", "enchan")
+    if backend_mode == "enchan":
+        val = generation_config.get("gguf_model") or "Local GGUF"
+    else:
+        val = generation_config.get("ollama_model") or "Ollama API"
+    return str(val)
 
 
 def response_backend_label(generation_config: dict) -> str:
-    backend = str(generation_config.get("backend") or "enchan").lower()
-    model_id = str(generation_config.get("model_id") or "")
-    if ":" in model_id:
-        prefix = model_id.split(":", 1)[0].lower()
-        if prefix in {"ollama", "enchan", "hf"}:
-            backend = prefix
-    return backend or "enchan"
+    return str(generation_config.get("backend", "enchan"))
 
 
 def response_label(generation_config: dict) -> str:
@@ -458,202 +296,24 @@ def response_label(generation_config: dict) -> str:
 
 
 def print_agent_turn_header(generation_config: dict) -> None:
-    print_response_header(response_label(generation_config))
+    pass
 
-def standalone_ollama_pull(model_name: str) -> bool:
-    """
-    Downloads an Ollama model directly from the registry without needing the Ollama daemon.
-    Saves blobs and manifests exactly where Ollama expects them (~/.ollama/models/).
-    """
-    print(f"\n[System] Standalone registry pull initiated for: {model_name}")
-    
-    # Parse model name (e.g. gemma:2b or library/gemma:2b)
-    if ":" not in model_name:
-        model_name += ":latest"
-    repo, tag = model_name.split(":", 1)
-    if "/" not in repo:
-        repo = f"library/{repo}"
-
-    registry_base = "https://registry.ollama.ai/v2"
-    manifest_url = f"{registry_base}/{repo}/manifests/{tag}"
-
-    ollama_dir = Path.home() / ".ollama" / "models"
-    blobs_dir = ollama_dir / "blobs"
-    manifest_dir = ollama_dir / "manifests" / "registry.ollama.ai" / repo
-    
-    blobs_dir.mkdir(parents=True, exist_ok=True)
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-
-    print(f"[System] Fetching manifest from registry.ollama.ai...")
-    req = urllib.request.Request(manifest_url, headers={"Accept": "application/vnd.docker.distribution.manifest.v2+json"})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            manifest_bytes = resp.read()
-            manifest = json.loads(manifest_bytes)
-    except urllib.error.HTTPError as e:
-        print(f"[Error] Failed to fetch manifest ({e.code}). Model might not exist.")
-        return False
-    except Exception as e:
-        print(f"[Error] Network error while fetching manifest: {e}")
-        return False
-
-    layers = manifest.get("layers", [])
-    if "config" in manifest:
-        layers.append(manifest["config"])
-
-    total_size = sum(layer.get("size", 0) for layer in layers)
-    downloaded_size = 0
-
-    print(f"[System] Downloading {len(layers)} layers (Total: {format_size(total_size)})...")
-
-    for layer in layers:
-        digest = layer.get("digest")
-        if not digest:
-            continue
-        
-        blob_path = blobs_dir / digest.replace(":", "-")
-        layer_size = layer.get("size", 0)
-
-        if blob_path.exists() and blob_path.stat().st_size == layer_size:
-            downloaded_size += layer_size
-            continue
-
-        blob_url = f"{registry_base}/{repo}/blobs/{digest}"
-        
-        # We need a custom opener to handle redirects (often S3 buckets) and stream the download
-        try:
-            req = urllib.request.Request(blob_url)
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                with open(blob_path, "wb") as f:
-                    while True:
-                        chunk = resp.read(8192 * 4)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        downloaded_size += len(chunk)
-                        
-                        # Progress bar
-                        if total_size > 0:
-                            percent = int(downloaded_size * 100 / total_size)
-                            percent = min(100, percent)
-                            bar_length = 30
-                            filled_length = int(bar_length * percent // 100)
-                            bar = '█' * filled_length + '░' * (bar_length - filled_length)
-                            sys.stdout.write(f"\r[Downloading] {bar} {percent}% ({format_size(downloaded_size)} / {format_size(total_size)}) ")
-                            sys.stdout.flush()
-        except Exception as e:
-            print(f"\n[Error] Failed to download blob {digest[:15]}: {e}")
-            if blob_path.exists():
-                blob_path.unlink() # Clean up partial
-            return False
-
-    # Finally, write the manifest
-    manifest_file = manifest_dir / tag
-    with open(manifest_file, "wb") as f:
-        f.write(manifest_bytes)
-
-    print("\n[System] Download complete! Model integrated into Ollama storage.\n")
-    return True
-
-ENCHAN_DEFAULT_DOWNLOAD_MODEL = "gemma4:e2b-it-qat"
-ENCHAN_DEFAULT_DOWNLOAD_SIZE = "~4.3 GB"
-
-
-def list_installed_ollama_models(host: str) -> list:
-    """Return installed Ollama model tags via the API, falling back to local manifests."""
-    try:
-        url = host.rstrip("/") + "/api/tags"
-        with urllib.request.urlopen(url, timeout=3) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return [m["name"] for m in data.get("models", [])]
-    except Exception:
-        models = []
-        try:
-            manifest_root = Path.home() / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library"
-            if manifest_root.exists():
-                for model_dir in manifest_root.iterdir():
-                    if model_dir.is_dir():
-                        for tag_file in model_dir.iterdir():
-                            if tag_file.is_file():
-                                models.append(f"{model_dir.name}:{tag_file.name}")
-        except Exception:
-            pass
-        return models
-
-
-def select_startup_model(host: str, title: str = "Select Model") -> Optional[str]:
-    """Let the user pick an installed model or download the default one.
-
-    Returns the chosen model tag (which may still need downloading), or None if cancelled.
-    When no models are installed, the only option is to download the default model.
-    """
-    installed = list_installed_ollama_models(host)
-    options = [(name, "installed", True) for name in installed]
-    offer_download = ENCHAN_DEFAULT_DOWNLOAD_MODEL not in installed
-    if offer_download:
-        options.append(
-            (
-                f"Download {ENCHAN_DEFAULT_DOWNLOAD_MODEL} ({ENCHAN_DEFAULT_DOWNLOAD_SIZE})",
-                "from registry.ollama.ai",
-                True,
-            )
-        )
-    selected_idx = interactive_menu(title, options, default_idx=0)
-    if selected_idx < 0:
-        return None
-    if offer_download and selected_idx == len(options) - 1:
-        return ENCHAN_DEFAULT_DOWNLOAD_MODEL
-    return installed[selected_idx]
 
 def main():
     local_cfg = load_local_config()
 
-    parser = argparse.ArgumentParser(description="Interactive Enchan CLI")
-    default_backend = local_cfg.get("backend", "enchan")
-    if default_backend not in {"ollama", "enchan"}:
-        default_backend = "enchan"
-    parser.add_argument("--backend", choices=["ollama", "enchan"], default=default_backend, help="runtime backend: ollama uses local Ollama; enchan uses Enchan Llama")
-    parser.add_argument("--gguf-model", default="", help="path to GGUF model for --backend enchan (interactive startup shows a model picker when omitted)")
-    parser.add_argument("--screen-strength", type=float, default=local_cfg.get("screen_strength", 0.2), help="screening strength for --backend enchan (default: 0.2)")
-    parser.add_argument("--H-c", type=float, default=local_cfg.get("H_c", 1.6), help="scaling depth H_c for --backend enchan (default: 1.6)")
-    parser.add_argument("--m", type=float, default=local_cfg.get("m", 1.5), help="sharpness power m for --backend enchan (default: 1.5)")
-    parser.add_argument("--no-ram-guard", action="store_true", help="disable Enchan Llama system RAM reserve guard")
-    parser.add_argument("--ram-reserve-ratio", type=float, default=local_cfg.get("ram_reserve_ratio", 0.05), help="fraction of physical RAM to keep free for --backend enchan (default: 0.05)")
-    parser.add_argument("--ram-reserve-gb", type=float, default=local_cfg.get("ram_reserve_gb", 1.6), help="minimum GiB of physical RAM to keep free for --backend enchan (default: 1.6)")
-    parser.add_argument("--ram-pressure-action", choices=["warn", "kill"], default=local_cfg.get("ram_pressure_action", "warn"), help="what to do when Enchan Llama crosses the RAM reserve (default: warn)")
-    parser.add_argument("--llama-mmap", choices=["on", "off"], default=local_cfg.get("llama_mmap", "off"), help="memory-map GGUF model files for --backend enchan (default: off)")
-    parser.add_argument("--llama-fit", action="store_true", default=local_cfg.get("llama_fit", False), help="enable llama.cpp --fit memory fitting for --backend enchan")
-    parser.add_argument("--ollama-model", default=local_cfg.get("ollama_model", DEFAULT_OLLAMA_MODEL), help=f"Ollama model name for --backend ollama (default: {DEFAULT_OLLAMA_MODEL})")
-    parser.add_argument("--ollama-host", default=local_cfg.get("ollama_host", DEFAULT_OLLAMA_HOST), help=f"Ollama API host for --backend ollama (default: {DEFAULT_OLLAMA_HOST})")
-    parser.add_argument("--ollama-ctx", type=int, default=local_cfg.get("ollama_ctx", 131072), help="Ollama num_ctx for --backend ollama/enchan (default: 131072)")
-    parser.add_argument("--no-ollama-start", action="store_true", help="do not auto-start `ollama serve` when --backend ollama cannot reach the API")
-    parser.add_argument("--view-think", action="store_true", default=local_cfg.get("view_think", False), help="show model thinking traces")
-    parser.add_argument("--max-new-tokens", type=int, default=local_cfg.get("max_new_tokens", -1), help="maximum generated tokens for --backend ollama (-1 for infinite)")
-    parser.add_argument("--temperature", type=float, default=local_cfg.get("temperature", 1.0), help="sampling temperature for --backend ollama (default: 1.0)")
-    parser.add_argument("--top-p", type=float, default=local_cfg.get("top_p", 0.95), help="top_p for --backend ollama (default: 0.95)")
-    parser.add_argument("--top-k", type=int, default=local_cfg.get("top_k", 64), help="top_k for --backend ollama (default: 64)")
-    parser.add_argument("--presence-penalty", type=float, default=local_cfg.get("presence_penalty", 0.0), help="presence penalty for --backend ollama/enchan (default: 0.0)")
-    parser.add_argument("--no-thinking", action="store_true", help="Disable thinking mode (Qwen3.6)")
-    parser.add_argument("--preserve-thinking", action="store_true", help="Preserve thinking history in chat context (Qwen3.6)")
-    parser.add_argument("--text-only", action="store_true", help="Text-only mode (skip vision encoder for Qwen3.6)")
-    parser.add_argument("--mtp", action="store_true", help="Enable Multi-Token Prediction (Qwen3.6 MTP)")
-    parser.add_argument("--yarn-factor", type=float, default=local_cfg.get("yarn_factor", 1.0), help="YaRN scaling factor for ultra-long context (e.g., 4.0 for >256K)")
-    parser.add_argument("--ask", help="run one non-interactive prompt and exit; intended for local agent delegation")
-    parser.add_argument("--ask-file", help="read one non-interactive prompt from a UTF-8 file and exit")
-    parser.add_argument("--plain", action="store_true", help="with --ask/--ask-file, print only the final assistant response")
-    parser.add_argument("--agent", action="store_true", help="enable deterministic ReAct tool execution mode")
-    args = parser.parse_args()
+    # 1. Parse Arguments via modern modular CLI Args parser
+    args = parse_args()
+    
     backend_explicit = any(arg == "--backend" or arg.startswith("--backend=") for arg in sys.argv[1:])
-    if args.ask and args.ask_file:
-        parser.error("--ask and --ask-file cannot be used together")
     single_turn_requested = bool(args.ask or args.ask_file)
     if not backend_explicit and not single_turn_requested and sys.stdin.isatty():
         args.backend = select_startup_backend(args.backend)
+        
     # Dynamic defaults based on official Ollama Modelfile parameters
     active_model_name = args.gguf_model if args.backend == "enchan" and args.gguf_model else args.ollama_model
     if active_model_name:
         try:
-            # We import here to avoid circular dependencies
             from enchan_llama_backend import resolve_ollama_model_to_blob
             _, official_params = resolve_ollama_model_to_blob(active_model_name)
             if official_params:
@@ -671,10 +331,8 @@ def main():
     plain_output = bool(args.plain and single_turn_requested)
     backend_mode = "ollama" if single_turn_requested and args.backend == "hf" else args.backend
 
-
     session_id = uuid.uuid4().hex
     session_log_path = new_session_log_path()
-
 
     agent_mode = bool(args.agent)
 
@@ -691,7 +349,6 @@ def main():
         from enchan_llama_backend import shutdown_enchan_llama
         atexit.register(shutdown_enchan_llama)
 
-        # Register signal handlers for clean shutdown on termination signals
         import signal
         def handle_termination_signal(signum, frame):
             shutdown_enchan_llama()
@@ -706,8 +363,6 @@ def main():
         model = None
         tokenizer = None
         
-        # Determine which model to use. An explicit --gguf-model always wins; otherwise
-        # let the user pick an installed model or download the default in interactive mode.
         resolved_path = None
         interactive_startup = (not plain_output) and sys.stdin.isatty()
         if args.gguf_model:
@@ -721,7 +376,6 @@ def main():
         else:
             gguf_model_path = args.ollama_model
 
-        # Resolve the chosen model to a direct file or an Ollama blob.
         if gguf_model_path:
             if Path(gguf_model_path).exists():
                 resolved_path = gguf_model_path
@@ -732,17 +386,12 @@ def main():
                 except Exception:
                     pass
 
-        # Only the designated default model is auto-downloaded. Any other model is
-        # assumed to already exist in the user's environment and is used as-is.
         if not resolved_path and gguf_model_path == ENCHAN_DEFAULT_DOWNLOAD_MODEL:
             if not standalone_ollama_pull(gguf_model_path):
                 print("[Error] Failed to download the default model. Please specify a valid --gguf-model.")
                 sys.exit(1)
 
-        # Use the resolved model for this run. The interactive picker (or an explicit
-        # --gguf-model) chooses the model each launch, so it is not persisted to config.
         args.gguf_model = gguf_model_path
-
         model_name_short = f"enchan:{gguf_model_path}"
     else:
         model = None
@@ -753,7 +402,7 @@ def main():
             else:
                 print("[Error] Ollama API is not available.")
             return
-        # If the configured model is not installed, let the user pick another (or download the default).
+            
         interactive_startup = (not plain_output) and sys.stdin.isatty()
         if interactive_startup:
             installed = list_installed_ollama_models(args.ollama_host)
@@ -816,6 +465,7 @@ def main():
 
     def consolidate_memory(reason: str) -> None:
         return None
+        
     try:
         tokenizer = load_enchan_tokenizer_for_ollama()
     except Exception as e:
@@ -825,7 +475,6 @@ def main():
 
     chat_history = []
     file_context = ""
-    source_token_count = 0
     loaded_files = []
     
     single_turn_prompt = None
@@ -842,11 +491,9 @@ def main():
     elif args.ask:
         single_turn_prompt = args.ask
 
-    # Initialize prompt_toolkit only for interactive mode.
     session = None
     if PROMPT_TOOLKIT_AVAILABLE and single_turn_prompt is None:
         kb = KeyBindings()
-
         slash_commands = tuple(sorted(KNOWN_SLASH_COMMANDS))
 
         @kb.add('/')
@@ -857,7 +504,7 @@ def main():
             if start_of_input:
                 buffer.start_completion(select_first=False)
 
-        @kb.add('enter')  # Standard Enter is triggered (captures both Enter and Shift+Enter at terminal level)
+        @kb.add('enter')
         def _(event):
             buffer = event.current_buffer
             if buffer.complete_state and buffer.complete_state.current_completion:
@@ -879,16 +526,13 @@ def main():
             import ctypes
             is_shift = False
             try:
-                # Use GetAsyncKeyState to query global physical key state (VK_SHIFT = 0x10), bypassing thread/window focus limits.
                 is_shift = (ctypes.windll.user32.GetAsyncKeyState(0x10) & 0x8000) != 0
             except Exception:
                 pass
 
             if is_shift:
-                # Shift+Enter: Break line and grow input box
                 buffer.insert_text('\n')
             else:
-                # Standard Enter: Submit the prompt immediately!
                 buffer.validate_and_handle()
 
         @kb.add('tab')
@@ -899,8 +543,7 @@ def main():
             else:
                 buffer.start_completion(select_first=True)
 
-
-        @kb.add('c-j')              # Ctrl+Enter inserts newline (Break line)
+        @kb.add('c-j')
         def _(event):
             event.current_buffer.insert_text('\n')
 
@@ -910,8 +553,6 @@ def main():
 
         class EnchanCompleter(Completer):
             def __init__(self):
-                # Nested command structure with (description, sub_commands_dict)
-                # Ordered by frequency of use for better UX
                 self.completions = {
                     "/resume": ("List resumable sessions or resume a specific session", None),
                     "/compress": ("Optimize older conversation turns", None),
@@ -936,7 +577,6 @@ def main():
 
             def get_completions(self, document, complete_event):
                 text = document.text_before_cursor
-                # Only autocomplete when starting with "/"
                 if not text.startswith("/"):
                     return
 
@@ -944,14 +584,11 @@ def main():
                 if not parts:
                     return
 
-                # Case 1: Typing the main command (e.g., "/se" -> "/set")
                 if len(parts) == 1 and not text.endswith(" "):
                     word = parts[0]
                     for cmd, (desc, _) in self.completions.items():
                         if cmd.startswith(word):
                             yield Completion(cmd, start_position=-len(word), display_meta=desc)
-                
-                # Case 2: Typing sub-commands (e.g., "/set t" -> "temp")
                 elif len(parts) >= 1:
                     cmd = parts[0]
                     if cmd in self.completions:
@@ -991,7 +628,6 @@ def main():
         "backend": backend_mode,
     }
     
-    # Synchronize starting parameters with official model recommendations + JSON overrides
     sync_generation_config_to_active_model(generation_config, active_model_name, backend_mode)
     
     if agent_mode:
@@ -1009,7 +645,6 @@ def main():
             print("[Error] --ask prompt is empty.")
             return
             
-
         if backend_mode == "enchan":
             from enchan_llama_backend import run_enchan_llama_once
             memory_context = load_memory_context()
@@ -1049,7 +684,6 @@ def main():
             enchan_preload_result = {"ok": True}
             
             if PROMPT_TOOLKIT_AVAILABLE and session is not None:
-                # Dynamic pixel-perfect full-width line with subtle dark gray ANSI color (\x1b[90m)
                 width = shutil.get_terminal_size().columns
                 print("\n\x1b[90m" + "─" * width + "\x1b[0m")
                 print("[You]:")
@@ -1143,21 +777,14 @@ def main():
             current_prompt = user_input
             chat_history.append({"role": "user", "content": current_prompt})
 
-            # Universal Auto-Compression for all backends
             max_input_tokens = int(generation_config["max_input_tokens"])
-            # Only consider compression if history is somewhat established
             if len(chat_history) > 6:
-                # Estimate total tokens of current history
                 preflight_prompt = tokenizer.apply_chat_template(chat_history, add_generation_prompt=True, tokenize=False) if tokenizer is not None else current_prompt
                 estimated_total = count_text_tokens(tokenizer, preflight_prompt) if tokenizer is not None else estimate_text_tokens_rough(current_prompt) * len(chat_history)
                 
-                # Trigger compression closer to the actual limits rather than an arbitrary 32K cap.
-                # Leave a 15% buffer for the new prompt and generation output.
                 compression_threshold = int(max_input_tokens * 0.85)
                 
                 if estimated_total > compression_threshold:
-                    # Dynamically preserve more recent turns to avoid breaking the conversational flow.
-                    # Instead of a hardcoded 4, we keep a larger sliding window (e.g. 10 messages).
                     dynamic_keep_turns = min(10, len(chat_history) - 2)
                     chat_history = compress_chat_history(chat_history, tokenizer=tokenizer, keep_turns=dynamic_keep_turns)
 
