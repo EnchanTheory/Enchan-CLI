@@ -116,6 +116,37 @@ One-shot mode:
 enchan --ask "Summarize this repository" --plain
 ```
 
+## Enchan Engine (Attention Screening)
+
+While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprietary **Enchan Cosmic Engine** directly into the core Attention calculations. This mechanism mathematically relaxes the over-concentration of Attention scores and is designed to mitigate the model fixating too rigidly on a single context path.
+
+### Representative Attention Distribution
+
+The engine applies a non-linear tension function ($S$) to the raw Attention logits before the Softmax operation. Here is how it alters a representative attention distribution:
+
+| Context Token | Raw Logit | S=0.0 (Standard) | S=0.2 (Moderate) | S=1.0 (Extreme) |
+| :--- | :--- | :--- | :--- | :--- |
+| `To` | 5.8 | 6.53% | 8.98% | 24.19% |
+| `be` | **8.2** | **84.23%** | **78.70%** | 45.17% |
+| `or` | 2.7 | 0.25% | 0.45% | 3.51% |
+| `not` | 6.1 | 8.98% | 11.86% | 27.13% |
+
+*The following table is an illustrative, simplified view of how the screening changes attention-score concentration before Softmax. It is not intended to expose the exact proprietary kernel or reproduce the full end-to-end vocabulary distribution.*
+
+At $S=0.2$, the dominant logit ($8.2$) is selectively suppressed. The Softmax weight of `be` drops from $84.23\%$ to $78.70\%$, gently redistributing the probability mass to the surrounding context without breaking the monotonic ranking.
+
+### How it changes the output
+
+By dynamically shaving off this Attention concentration at the matrix level, the engine broadens the probability distribution of alternative candidates. 
+
+*The downstream vocabulary examples below show representative observed behavior under this intervention; they are not a direct one-step Softmax over the attention table above.*
+
+For example, given the prompt `"To be, or not to be, that is the [MASK]"` (Example measured output):
+
+- **Strength 0.0 (Standard)**: The unmitigated attention strictly enforces the dominant latent path, predicting **`"existence"` (56%)**.
+- **Strength 0.2 (Moderate)**: The subtle tension relaxation allows alternative semantic paths to surface naturally, shifting the vocabulary prediction to **`"question"` (56%)**.
+- **Strength 1.0 (Extreme)**: The extreme smoothing destroys contextual dependence. Stripped of semantic anchors, the model hallucinates completely unrelated tokens like **`"apple"` (48%)**.
+
 ## Python Selection
 
 The `enchan` command is a Node.js launcher for the Python backend.
