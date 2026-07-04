@@ -1,6 +1,6 @@
 import urllib.request
 import json
-from cli_commands import load_local_config
+from core.config import load_local_config
 
 def estimate_text_tokens_rough(text: str) -> int:
     """Estimates tokens in raw text dynamically. Handles CJK characters with higher weight."""

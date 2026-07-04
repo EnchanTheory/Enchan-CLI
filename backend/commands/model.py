@@ -1,14 +1,10 @@
 from pathlib import Path
 from backend.core import registry
 from ui_theme import interactive_menu
-from cli_commands import (
-    looks_like_natural_language_arg,
-    filter_enchan_gguf_models,
-    list_installed_ollama_models,
-    load_local_config,
-    save_local_config,
-    sync_generation_config_to_active_model,
-)
+from cli_commands import looks_like_natural_language_arg
+from core.config import load_local_config, save_local_config
+from runtime_config import sync_generation_config_to_active_model
+from model_discovery import filter_enchan_gguf_models, list_installed_ollama_models
 
 @registry.command("/model", desc="List or switch Ollama/Enchan models.", usage="/model [num|name]")
 def handle_model(

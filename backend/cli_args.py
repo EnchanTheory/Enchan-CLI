@@ -1,7 +1,7 @@
 import argparse
-import sys
+import argparse
 from pathlib import Path
-from cli_commands import load_local_config
+from core.config import load_local_config
 from ollama_backend import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_HOST
 
 def parse_args() -> argparse.Namespace:

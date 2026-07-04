@@ -128,12 +128,9 @@ from ui_theme import (
     ANSI_RESET,
 )
 
-from cli_commands import (
-    load_local_config,
-    save_local_config,
-    sync_generation_config_to_active_model,
-    handle_cli_command,
-)
+from cli_commands import handle_cli_command
+from core.config import load_local_config, save_local_config
+from runtime_config import sync_generation_config_to_active_model
 
 KNOWN_SLASH_COMMANDS = frozenset({
     "/resume", "/compress", "/model", "/status", "/set",
@@ -336,7 +333,7 @@ def main():
         except Exception:
             pass
             
-    plain_output = bool(args.plain and single_turn_requested)
+    plain_output = bool(args.plain or single_turn_requested)
     backend_mode = "ollama" if single_turn_requested and args.backend == "hf" else args.backend
 
     session_id = uuid.uuid4().hex
@@ -372,7 +369,7 @@ def main():
         tokenizer = None
         
         resolved_path = None
-        interactive_startup = (not plain_output) and sys.stdin.isatty()
+        interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
         if args.gguf_model:
             gguf_model_path = args.gguf_model
         elif interactive_startup:
@@ -411,7 +408,7 @@ def main():
                 print("[Error] Ollama API is not available.")
             return
             
-        interactive_startup = (not plain_output) and sys.stdin.isatty()
+        interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
         if interactive_startup:
             installed = list_installed_ollama_models(args.ollama_host)
             if args.ollama_model not in installed:

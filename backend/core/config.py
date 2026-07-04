@@ -74,13 +74,32 @@ class EnchanConfig:
         """Serializes current state and merges extra fields back to disk safely."""
         path = file_path or (CLI_DIR / "enchan_config.json")
         data = asdict(self)
-        
+
         # Merge extra properties back so we don't accidentally wipe out user-defined values
         extra = data.pop("extra", {})
         data.update(extra)
-        
+
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
             print(f"[Warning] Failed to write config to {path}: {e}")
+
+# Legacy wrappers for smooth transition
+def load_local_config() -> dict:
+    config_path = CLI_DIR / "enchan_config.json"
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[Warning] Failed to load config: {e}")
+    return {}
+
+def save_local_config(config: dict):
+    config_path = CLI_DIR / "enchan_config.json"
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        print(f"[Warning] Failed to save config: {e}")

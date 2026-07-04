@@ -9,12 +9,9 @@ from session_log import (
     get_session_metadata,
 )
 
-# Note: Temporarily importing these from cli_commands to maintain step-by-step compatibility
-from cli_commands import (
-    load_local_config,
-    save_local_config,
-    sync_generation_config_to_active_model,
-)
+# Note: Core config and runtime utilities imported from the new dedicated modules
+from core.config import load_local_config, save_local_config
+from runtime_config import sync_generation_config_to_active_model
 
 @registry.command("/new", desc="Start a new session and clear current context.")
 def handle_new(
