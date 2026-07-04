@@ -240,7 +240,15 @@ from memory_store import (
     load_memory_context,
 )
 from source_loader import extract_path_and_query, read_directory_recursive
-from ui_theme import interactive_menu, make_prompt_style, print_python_execution, print_python_timeout, print_response_header
+from ui_theme import (
+    interactive_menu,
+    make_prompt_style,
+    print_python_execution,
+    print_python_timeout,
+    print_response_header,
+    ANSI_GOLD,
+    ANSI_RESET,
+)
 
 from cli_commands import (
     load_local_config,
@@ -766,7 +774,7 @@ def main():
         update_notice_path = CLI_DIR / ".enchan-update-available"
         if update_notice_path.exists():
             update_notice_path.unlink(missing_ok=True)
-            print("[Info] Update available. Run: enchan update")
+            print(f"  {ANSI_GOLD}[Info] Update available. Run: enchan update{ANSI_RESET}")
         active_model_disp = MODEL_ID if backend_mode == 'hf' else (args.gguf_model if (backend_mode == 'enchan' and args.gguf_model) else args.ollama_model)
         print(f"  * Selected Model: {active_model_disp}")
         print("  * Type 'exit' to close.")
