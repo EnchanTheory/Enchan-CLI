@@ -140,11 +140,17 @@ Inside the interactive CLI:
 
 - `/help`: show commands
 - `/license`: show repository license terms
-- `/status`: show current backend/model/session status
-- `/model`: select local model
-- `/resume`: resume a prior session log
-- `/clear`: clear current chat context
-- `/exit`: exit cleanly
+- `/new`: start a new session and clear current context
+- `/status`: show active model, backend, context, and generation settings
+- `/resume [num|name]`: resume a saved session
+- `/model [num|name]`: list or switch Ollama/Enchan models
+- `/compress`: optimize older conversation turns invisibly
+- `/set`: show or change generation settings interactively
+- `/set temp <value>`: set temperature
+- `/set top_p <value>`: set top_p
+- `/set input <tokens>`: set max_input_tokens
+- `/set max <tokens>`: set max_new_tokens
+- `/exit`: exit the CLI
 - `enchan update`: update the installed checkout and refresh the command
 
 ## License
