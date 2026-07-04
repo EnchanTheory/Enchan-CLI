@@ -136,21 +136,19 @@ If `ENCHAN_PYTHON` is not set, the launcher uses `python` on Windows and `python
 
 ## Commands
 
-Inside the interactive CLI:
+Inside the interactive CLI, type `/` to see the following commands:
 
-- `/help`: show commands
-- `/license`: show repository license terms
-- `/new`: start a new session and clear current context
-- `/status`: show active model, backend, context, and generation settings
-- `/resume [num|name]`: resume a saved session
-- `/model [num|name]`: list or switch Ollama/Enchan models
-- `/compress`: optimize older conversation turns invisibly
-- `/set`: show or change generation settings interactively
-- `/set temp <value>`: set temperature
-- `/set top_p <value>`: set top_p
-- `/set input <tokens>`: set max_input_tokens
-- `/set max <tokens>`: set max_new_tokens
-- `/exit`: exit the CLI
+- `/resume`: List resumable sessions or resume a specific session
+- `/compress`: Optimize older conversation turns
+- `/model`: Switch the active model
+- `/status`: Show model, history, context, and generation settings
+- `/set`: Configure generation and early exit parameters
+- `/help`: Show help menu and available commands
+- `/license`: Show repository license terms
+- `/new`: Start a new session (clears chat history and file context)
+- `/exit`: Exit the CLI
+
+You can also update the installation:
 - `enchan update`: update the installed checkout and refresh the command
 
 ## License
