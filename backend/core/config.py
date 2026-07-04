@@ -85,21 +85,60 @@ class EnchanConfig:
         except Exception as e:
             print(f"[Warning] Failed to write config to {path}: {e}")
 
-# Legacy wrappers for smooth transition
-def load_local_config() -> dict:
-    config_path = CLI_DIR / "enchan_config.json"
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[Warning] Failed to load config: {e}")
-    return {}
+    # --- dict compatibility interface ---
+    def __getitem__(self, key: str) -> Any:
+        if hasattr(self, key) and key != "extra":
+            return getattr(self, key)
+        if key in self.extra:
+            return self.extra[key]
+        raise KeyError(key)
 
-def save_local_config(config: dict):
-    config_path = CLI_DIR / "enchan_config.json"
-    try:
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"[Warning] Failed to save config: {e}")
+    def __setitem__(self, key: str, value: Any):
+        if hasattr(self, key) and key != "extra":
+            setattr(self, key, value)
+        else:
+            self.extra[key] = value
+
+    def __delitem__(self, key: str):
+        # Reset standard field to its default value if defined, otherwise remove from extra
+        allowed_keys = {f.name for f in fields(self)}
+        if key in allowed_keys:
+            for f in fields(self):
+                if f.name == key:
+                    if f.default is not field().default:
+                        setattr(self, key, f.default)
+                    elif f.default_factory is not field().default_factory:
+                        setattr(self, key, f.default_factory())
+                    break
+        elif key in self.extra:
+            del self.extra[key]
+
+    def __contains__(self, key: str) -> bool:
+        if hasattr(self, key) and key != "extra":
+            return True
+        return key in self.extra
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if hasattr(self, key) and key != "extra":
+            return getattr(self, key)
+        return self.extra.get(key, default)
+
+# Legacy wrappers for smooth transition
+def load_local_config() -> EnchanConfig:
+    return EnchanConfig.load()
+
+def save_local_config(config: Any):
+    if isinstance(config, EnchanConfig):
+        config.save()
+    elif isinstance(config, dict):
+        cfg = EnchanConfig.load()
+        for k, v in config.items():
+            cfg[k] = v
+        cfg.save()
+    else:
+        config_path = CLI_DIR / "enchan_config.json"
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"[Warning] Failed to save config: {e}")

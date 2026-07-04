@@ -12,9 +12,9 @@ BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent
 
 
-from ui_theme import interactive_menu, styled_input
+from backend.ui_theme import interactive_menu, styled_input
 
-from session_log import (
+from backend.session_log import (
     append_session_event,
     list_session_logs,
     load_session_messages,

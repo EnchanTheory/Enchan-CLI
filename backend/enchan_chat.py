@@ -1,6 +1,13 @@
 import os
 import sys
 import logging
+from pathlib import Path
+
+# --- Path Resolution for Imports ---
+BACKEND_DIR = Path(__file__).resolve().parent
+CLI_DIR = BACKEND_DIR.parent
+if str(CLI_DIR) not in sys.path:
+    sys.path.insert(0, str(CLI_DIR))
 
 # Suppress Hugging Face, Transformers, and Hub console warnings to keep CLI output pristine
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
@@ -10,21 +17,14 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 import uuid
-from pathlib import Path
 
-from interactive_input import create_interactive_session
+from backend.interactive_input import create_interactive_session
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-# --- Path Resolution for Imports ---
-BACKEND_DIR = Path(__file__).resolve().parent
-CLI_DIR = BACKEND_DIR.parent
-if str(CLI_DIR) not in sys.path:
-    sys.path.insert(0, str(CLI_DIR))
 
-
-from session_log import (
+from backend.session_log import (
     append_session_event,
     new_session_log_path,
 )
@@ -42,20 +42,20 @@ from backend.cli_args import parse_args
 
 MODEL_ID = "google/gemma-4-e2b-it"
 
-from context_compression import COSMIC_AVAILABLE
-from ollama_backend import ensure_ollama_running
-from memory_store import (
+from backend.context_compression import COSMIC_AVAILABLE
+from backend.ollama_backend import ensure_ollama_running
+from backend.memory_store import (
     ensure_memory_dirs,
     load_memory_context,
 )
-from ui_theme import (
+from backend.ui_theme import (
     ANSI_GOLD,
     ANSI_RESET,
 )
 
-from core.config import load_local_config, save_local_config
-from runtime_config import sync_generation_config_to_active_model
-from chat_loop import KNOWN_SLASH_COMMANDS, run_chat_loop
+from backend.core.config import load_local_config, save_local_config
+from backend.runtime_config import sync_generation_config_to_active_model
+from backend.chat_loop import KNOWN_SLASH_COMMANDS, run_chat_loop
 
 if not COSMIC_AVAILABLE:
     print("[Warning] Could not load Enchan Engine DLL. External context compression will be disabled.")
@@ -76,7 +76,7 @@ def main():
     active_model_name = args.gguf_model if args.backend == "enchan" and args.gguf_model else args.ollama_model
     if active_model_name:
         try:
-            from enchan_llama_backend import resolve_ollama_model_to_blob
+            from backend.enchan_llama_backend import resolve_ollama_model_to_blob
             _, official_params = resolve_ollama_model_to_blob(active_model_name)
             if official_params:
                 if "temperature" in official_params and "temperature" not in local_cfg:
@@ -108,7 +108,7 @@ def main():
     
     if backend_mode == "enchan":
         import atexit
-        from enchan_llama_backend import shutdown_enchan_llama
+        from backend.enchan_llama_backend import shutdown_enchan_llama
         atexit.register(shutdown_enchan_llama)
 
         import signal
@@ -143,7 +143,7 @@ def main():
                 resolved_path = gguf_model_path
             else:
                 try:
-                    from enchan_llama_backend import resolve_ollama_model_to_blob
+                    from backend.enchan_llama_backend import resolve_ollama_model_to_blob
                     resolved_path, _ = resolve_ollama_model_to_blob(gguf_model_path)
                 except Exception:
                     pass
@@ -300,7 +300,7 @@ def main():
         generation_config["do_sample"] = False
 
     if single_turn_prompt is not None:
-        from one_shot import execute_single_turn
+        from backend.one_shot import execute_single_turn
         execute_single_turn(
             single_turn_prompt,
             backend_mode,

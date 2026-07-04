@@ -2,7 +2,7 @@ import re
 import sys
 import subprocess
 from pathlib import Path
-from session_log import append_session_event
+from backend.session_log import append_session_event
 
 BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent

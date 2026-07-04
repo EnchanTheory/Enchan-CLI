@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from ui_theme import print_agent_action, print_agent_observation, get_spinner_status
+from backend.ui_theme import print_agent_action, print_agent_observation, get_spinner_status
 
 try:
     import msvcrt
@@ -21,10 +21,10 @@ BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent
 
 
-from session_log import append_session_event
-from agent_tools import AGENT_SYSTEM_PROMPT
-from agent_loop import run_agent_loop
-from memory_store import build_memory_prompt_section
+from backend.session_log import append_session_event
+from backend.agent_tools import AGENT_SYSTEM_PROMPT
+from backend.agent_loop import run_agent_loop
+from backend.memory_store import build_memory_prompt_section
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma4:e2b-it-qat"

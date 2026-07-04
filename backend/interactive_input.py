@@ -9,7 +9,7 @@ try:
 except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
-from ui_theme import make_prompt_style
+from backend.ui_theme import make_prompt_style
 
 
 class EnchanCompleter(Completer):

@@ -1,11 +1,11 @@
 from pathlib import Path
 from backend.core import registry
-from ui_theme import interactive_menu
-from cli_commands import looks_like_natural_language_arg
-from core.config import load_local_config, save_local_config
-from runtime_config import sync_generation_config_to_active_model
-from model_discovery import filter_enchan_gguf_models
-from ollama_registry import list_installed_ollama_models
+from backend.ui_theme import interactive_menu
+from backend.cli_commands import looks_like_natural_language_arg
+from backend.core.config import load_local_config, save_local_config
+from backend.runtime_config import sync_generation_config_to_active_model
+from backend.model_discovery import filter_enchan_gguf_models
+from backend.ollama_registry import list_installed_ollama_models
 
 @registry.command("/model", desc="List or switch Ollama/Enchan models.", usage="/model [num|name]")
 def handle_model(
@@ -79,7 +79,7 @@ def handle_model(
         print(f"[System] Switched active model to: {selected_model}")
 
         if backend_mode == "enchan":
-            from enchan_llama_backend import shutdown_enchan_llama
+            from backend.enchan_llama_backend import shutdown_enchan_llama
             shutdown_enchan_llama()
 
         # Save this to enchan_config.json to persist!

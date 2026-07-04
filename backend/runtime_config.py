@@ -1,8 +1,8 @@
-from core.config import EnchanConfig, load_local_config
+from backend.core.config import EnchanConfig
 
 def sync_generation_config_to_active_model(generation_config: dict, active_model_name: str, backend_mode: str):
     """Loads official model recommendations, merges with user-set JSON overrides, and updates generation_config in-place."""
-    local_cfg = load_local_config()
+    local_cfg = EnchanConfig.load()
 
     # 1. Start with system baseline defaults
     default_params = {
@@ -18,7 +18,7 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
     # 2. Try loading official recommended params from the Ollama Modelfile manifest
     if active_model_name and backend_mode in ("ollama", "enchan"):
         try:
-            from enchan_llama_backend import resolve_ollama_model_to_blob
+            from backend.enchan_llama_backend import resolve_ollama_model_to_blob
             _, official_params = resolve_ollama_model_to_blob(active_model_name)
             if official_params:
                 if "temperature" in official_params:

@@ -325,13 +325,13 @@ def tool_read_document(args: dict) -> dict:
     # Precise or CJK-aware token estimation for accurate compression metrics
     if tokenizer is not None:
         try:
-            from context_compression import count_text_tokens
+            from backend.context_compression import count_text_tokens
             estimated_tokens = count_text_tokens(tokenizer, full_text)
         except Exception:
             estimated_tokens = int(total_chars / 1.5)
     else:
         try:
-            from enchan_chat import estimate_text_tokens_rough
+            from backend.enchan_chat import estimate_text_tokens_rough
             estimated_tokens = estimate_text_tokens_rough(full_text)
         except Exception:
             estimated_tokens = int(total_chars / 1.5)
@@ -346,7 +346,7 @@ def tool_read_document(args: dict) -> dict:
         if not query:
             return {"ok": False, "error": "mode='compress' requires a 'query' argument."}
         
-        from reading_agent import execute_reading_pipeline
+        from backend.reading_agent import execute_reading_pipeline
         import io
         import contextlib
         
@@ -948,7 +948,7 @@ def tool_execute_command(args: dict) -> dict:
 
 
 def tool_web_search(args: dict) -> dict:
-    from web_search_service import perform_web_search
+    from backend.web_search_service import perform_web_search
     query = args.get("query", "")
     if not query:
         return {"ok": False, "error": "web_search requires a 'query' argument."}
@@ -969,7 +969,7 @@ def tool_web_search(args: dict) -> dict:
 
 
 def tool_list_skills(args: dict) -> dict:
-    from skills_loader import list_registered_skills
+    from backend.skills_loader import list_registered_skills
     content = list_registered_skills()
     return {"ok": True, "content": content}
 
@@ -984,8 +984,8 @@ def tool_use_skill(args: dict) -> dict:
     if params is None and not argument:
         return {"ok": False, "error": "use_skill requires either 'params' for a typed method or an 'argument' string."}
     from contextlib import redirect_stderr, redirect_stdout
-    from skills_loader import run_skill
-    from ui_theme import stream_agent_observation
+    from backend.skills_loader import run_skill
+    from backend.ui_theme import stream_agent_observation
 
     stream = stream_agent_observation("use_skill")
     ok = True
@@ -1115,7 +1115,7 @@ TOOL_REGISTRY = {
 
 
 def _interactive_security_prompt() -> bool:
-    from ui_theme import interactive_yes_no
+    from backend.ui_theme import interactive_yes_no
 
     return interactive_yes_no("Allow execution?", default_yes=True)
 

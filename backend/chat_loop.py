@@ -4,14 +4,14 @@ import shutil
 import threading
 from pathlib import Path
 
-from session_log import append_session_event
-from cli_commands import handle_cli_command
-from context_compression import count_text_tokens, compress_chat_history
-from tokenizer_bridge import estimate_text_tokens_rough
-from memory_store import load_memory_context, build_memory_prompt_section
-from enchan_llama_backend import run_enchan_llama_agent_turn
-from ollama_backend import run_ollama_agent_turn
-from ui_theme import print_response_header
+from backend.session_log import append_session_event
+from backend.cli_commands import handle_cli_command
+from backend.context_compression import count_text_tokens, compress_chat_history
+from backend.tokenizer_bridge import estimate_text_tokens_rough
+from backend.memory_store import load_memory_context, build_memory_prompt_section
+from backend.enchan_llama_backend import run_enchan_llama_agent_turn
+from backend.ollama_backend import run_ollama_agent_turn
+from backend.ui_theme import print_response_header
 
 KNOWN_SLASH_COMMANDS = frozenset({
     "/resume", "/compress", "/model", "/status", "/set",
@@ -114,7 +114,7 @@ def run_chat_loop(
             if backend_mode == "enchan" and not is_known_slash_command(user_input):
                 def preload_enchan_engine():
                     try:
-                        from enchan_llama_backend import ensure_enchan_llama_for_request
+                        from backend.enchan_llama_backend import ensure_enchan_llama_for_request
                         enchan_preload_result["ok"] = ensure_enchan_llama_for_request(None, args)
                     except Exception as exc:
                         enchan_preload_result["ok"] = False
@@ -167,7 +167,7 @@ def run_chat_loop(
                         "agent_mode": False,
                     },
                 )
-                from agent_tools import NORMAL_MODE_TOOL_GUIDANCE
+                from backend.agent_tools import NORMAL_MODE_TOOL_GUIDANCE
                 print_response_header(response_label(generation_config), NORMAL_MODE_TOOL_GUIDANCE, line_char="─")
                 chat_history.append({"role": "model", "content": NORMAL_MODE_TOOL_GUIDANCE})
                 append_session_event(
@@ -199,7 +199,7 @@ def run_chat_loop(
                     chat_history = compress_chat_history(chat_history, tokenizer=tokenizer, keep_turns=dynamic_keep_turns)
 
             if backend_mode in ("hf", "ollama", "enchan"):
-                from agent_tools import AGENT_SYSTEM_PROMPT
+                from backend.agent_tools import AGENT_SYSTEM_PROMPT
                 memory_context = load_memory_context()
                 system_context = build_memory_prompt_section(memory_context)
                 if system_context:

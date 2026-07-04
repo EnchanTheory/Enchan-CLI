@@ -151,13 +151,13 @@ class JsonRpcSkillSession:
             answer = input(prompt + " ")
             return {"answer": answer}
         if capability == "read":
-            from agent_tools import tool_read_document
+            from backend.agent_tools import tool_read_document
             return tool_read_document({"path": params.get("path"), "lines": params.get("lines"), "mode": params.get("mode", "raw"), "query": params.get("query")})
         if capability == "write":
-            from agent_tools import tool_write_text_file
+            from backend.agent_tools import tool_write_text_file
             return tool_write_text_file({"path": params.get("path"), "content": params.get("content"), "overwrite": params.get("overwrite", False)})
         if capability == "bash":
-            from agent_tools import tool_host_shell
+            from backend.agent_tools import tool_host_shell
             return tool_host_shell({
                 "command": params.get("command"),
                 "cwd": params.get("cwd"),

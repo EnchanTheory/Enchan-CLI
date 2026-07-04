@@ -1,7 +1,7 @@
 from pathlib import Path
-from session_log import append_session_event
-from memory_store import load_memory_context
-from ollama_backend import run_ollama_once
+from backend.session_log import append_session_event
+from backend.memory_store import load_memory_context
+from backend.ollama_backend import run_ollama_once
 
 
 def execute_single_turn(
@@ -26,7 +26,7 @@ def execute_single_turn(
         return
 
     if backend_mode == "enchan":
-        from enchan_llama_backend import run_enchan_llama_once
+        from backend.enchan_llama_backend import run_enchan_llama_once
         memory_context = load_memory_context()
         run_enchan_llama_once(
             single_turn_prompt.strip(),

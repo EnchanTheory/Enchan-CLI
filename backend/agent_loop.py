@@ -6,14 +6,14 @@ from typing import Callable
 BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent
 
-from agent_tools import (
+from backend.agent_tools import (
     AGENT_MAX_ITERATIONS,
     execute_agent_tool,
     parse_agent_tool_call,
     truncate_observation,
 )
-from session_log import append_session_event
-from ui_theme import get_spinner_status, print_agent_action, print_agent_observation
+from backend.session_log import append_session_event
+from backend.ui_theme import get_spinner_status, print_agent_action, print_agent_observation
 
 
 SENSITIVE_SPINNER_TOOLS = {

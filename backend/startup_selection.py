@@ -7,7 +7,7 @@ try:
 except ImportError:
     msvcrt = None
 
-from ui_theme import interactive_menu
+from backend.ui_theme import interactive_menu
 from backend.ollama_registry import (
     list_installed_ollama_models,
     ENCHAN_DEFAULT_DOWNLOAD_MODEL,

@@ -102,7 +102,7 @@ def plan_retrieval(document_type: str, intent: str) -> dict:
     return plan
 
 def run_retrieval(plan: dict, query: str, text: str, tokenizer, source_tokens: int) -> str:
-    from context_compression import compress_context
+    from backend.context_compression import compress_context
     return compress_context(
         query=query, 
         large_text=text, 

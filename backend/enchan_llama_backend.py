@@ -29,7 +29,7 @@ ENGINE_BIN_DIR = BACKEND_DIR / "bin" / _runtime_platform_dir()
 LLAMA_SERVER_NAME = "llama-server.exe" if sys.platform == "win32" else "llama-server"
 
 
-from session_log import append_session_event
+from backend.session_log import append_session_event
 
 DEFAULT_ENCHAN_LLAMA_PORT = 11435
 DEFAULT_ENCHAN_LLAMA_HOST = f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}"
@@ -917,7 +917,7 @@ def generate_enchan_llama_response(
     show_metrics: bool = True,
 ) -> dict | None:
     """Streams the response from our secure C++ engine using OpenAI-compatible SSE."""
-    from ui_theme import get_spinner_status
+    from backend.ui_theme import get_spinner_status
 
     api_url = host.rstrip("/") + "/v1/chat/completions"
     
@@ -1107,7 +1107,7 @@ def generate_enchan_llama_response(
                                     # If not printed on screen, we are inside a thinking block or raw tag block.
                                     # We dynamically update the spinner label to represent the exact phase!
                                     if status is not None:
-                                        from ui_theme import RICH_AVAILABLE
+                                        from backend.ui_theme import RICH_AVAILABLE
                                         if temp_in_thought:
                                             # Inside <thought> block (local model reasoning)
                                             text_to_show = "Thought... (esc to cancel)"
@@ -1198,9 +1198,9 @@ def run_enchan_llama_once(
     plain: bool = False,
     memory_context: str = "",
 ) -> None:
-    from agent_loop import run_agent_loop
-    from ollama_backend import build_agent_goal_prompt, format_count, estimate_text_tokens_rough, count_text_tokens
-    from session_log import append_session_event
+    from backend.agent_loop import run_agent_loop
+    from backend.ollama_backend import build_agent_goal_prompt, format_count, estimate_text_tokens_rough, count_text_tokens
+    from backend.session_log import append_session_event
 
     if not ensure_enchan_llama_for_request(generation_config, args):
         append_session_event(session_log_path, {"type": "error", "stage": "enchan_llama_start"})
@@ -1258,8 +1258,8 @@ def run_enchan_llama_agent_turn(
     args,
     tokenizer=None,
 ) -> None:
-    from agent_loop import run_agent_loop
-    from session_log import append_session_event
+    from backend.agent_loop import run_agent_loop
+    from backend.session_log import append_session_event
 
     host = f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}"
     if not ensure_enchan_llama_for_request(generation_config, args):

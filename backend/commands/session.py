@@ -1,7 +1,7 @@
 from pathlib import Path
 from backend.core import registry
-from ui_theme import interactive_menu, styled_input
-from session_log import (
+from backend.ui_theme import interactive_menu, styled_input
+from backend.session_log import (
     append_session_event,
     list_session_logs,
     load_session_messages,
@@ -10,8 +10,8 @@ from session_log import (
 )
 
 # Note: Core config and runtime utilities imported from the new dedicated modules
-from core.config import load_local_config, save_local_config
-from runtime_config import sync_generation_config_to_active_model
+from backend.core.config import load_local_config, save_local_config
+from backend.runtime_config import sync_generation_config_to_active_model
 
 @registry.command("/new", desc="Start a new session and clear current context.")
 def handle_new(
@@ -100,7 +100,7 @@ def handle_compress(
         print("[System] Chat history is empty. Nothing to compress.")
         return True, file_context, False
         
-    from context_compression import compress_chat_history
+    from backend.context_compression import compress_chat_history
     chat_history[:] = compress_chat_history(chat_history, tokenizer=tokenizer, keep_turns=2)
     print("[System] Context optimized.")
     return True, file_context, False

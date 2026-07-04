@@ -12,7 +12,7 @@ def _is_gguf_file(path: str | Path) -> bool:
 def filter_enchan_gguf_models(models: list[str]) -> list[str]:
     """Keep only installed Ollama tags that resolve to a GGUF model blob."""
     try:
-        from enchan_llama_backend import resolve_ollama_model_to_blob
+        from backend.enchan_llama_backend import resolve_ollama_model_to_blob
     except Exception:
         return []
 

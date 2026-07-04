@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
-from core.config import EnchanConfig
-from ollama_backend import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_HOST
+from backend.core.config import EnchanConfig
+from backend.ollama_backend import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_HOST
 
 def parse_args() -> argparse.Namespace:
     """Configures the ArgumentParser and parses CLI flags, merging with local_config overrides."""

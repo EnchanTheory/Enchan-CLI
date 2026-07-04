@@ -3,7 +3,7 @@ import re
 import io
 import contextlib
 from typing import Optional
-from enchan_cosmic import COSMIC_AVAILABLE, select_text_indices
+from backend.enchan_cosmic import COSMIC_AVAILABLE, select_text_indices
 
 
 TOKEN_CHUNK_SIZE = 360
