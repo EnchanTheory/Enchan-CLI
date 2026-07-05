@@ -17,7 +17,15 @@ CLI_DIR = BACKEND_DIR.parent
 AGENT_TOOL_START = "<tool_call>"
 AGENT_TOOL_END = "</tool_call>"
 AGENT_MAX_ITERATIONS = 20
-DEFAULT_OBSERVATION_MAX_CHARS = 6000
+DEFAULT_OBSERVATION_MAX_CHARS = 10000
+
+def get_max_obs_chars() -> int:
+    try:
+        from backend.core.config import load_local_config
+        local_cfg = load_local_config()
+        return int(local_cfg.get("max_obs_chars", 10000))
+    except Exception:
+        return 10000
 COMPRESSED_DOCUMENT_MAX_CHARS = 24000
 READ_DOCUMENT_DEBUG = False
 
@@ -235,19 +243,20 @@ def parse_agent_tool_call(text: str) -> Optional[dict]:
     return {"tool": tool, "args": args}
 
 
-def truncate_observation(text: str, max_chars: int = DEFAULT_OBSERVATION_MAX_CHARS) -> str:
-    if len(text) <= max_chars:
+def truncate_observation(text: str, max_chars: Optional[int] = None) -> str:
+    limit = max_chars if max_chars is not None else get_max_obs_chars()
+    if len(text) <= limit:
         return text
     
-    omitted = len(text) - max_chars
+    omitted = len(text) - limit
     warning = (
         f"[SYSTEM TRUNCATION WARNING: The tool output was too large and was truncated. "
-        f"Only showing the first {max_chars} characters. {omitted} characters were omitted from the end. "
+        f"Only showing the first {limit} characters. {omitted} characters were omitted from the end. "
         f"If you need to see more, refine your query, specify narrower parameters, or read/execute in segments.]\n"
     )
     # Budget the text
-    available_budget = max(500, max_chars - len(warning))
-    return warning + text[:available_budget] + f"\n[truncated {omitted + (max_chars - available_budget)} chars]"
+    available_budget = max(500, limit - len(warning))
+    return warning + text[:available_budget] + f"\n[truncated {omitted + (limit - available_budget)} chars]"
 
 
 def resolve_workspace_path(raw_path: str, *, require_file: bool = False, require_inside_cli: bool = False) -> Path:
@@ -386,15 +395,17 @@ def tool_read_document(args: dict) -> dict:
 
     full_content = prefix + "\n" + body
 
-    # Strict Halt Check: If reading raw lines exceeds 6,000 characters, return ok=False and demand self-correction!
-    if len(full_content) > DEFAULT_OBSERVATION_MAX_CHARS:
+    # Strict Halt Check: If reading raw lines exceeds dynamic max chars, return ok=False and demand self-correction!
+    limit = get_max_obs_chars()
+    if len(full_content) > limit:
         return {
             "ok": False,
             "error": (
                 f"Requested raw content (lines {actual_start}-{actual_end}) is too large ({len(full_content)} characters), "
-                f"which exceeds the safety limit of {DEFAULT_OBSERVATION_MAX_CHARS} characters. "
+                f"which exceeds the active safety limit of {limit} characters. "
                 f"Please request a smaller line window (e.g., maximum 150 lines, such as '{actual_start}-{actual_start + 150}') "
-                f"to read in segments, or use mode='compress' with a 'query' to retrieve a smart structured digest."
+                f"to read in segments, or use mode='compress' with a 'query' to retrieve a smart structured digest. "
+                f"[Tip: If your machine has sufficient VRAM/RAM headroom, you or the user can increase this tool safety limit at any time by running the CLI command: /set obs_chars <value> (e.g. /set obs_chars 20000).]"
             )
         }
 
@@ -918,7 +929,7 @@ def tool_host_shell(args: dict) -> dict:
         timeout_seconds = max(1, min(int(args.get("timeout_seconds", 30) or 30), 300))
         max_output_chars = max(
             1000,
-            min(int(args.get("max_output_chars", DEFAULT_OBSERVATION_MAX_CHARS) or DEFAULT_OBSERVATION_MAX_CHARS), 50000),
+            min(int(args.get("max_output_chars", get_max_obs_chars()) or get_max_obs_chars()), 500000),
         )
         argv, shell_name = _host_shell_argv(command, str(args.get("shell") or "powershell"))
         started = time.perf_counter()
