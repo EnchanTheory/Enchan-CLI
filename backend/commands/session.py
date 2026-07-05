@@ -129,6 +129,7 @@ def handle_set(
         print(f"  yarn             = {generation_config.get('yarn_factor', 1.0)} (YaRN scaling factor)")
         print(f"  max              = {generation_config.get('max_new_tokens', -1)} (max_new_tokens)")
         print(f"  input            = {generation_config.get('max_input_tokens', 131072)} (max_input_tokens)")
+        print(f"  obs_chars        = {load_local_config().get('max_obs_chars', 10000)} (max tool output chars)")
         if enchan_config:
             print(f"  exit_layer       = {enchan_config.get('force_early_exit_layer', -1)}")
             print(f"  exit_thresh      = {enchan_config.get('early_exit_threshold', 0.15)}")
@@ -225,8 +226,14 @@ def handle_set(
                 state.total_tokens = 0
                 state.total_skipped_mlps = 0
             print(f"[System] early_exit_threshold = {thresh}")
+        elif key in ("obs", "obs_chars", "max_obs_chars"):
+            obs_chars = int(value)
+            if obs_chars < 1000 or obs_chars > 200000:
+                raise ValueError("max_obs_chars must be between 1000 and 200000")
+            generation_config["max_obs_chars"] = obs_chars
+            print(f"[System] max_obs_chars = {obs_chars}")
         else:
-            print("[Error] Unknown setting. Use temp, top_p, top_k, input, max, exit_layer, or exit_thresh.")
+            print("[Error] Unknown setting. Use temp, top_p, top_k, input, max, obs_chars, exit_layer, or exit_thresh.")
     except ValueError as e:
         print(f"[Error] {e}")
         
@@ -237,6 +244,7 @@ def handle_set(
     local_cfg["top_k"] = generation_config.get("top_k", 64)
     local_cfg["max_new_tokens"] = generation_config.get("max_new_tokens", -1)
     local_cfg["ollama_ctx"] = generation_config.get("max_input_tokens", 131072)
+    local_cfg["max_obs_chars"] = generation_config.get("max_obs_chars", 10000)
     local_cfg["think"] = generation_config.get("think", True)
     save_local_config(local_cfg)
     
