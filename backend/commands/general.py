@@ -69,6 +69,7 @@ def handle_status(
     print(f"  max_new_tokens: {generation_config.get('max_new_tokens', 'N/A')}")
     print(f"  temperature: {generation_config.get('temperature', 'N/A')}")
     print(f"  top_p: {generation_config.get('top_p', 'N/A')}")
+    print(f"  max_obs_chars: {generation_config.get('max_obs_chars', 10000)}")
     
     if enchan_config:
         print(f"  early_exit_threshold: {enchan_config.get('early_exit_threshold', 0.15)}")

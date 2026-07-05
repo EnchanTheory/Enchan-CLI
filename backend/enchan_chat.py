@@ -263,6 +263,7 @@ def main():
         "ollama_model": args.ollama_model if backend_mode == "ollama" else None,
         "ollama_host": args.ollama_host if backend_mode == "ollama" else None,
         "backend": backend_mode,
+        "max_obs_chars": load_local_config().get("max_obs_chars", 10000),
     }
     
     sync_generation_config_to_active_model(generation_config, active_model_name, backend_mode)
