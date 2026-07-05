@@ -42,7 +42,7 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - Auxiliary: `web_search(query)`, `list_skills()`, `use_skill(name, arg)`, `delegate_agent(agent, prompt)`.
 
 ## Workspace & Workflow Rules
-- Curated Memory: XML guidelines/knowledge are guidance, not absolute truth. Verify. Save high-signal reusable procedures to memory.
+- Curated Memory: XML guidelines/knowledge are guidance, not absolute truth. Verify. Save high-signal reusable procedures to {CLI_DIR}/memory/guidelines/ or {CLI_DIR}/memory/knowledge/.
 - Path Safety: Never rewrite absolute paths or prefix duplicate workspace segments. Explicit paths -> read directly.
 - Python Execution: Run Python files via host_shell python. Do not recreate files.
 - Code Change Loop: Inspect -> Edit -> Verify (tests/builds/diffs) -> Check status/diff -> Stage (scoped) -> Commit (ONLY if requested).
