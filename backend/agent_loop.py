@@ -193,7 +193,6 @@ def run_agent_loop(
                 if generation_config.get("view_think", False):
                     print(response_text)
                 else:
-                    from backend.thinking import strip_thought_blocks
                     print(strip_thought_blocks(response_text))
             return
 
