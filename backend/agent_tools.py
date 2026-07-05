@@ -38,6 +38,7 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 
 ## Interaction & Decision Loop
 - One tool call per turn. Wait for Observation before answering.
+- Action First: If the user requests any file modification, creation, reading, searching, execution, or validation, NEVER just chat, explain, or make excuses in natural language. You MUST immediately emit the required tool call (e.g., write_text_file, replace_text, search_pattern, or host_shell) to physically execute the action on the host first, and only report the observed physical result. Conversational evasion and excuses are strictly prohibited.
 - Do not claim you performed an action unless the host Observation verified it.
 - Language: Match user language (e.g., Japanese). Logs/JSON may stay in English.
 - Tone: Plain, professional unless guidelines specify custom titles.
@@ -155,7 +156,7 @@ def parse_agent_tool_call(text: str) -> Optional[dict]:
             args = {"patch": first_arg}
         elif tool_name in ("host_shell", "execute_command"):
             args = {"command": first_arg}
-        elif tool_name == "write_text_file":
+        elif tool_name in ("write_text_file", "write_document"):
             args = {"path": first_arg}
             if len(parsed_arg) > 1:
                 args["content"] = parsed_arg[1]
@@ -228,7 +229,7 @@ def parse_agent_tool_call(text: str) -> Optional[dict]:
             args = {"path": args}
         elif tool == "delegate_agent":
             args = {"agent": args}
-        elif tool == "write_text_file":
+        elif tool in ("write_text_file", "write_document"):
             args = {"path": args}
         else:
             args = {"value": args}
@@ -1121,6 +1122,7 @@ TOOL_REGISTRY = {
     "search_pattern": tool_search_pattern,
     "replace_text": tool_replace_text,
     "write_text_file": tool_write_text_file,
+    "write_document": tool_write_text_file,
     "apply_patch": tool_apply_patch,
     "host_shell": tool_host_shell,
     "execute_command": tool_execute_command,
@@ -1145,7 +1147,7 @@ def _interactive_security_prompt() -> bool:
 def _tool_requires_permission(tool_name: str, args: dict) -> bool:
     if tool_name in ("host_shell", "execute_command"):
         return False
-    if tool_name in ("write_text_file", "apply_patch", "use_skill", "git_add", "git_commit"):
+    if tool_name in ("write_text_file", "write_document", "apply_patch", "use_skill", "git_add", "git_commit"):
         return True
     if tool_name == "replace_text":
         apply_val = args.get("apply", False)
@@ -1172,7 +1174,7 @@ def execute_agent_tool(call: dict, tokenizer=None, model=None) -> dict:
         print(f"  \x1b[38;2;210;200;200mTool: {tool_name}\x1b[0m")
         if tool_name in ("host_shell", "execute_command"):
             print(f"  \x1b[38;2;210;200;200mCommand: {args.get('command') or args.get('cmd')}\x1b[0m")
-        elif tool_name == "write_text_file":
+        elif tool_name in ("write_text_file", "write_document"):
             print(f"  \x1b[38;2;210;200;200mTarget: {args.get('path')}\x1b[0m")
         elif tool_name == "apply_patch":
             print(f"  \x1b[38;2;210;200;200mPatch chars: {len(str(args.get('patch') or ''))}\x1b[0m")
