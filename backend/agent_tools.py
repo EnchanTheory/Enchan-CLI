@@ -362,18 +362,45 @@ def tool_read_document(args: dict) -> dict:
     except ValueError as e:
         return {"ok": False, "error": f"Invalid lines value: {e}"}
         
+    actual_start = start or 1
     if start is not None:
         end = total_lines if end is None else min(end, total_lines)
         selected = content_lines[start - 1:end]
-        prefix = f"{path} lines {start}-{end} of {total_lines} (Total size: {total_chars} chars, ~{estimated_tokens} tokens)"
     else:
         selected = content_lines
-        prefix = f"{path} lines 1-{total_lines} of {total_lines} (Total size: {total_chars} chars, ~{estimated_tokens} tokens)"
-        if estimated_tokens > 2500:
+
+    # Budget characters to fit within DEFAULT_OBSERVATION_MAX_CHARS safely
+    # Leave room for headers/warnings (approx 800 chars)
+    max_body_chars = DEFAULT_OBSERVATION_MAX_CHARS - 800
+    body_lines = []
+    current_chars = 0
+    actual_end_line = actual_start
+    truncated = False
+    
+    for idx, line in enumerate(selected, actual_start):
+        line_str = f"{idx}: {line}"
+        if current_chars + len(line_str) > max_body_chars:
+            truncated = True
+            break
+        body_lines.append(line_str)
+        current_chars += len(line_str)
+        actual_end_line = idx
+
+    body = "".join(body_lines)
+
+    if truncated:
+        prefix = (
+            f"[TRUNCATION WARNING: Only lines {actual_start}-{actual_end_line} of {total_lines} are shown below to protect context limits. "
+            f"The remaining lines ({actual_end_line + 1}-{total_lines}) were truncated. "
+            f"To read more, explicitly specify a 'lines' range (e.g., '{actual_end_line + 1}-{actual_end_line + 200}') or use mode='compress' for dynamic digest.]\n"
+            f"{path} lines {actual_start}-{actual_end_line} of {total_lines} (Truncated view: shown {current_chars} chars of {total_chars} total chars)"
+        )
+    else:
+        prefix = f"{path} lines {actual_start}-{actual_end_line} of {total_lines} (Total size: {total_chars} chars, ~{estimated_tokens} tokens)"
+        if estimated_tokens > 2500 and start is None:
             prefix += "\n[WARNING: Reading full file consumed significant context. Use 'lines' or mode='compress' next time.]"
 
-    body = "".join(f"{idx}: {line}" for idx, line in enumerate(selected, start or 1))
-    return {"ok": True, "content": truncate_observation(prefix + "\n" + body)}
+    return {"ok": True, "content": prefix + "\n" + body}
 
 
 def tool_list_directory(args: dict) -> dict:
