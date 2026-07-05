@@ -238,8 +238,16 @@ def parse_agent_tool_call(text: str) -> Optional[dict]:
 def truncate_observation(text: str, max_chars: int = DEFAULT_OBSERVATION_MAX_CHARS) -> str:
     if len(text) <= max_chars:
         return text
+    
     omitted = len(text) - max_chars
-    return text[:max_chars] + f"\n[truncated {omitted} chars]"
+    warning = (
+        f"[SYSTEM TRUNCATION WARNING: The tool output was too large and was truncated. "
+        f"Only showing the first {max_chars} characters. {omitted} characters were omitted from the end. "
+        f"If you need to see more, refine your query, specify narrower parameters, or read/execute in segments.]\n"
+    )
+    # Budget the text
+    available_budget = max(500, max_chars - len(warning))
+    return warning + text[:available_budget] + f"\n[truncated {omitted + (max_chars - available_budget)} chars]"
 
 
 def resolve_workspace_path(raw_path: str, *, require_file: bool = False, require_inside_cli: bool = False) -> Path:
@@ -369,38 +377,28 @@ def tool_read_document(args: dict) -> dict:
     else:
         selected = content_lines
 
-    # Budget characters to fit within DEFAULT_OBSERVATION_MAX_CHARS safely
-    # Leave room for headers/warnings (approx 800 chars)
-    max_body_chars = DEFAULT_OBSERVATION_MAX_CHARS - 800
-    body_lines = []
-    current_chars = 0
-    actual_end_line = actual_start
-    truncated = False
-    
-    for idx, line in enumerate(selected, actual_start):
-        line_str = f"{idx}: {line}"
-        if current_chars + len(line_str) > max_body_chars:
-            truncated = True
-            break
-        body_lines.append(line_str)
-        current_chars += len(line_str)
-        actual_end_line = idx
+    # Construct the body text and the header prefix
+    body = "".join(f"{idx}: {line}" for idx, line in enumerate(selected, actual_start))
+    actual_end = end or (actual_start + len(selected) - 1)
+    prefix = f"{path} lines {actual_start}-{actual_end} of {total_lines} (Total size: {total_chars} chars, ~{estimated_tokens} tokens)"
+    if estimated_tokens > 2500 and start is None:
+        prefix += "\n[WARNING: Reading full file consumed significant context. Use 'lines' or mode='compress' next time.]"
 
-    body = "".join(body_lines)
+    full_content = prefix + "\n" + body
 
-    if truncated:
-        prefix = (
-            f"[TRUNCATION WARNING: Only lines {actual_start}-{actual_end_line} of {total_lines} are shown below to protect context limits. "
-            f"The remaining lines ({actual_end_line + 1}-{total_lines}) were truncated. "
-            f"To read more, explicitly specify a 'lines' range (e.g., '{actual_end_line + 1}-{actual_end_line + 200}') or use mode='compress' for dynamic digest.]\n"
-            f"{path} lines {actual_start}-{actual_end_line} of {total_lines} (Truncated view: shown {current_chars} chars of {total_chars} total chars)"
-        )
-    else:
-        prefix = f"{path} lines {actual_start}-{actual_end_line} of {total_lines} (Total size: {total_chars} chars, ~{estimated_tokens} tokens)"
-        if estimated_tokens > 2500 and start is None:
-            prefix += "\n[WARNING: Reading full file consumed significant context. Use 'lines' or mode='compress' next time.]"
+    # Strict Halt Check: If reading raw lines exceeds 6,000 characters, return ok=False and demand self-correction!
+    if len(full_content) > DEFAULT_OBSERVATION_MAX_CHARS:
+        return {
+            "ok": False,
+            "error": (
+                f"Requested raw content (lines {actual_start}-{actual_end}) is too large ({len(full_content)} characters), "
+                f"which exceeds the safety limit of {DEFAULT_OBSERVATION_MAX_CHARS} characters. "
+                f"Please request a smaller line window (e.g., maximum 150 lines, such as '{actual_start}-{actual_start + 150}') "
+                f"to read in segments, or use mode='compress' with a 'query' to retrieve a smart structured digest."
+            )
+        }
 
-    return {"ok": True, "content": prefix + "\n" + body}
+    return {"ok": True, "content": full_content}
 
 
 def tool_list_directory(args: dict) -> dict:
