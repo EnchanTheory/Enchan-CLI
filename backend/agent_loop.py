@@ -11,6 +11,7 @@ from backend.agent_tools import (
     execute_agent_tool,
     parse_agent_tool_call,
     truncate_observation,
+    get_max_obs_chars,
 )
 from backend.session_log import append_session_event
 from backend.ui_theme import get_spinner_status, print_agent_action, print_agent_observation
@@ -118,7 +119,7 @@ def _run_tool_observation(
 
     observation = truncate_observation(
         result["observation"],
-        max_chars=int(result.get("observation_max_chars", 6000)),
+        max_chars=int(result.get("observation_max_chars") or get_max_obs_chars()),
     )
     hide_observation = (
         call.get("tool") == "read_document"
