@@ -186,7 +186,18 @@ def run_chat_loop(
             generation_config["suppress_response_header"] = True
 
             current_prompt = user_input
-            chat_history.append({"role": "user", "content": current_prompt})
+            images = []
+            try:
+                from backend.source_loader import find_and_encode_images
+                images = find_and_encode_images(user_input)
+            except Exception:
+                pass
+            
+            user_msg = {"role": "user", "content": current_prompt}
+            if images:
+                user_msg["images"] = images
+                print(f"  \x1b[90m[Vision] Loaded {len(images)} image(s) from prompt context.\x1b[0m")
+            chat_history.append(user_msg)
 
             max_input_tokens = int(generation_config["max_input_tokens"])
             if len(chat_history) > 6:

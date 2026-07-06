@@ -175,10 +175,13 @@ def generate_ollama_response(
                 "content": sanitize_for_json(msg.get("content", ""))
             })
         else:
-            messages.append({
+            item = {
                 "role": "user",
                 "content": sanitize_for_json(msg.get("content", ""))
-            })
+            }
+            if "images" in msg:
+                item["images"] = msg["images"]
+            messages.append(item)
     payload = {
         "model": ollama_model,
         "messages": messages,

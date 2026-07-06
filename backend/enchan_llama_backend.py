@@ -448,31 +448,40 @@ def resolve_ollama_model_to_blob(model_name: str) -> tuple[Optional[str], dict]:
     try:
         with open(manifest_file, "r", encoding="utf-8") as f:
             manifest = json.load(f)
-        
+
         resolved_blob = None
+        projector_path = None
         params = {}
-        
+
         # Find the layers
         for layer in manifest.get("layers", []):
             digest = layer.get("digest")
             if not digest or not digest.startswith("sha256:"):
                 continue
-                
+
             blob_filename = "sha256-" + digest[7:]
             blob_path = blobs_root / blob_filename
-            
+
             media_type = layer.get("mediaType", "")
             if media_type == "application/vnd.ollama.image.model":
                 if blob_path.exists():
                     resolved_blob = str(blob_path.resolve())
-            elif media_type == "application/vnd.ollama.image.params":
+            elif media_type == "application/vnd.ollama.image.params":  
                 if blob_path.exists():
                     try:
                         with open(blob_path, "r", encoding="utf-8") as pf:
-                            params = json.load(pf)
+                            loaded_params = json.load(pf)
+                            for k, v in loaded_params.items():
+                                params[k] = v
                     except Exception:
                         pass
-                        
+            elif media_type == "application/vnd.ollama.image.projector":
+                if blob_path.exists():
+                    projector_path = str(blob_path.resolve())
+
+        if projector_path:
+            params["__projector_path"] = projector_path
+
         return resolved_blob, params
     except Exception:
         pass
@@ -780,6 +789,12 @@ def start_enchan_llama_server(
         "-b", str(batch_size),
         "-ub", str(ubatch_size),
     ]
+
+    projector_path = official_params.get("__projector_path")
+    if projector_path:
+        cmd.extend(["--mmproj", projector_path])
+        if not quiet:
+            print(f"  * Projector (Vision): {Path(projector_path).name}")
     if mmap_mode == "off":
         cmd.append("--no-mmap")
     elif mmap_mode == "on":
@@ -971,10 +986,25 @@ def generate_enchan_llama_response(
                 "content": msg.get("content", "")
             })
         else:
-            messages.append({
-                "role": "user",
-                "content": msg.get("content", "")
-            })
+            content = msg.get("content", "")
+            if "images" in msg and msg["images"]:
+                api_content = [{"type": "text", "text": content}]
+                for img_b64 in msg["images"]:
+                    api_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{img_b64}"
+                        }
+                    })
+                messages.append({
+                    "role": "user",
+                    "content": api_content
+                })
+            else:
+                messages.append({
+                    "role": "user",
+                    "content": content
+                })
 
     payload = {
         "model": "enchan-llama",

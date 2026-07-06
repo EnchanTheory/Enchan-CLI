@@ -92,3 +92,37 @@ def extract_path_and_query(user_input: str):
         return p_fallback, ""
 
     return None, user_input
+
+
+import base64
+
+def find_and_encode_images(text: str) -> list[str]:
+    """Scans the text for paths to existing image files, handling spaces, and returns their Base64 representations."""
+    import re
+    image_paths = []
+    
+    # 1. Match quoted image paths
+    quoted_pattern = r'["\']([^"\']+\.(?:png|jpg|jpeg|gif|webp))["\']'
+    for m in re.findall(quoted_pattern, text, re.IGNORECASE):
+        p = Path(m.strip())
+        if p.exists() and p.is_file():
+            image_paths.append(p)
+            
+    # 2. Match unquoted image paths (handles spaces by joining split words)
+    words = text.split()
+    for i in range(len(words)):
+        for j in range(i + 1, len(words) + 1):
+            candidate = " ".join(words[i:j]).strip(".,;:?!()[]{}")
+            if candidate.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+                p = Path(candidate)
+                if p.exists() and p.is_file() and p not in image_paths:
+                    image_paths.append(p)
+            
+    encoded_images = []
+    for p in image_paths:
+        try:
+            with open(p, "rb") as f:
+                encoded_images.append(base64.b64encode(f.read()).decode("utf-8"))
+        except Exception:
+            pass
+    return encoded_images
