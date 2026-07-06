@@ -9,7 +9,6 @@ CLI_DIR = BACKEND_DIR.parent
 from backend.agent_tools import (
     AGENT_MAX_ITERATIONS,
     execute_agent_tool,
-    parse_agent_tool_call,
     truncate_observation,
     get_max_obs_chars,
 )
@@ -172,8 +171,9 @@ def run_agent_loop(
             return
 
         response_text = generation["response"]
-        call = parse_agent_tool_call(response_text)
-        if call is None:
+        tool_calls = generation.get("tool_calls")
+        
+        if not tool_calls:
             chat_history.append(
                 _assistant_message_from_generation(
                     response_text,
@@ -197,6 +197,13 @@ def run_agent_loop(
                     print(strip_thought_blocks(response_text))
             return
 
+        # Process the first tool call (we only execute one per turn currently)
+        tc = tool_calls[0]
+        call = {
+            "tool": tc.get("function", {}).get("name", ""),
+            "args": tc.get("function", {}).get("arguments", {})
+        }
+
         observation_text = _run_tool_observation(
             call,
             tokenizer=tokenizer,
@@ -208,8 +215,15 @@ def run_agent_loop(
             print_before_action_newline=print_before_action_newline,
             append_tool_result_event=append_tool_result_event,
         )
-        chat_history.append({"role": "assistant", "content": strip_thought_blocks(response_text)})
-        chat_history.append({"role": "user", "content": observation_text + "\nContinue."})
+        
+        # Append the assistant message including tool_calls
+        assistant_msg = {"role": "assistant", "content": strip_thought_blocks(response_text), "tool_calls": tool_calls}
+        if generation.get("thinking"):
+            assistant_msg["thinking"] = generation["thinking"]
+        chat_history.append(assistant_msg)
+        
+        # Append the tool result
+        chat_history.append({"role": "tool", "content": observation_text + "\nContinue."})
 
     append_session_event(
         session_log_path,
