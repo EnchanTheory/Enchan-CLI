@@ -1,3 +1,4 @@
+from backend.agent_tools_schema import AGENT_TOOLS_SCHEMA
 import os
 import sys
 import platform
@@ -30,7 +31,6 @@ LLAMA_SERVER_NAME = "llama-server.exe" if sys.platform == "win32" else "llama-se
 
 
 from backend.session_log import append_session_event
-
 DEFAULT_ENCHAN_LLAMA_PORT = 11435
 DEFAULT_ENCHAN_LLAMA_HOST = f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}"
 
@@ -955,6 +955,7 @@ def generate_enchan_llama_response(
         "top_k": int(generation_config.get("top_k", 20)),
         "presence_penalty": float(generation_config.get("presence_penalty", 1.5)),
         "max_tokens": int(generation_config.get("max_new_tokens", -1)),
+        "tools": AGENT_TOOLS_SCHEMA,
     }
     
     # Qwen3.6 chat_template_kwargs handling
@@ -979,6 +980,7 @@ def generate_enchan_llama_response(
 
     start_time = time.perf_counter()
     content_parts = []
+    tool_calls_merged = []
     printed_len = 0
     printed_rendered_len = 0
     think_opt = bool(generation_config.get("think", False)) # deprecated, use view_think
@@ -1037,6 +1039,20 @@ def generate_enchan_llama_response(
                     reasoning = delta.get("reasoning_content", "")
                     content = delta.get("content", "")
                     
+                    tool_calls_chunk = delta.get("tool_calls")
+                    if tool_calls_chunk:
+                        for tc in tool_calls_chunk:
+                            idx = tc.get("index", 0)
+                            while len(tool_calls_merged) <= idx:
+                                tool_calls_merged.append({"function": {"name": "", "arguments": ""}})
+                            
+                            func_chunk = tc.get("function", {})
+                            if "name" in func_chunk and func_chunk["name"]:
+                                tool_calls_merged[idx]["function"]["name"] += func_chunk["name"]
+                            
+                            if "arguments" in func_chunk and func_chunk["arguments"]:
+                                tool_calls_merged[idx]["function"]["arguments"] += func_chunk["arguments"]
+                    
                     if reasoning:
                         if not reasoning_started:
                             content_parts.append("<think>\n")
@@ -1054,7 +1070,7 @@ def generate_enchan_llama_response(
                             content_started = True
                             accumulated = "".join(content_parts)
                             
-                            tags = ["<tool_call>", "<thought>", "</thought>", "<think>", "</think>"]
+                            tags = ["<thought>", "</thought>", "<think>", "</think>"]
                             max_match = 0
                             for t in tags:
                                 for i in range(1, min(len(accumulated), len(t)) + 1):
@@ -1146,12 +1162,28 @@ def generate_enchan_llama_response(
     if status is not None:
         status.stop()
 
+    parsed_tool_calls = []
+    for tc in tool_calls_merged:
+        name = tc["function"]["name"]
+        raw_args = tc["function"]["arguments"]
+        try:
+            args = json.loads(raw_args) if raw_args else {}
+        except Exception:
+            args = {}
+        parsed_tool_calls.append({
+            "function": {
+                "name": name,
+                "arguments": args
+            }
+        })
+
     if cancelled:
         if stream_output:
             print("\n\x1b[2;90m[System] Enchan Llama generation cancelled by Esc.\x1b[0m")
         return {
             "cancelled": True,
             "response": response,
+            "tool_calls": parsed_tool_calls,
             "elapsed_sec": elapsed,
         }
 
@@ -1179,6 +1211,7 @@ def generate_enchan_llama_response(
     return {
         "cancelled": False,
         "response": response,
+        "tool_calls": parsed_tool_calls,
         "elapsed_sec": elapsed,
         "tps": tps,
         "tokens_count": predicted_n or fallback_tokens_count,
@@ -1201,7 +1234,6 @@ def run_enchan_llama_once(
     from backend.agent_loop import run_agent_loop
     from backend.ollama_backend import build_agent_goal_prompt, format_count, estimate_text_tokens_rough, count_text_tokens
     from backend.session_log import append_session_event
-
     if not ensure_enchan_llama_for_request(generation_config, args):
         append_session_event(session_log_path, {"type": "error", "stage": "enchan_llama_start"})
         return
@@ -1260,7 +1292,6 @@ def run_enchan_llama_agent_turn(
 ) -> None:
     from backend.agent_loop import run_agent_loop
     from backend.session_log import append_session_event
-
     host = f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}"
     if not ensure_enchan_llama_for_request(generation_config, args):
         append_session_event(session_log_path, {"type": "error", "stage": "enchan_llama_start"})

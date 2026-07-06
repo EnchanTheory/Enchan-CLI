@@ -124,7 +124,7 @@ def main():
         if args.gguf_model:
             gguf_model_path = args.gguf_model
         elif interactive_startup:
-            chosen = select_startup_model(args.ollama_host, "Select Enchan Model")
+            chosen = select_startup_model(args.ollama_host, "Select Enchan Model", filter_gguf=True)
             if not chosen:
                 print("[System] Model selection cancelled.")
                 sys.exit(1)

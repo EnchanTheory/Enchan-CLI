@@ -38,13 +38,19 @@ def select_startup_backend(default_backend: str) -> str:
     return default_backend
 
 
-def select_startup_model(host: str, title: str = "Select Model") -> Optional[str]:
-    """Let the user pick an installed model or download the default one.
+def select_startup_model(host: str, title: str = "Select Model", filter_gguf: bool = False) -> Optional[str]:
+    """Let the user pick an installed model or download the default one.      
 
     Returns the chosen model tag (which may still need downloading), or None if cancelled.
     When no models are installed, the only option is to download the default model.
     """
     installed = list_installed_ollama_models(host)
+    if filter_gguf:
+        try:
+            from backend.model_discovery import filter_enchan_gguf_models
+            installed = filter_enchan_gguf_models(installed)
+        except Exception:
+            pass
     options = [(name, "installed", True) for name in installed]
     offer_download = ENCHAN_DEFAULT_DOWNLOAD_MODEL not in installed
     if offer_download:

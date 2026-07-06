@@ -25,6 +25,7 @@ from backend.session_log import append_session_event
 from backend.agent_tools import AGENT_SYSTEM_PROMPT
 from backend.agent_loop import run_agent_loop
 from backend.memory_store import build_memory_prompt_section
+from backend.agent_tools_schema import AGENT_TOOLS_SCHEMA
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma4:e2b-it-qat"
@@ -172,6 +173,7 @@ def generate_ollama_response(
             "num_predict": int(generation_config["max_new_tokens"]),
             "num_ctx": int(generation_config["max_input_tokens"]),
         },
+        "tools": AGENT_TOOLS_SCHEMA,
     }
 
     if stream_output and not generation_config.get("suppress_response_header", False):
@@ -187,6 +189,7 @@ def generate_ollama_response(
     final_chunk = {}
     cancelled = False
     printed_len = 0
+    tool_calls_merged = []
 
     status = None
     if stream_output:
@@ -233,26 +236,29 @@ def generate_ollama_response(
                                 print("\x1b[0m", end="", flush=True)
                         content_started = True
 
-                        accumulated = "".join(content_parts)
-                        if "<tool_call>" in accumulated:
-                            # Hiding raw tool call
-                            pass
-                        else:
-                            # Avoid printing partial tag prefixes of "<tool_call>"
-                            tag = "<tool_call>"
-                            max_match = 0
-                            for i in range(1, min(len(accumulated), len(tag)) + 1):
-                                suffix = accumulated[-i:]
-                                if tag.startswith(suffix):
-                                    max_match = i
+                        if status is not None:
+                            status.stop()
+                            status = None
+                        print(content, end="", flush=True)
 
-                            safe_len = len(accumulated) - max_match
-                            if safe_len > printed_len:
-                                if status is not None:
-                                    status.stop()
-                                    status = None
-                                print(accumulated[printed_len:safe_len], end="", flush=True)
-                                printed_len = safe_len
+                if "tool_calls" in message:
+                    for i, tc in enumerate(message["tool_calls"]):
+                        if i >= len(tool_calls_merged):
+                            tool_calls_merged.append({"function": {"name": "", "arguments": {}}})
+                        
+                        func_chunk = tc.get("function", {})
+                        if "name" in func_chunk and func_chunk["name"]:
+                            tool_calls_merged[i]["function"]["name"] = func_chunk["name"]
+                        
+                        args_chunk = func_chunk.get("arguments", {})
+                        for k, v in args_chunk.items():
+                            if k not in tool_calls_merged[i]["function"]["arguments"]:
+                                tool_calls_merged[i]["function"]["arguments"][k] = v
+                            else:
+                                if isinstance(v, str) and isinstance(tool_calls_merged[i]["function"]["arguments"][k], str):
+                                    tool_calls_merged[i]["function"]["arguments"][k] += v
+                                else:
+                                    tool_calls_merged[i]["function"]["arguments"][k] = v
                 if esc_pressed():
                     cancelled = True
                     break
@@ -292,6 +298,7 @@ def generate_ollama_response(
                 "model": ollama_model,
                 "content": response,
                 "thinking": thinking,
+                "tool_calls": tool_calls_merged,
                 "elapsed_sec": elapsed,
                 "eval_count": eval_count,
             },
@@ -300,6 +307,7 @@ def generate_ollama_response(
             "cancelled": True,
             "response": response,
             "thinking": thinking,
+            "tool_calls": tool_calls_merged,
             "output_tokens": eval_count,
             "elapsed_sec": elapsed,
             "tps": tps,
@@ -323,6 +331,7 @@ def generate_ollama_response(
             "model": ollama_model,
             "content": response,
             "thinking": thinking,
+            "tool_calls": tool_calls_merged,
             "elapsed_sec": elapsed,
             "eval_count": eval_count,
             "eval_duration_ns": eval_duration_ns,
@@ -332,6 +341,7 @@ def generate_ollama_response(
     return {
         "response": response,
         "thinking": thinking,
+        "tool_calls": tool_calls_merged,
         "output_tokens": eval_count,
         "elapsed_sec": elapsed,
         "tps": tps,
