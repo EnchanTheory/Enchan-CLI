@@ -934,16 +934,47 @@ def generate_enchan_llama_response(
     for msg in chat_history:
         role = msg.get("role")
         if role in ("assistant", "model"):
-            mapped_role = "assistant"
+            item = {
+                "role": "assistant",
+                "content": msg.get("content", "") or None
+            }
+            if "tool_calls" in msg and msg["tool_calls"]:
+                api_tool_calls = []
+                for tc in msg["tool_calls"]:
+                    func = tc.get("function", {})
+                    args = func.get("arguments", {})
+                    args_str = json.dumps(args) if isinstance(args, dict) else str(args)
+                    api_tool_calls.append({
+                        "id": tc.get("id") or f"call_{func.get('name', 'dummy')}_{int(time.time())}",
+                        "type": "function",
+                        "function": {
+                            "name": func.get("name", ""),
+                            "arguments": args_str
+                        }
+                    })
+                item["tool_calls"] = api_tool_calls
+            messages.append(item)
         elif role == "system":
-            mapped_role = "system"
+            messages.append({
+                "role": "system",
+                "content": msg.get("content", "")
+            })
+        elif role == "tool":
+            tool_call_id = "call_dummy"
+            for prev in reversed(messages):
+                if prev.get("role") == "assistant" and "tool_calls" in prev and prev["tool_calls"]:
+                    tool_call_id = prev["tool_calls"][0].get("id", "call_dummy")
+                    break
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": msg.get("content", "")
+            })
         else:
-            mapped_role = "user"
-            
-        messages.append({
-            "role": mapped_role,
-            "content": msg.get("content", "")
-        })
+            messages.append({
+                "role": "user",
+                "content": msg.get("content", "")
+            })
 
     payload = {
         "model": "enchan-llama",
@@ -1044,8 +1075,11 @@ def generate_enchan_llama_response(
                         for tc in tool_calls_chunk:
                             idx = tc.get("index", 0)
                             while len(tool_calls_merged) <= idx:
-                                tool_calls_merged.append({"function": {"name": "", "arguments": ""}})
+                                tool_calls_merged.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
                             
+                            if "id" in tc and tc["id"]:
+                                tool_calls_merged[idx]["id"] += tc["id"]
+                                
                             func_chunk = tc.get("function", {})
                             if "name" in func_chunk and func_chunk["name"]:
                                 tool_calls_merged[idx]["function"]["name"] += func_chunk["name"]
@@ -1166,11 +1200,14 @@ def generate_enchan_llama_response(
     for tc in tool_calls_merged:
         name = tc["function"]["name"]
         raw_args = tc["function"]["arguments"]
+        tc_id = tc.get("id") or f"call_{name}_{int(time.time())}"
         try:
             args = json.loads(raw_args) if raw_args else {}
         except Exception:
             args = {}
         parsed_tool_calls.append({
+            "id": tc_id,
+            "type": "function",
             "function": {
                 "name": name,
                 "arguments": args
