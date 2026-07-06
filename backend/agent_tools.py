@@ -993,7 +993,7 @@ def execute_agent_tool(call: dict, tokenizer=None, model=None) -> dict:
     if tool is None:
         return {"tool": tool_name, "ok": False, "observation": f"Unknown tool: {tool_name}"}
     
-    args = call.get("args", {})
+    args = dict(call.get("args", {}))
 
     # --- Security Confirmation for Local Actions ---
     # We require explicit user permission before Enchan CLI performs local modifications.
