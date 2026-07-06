@@ -13,6 +13,10 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
         "yarn_factor": 1.0,
         "max_new_tokens": -1,
         "max_input_tokens": 131072,
+        "dynatemp_range": 0.0,
+        "mirostat": 0,
+        "mirostat_lr": 0.1,
+        "mirostat_ent": 5.0,
     }
 
     # 2. Try loading official recommended params from the Ollama Modelfile manifest
@@ -29,6 +33,18 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
                     default_params["top_k"] = int(official_params["top_k"])
                 if "presence_penalty" in official_params:
                     default_params["presence_penalty"] = float(official_params["presence_penalty"])
+                if "dynatemp_range" in official_params:
+                    default_params["dynatemp_range"] = float(official_params["dynatemp_range"])
+                if "mirostat" in official_params:
+                    default_params["mirostat"] = int(official_params["mirostat"])
+                if "mirostat_lr" in official_params:
+                    default_params["mirostat_lr"] = float(official_params["mirostat_lr"])
+                elif "mirostat_eta" in official_params:
+                    default_params["mirostat_lr"] = float(official_params["mirostat_eta"])
+                if "mirostat_ent" in official_params:
+                    default_params["mirostat_ent"] = float(official_params["mirostat_ent"])
+                elif "mirostat_tau" in official_params:
+                    default_params["mirostat_ent"] = float(official_params["mirostat_tau"])
         except Exception:
             pass
 
@@ -47,6 +63,14 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
         default_params["max_input_tokens"] = int(local_cfg["ollama_ctx"])
     if "yarn_factor" in local_cfg:
         default_params["yarn_factor"] = float(local_cfg["yarn_factor"])
+    if "dynatemp_range" in local_cfg:
+        default_params["dynatemp_range"] = float(local_cfg["dynatemp_range"])
+    if "mirostat" in local_cfg:
+        default_params["mirostat"] = int(local_cfg["mirostat"])
+    if "mirostat_lr" in local_cfg:
+        default_params["mirostat_lr"] = float(local_cfg["mirostat_lr"])
+    if "mirostat_ent" in local_cfg:
+        default_params["mirostat_ent"] = float(local_cfg["mirostat_ent"])
 
     # 4. Synchronize all values back to the generation_config in-place
     generation_config["temperature"] = default_params["temperature"]
@@ -56,3 +80,7 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
     generation_config["yarn_factor"] = default_params["yarn_factor"]
     generation_config["max_new_tokens"] = default_params["max_new_tokens"]
     generation_config["max_input_tokens"] = default_params["max_input_tokens"]
+    generation_config["dynatemp_range"] = default_params["dynatemp_range"]
+    generation_config["mirostat"] = default_params["mirostat"]
+    generation_config["mirostat_lr"] = default_params["mirostat_lr"]
+    generation_config["mirostat_ent"] = default_params["mirostat_ent"]

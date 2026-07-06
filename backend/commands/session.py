@@ -130,6 +130,10 @@ def handle_set(
         print(f"  max              = {generation_config.get('max_new_tokens', -1)} (max_new_tokens)")
         print(f"  input            = {generation_config.get('max_input_tokens', 131072)} (max_input_tokens)")
         print(f"  obs_chars        = {load_local_config().get('max_obs_chars', 10000)} (max tool output chars)")
+        print(f"  dynatemp_range   = {generation_config.get('dynatemp_range', 0.0)} (dynamic temperature range)")
+        print(f"  mirostat         = {generation_config.get('mirostat', 0)} (Mirostat mode: 0, 1, 2)")
+        print(f"  mirostat_lr      = {generation_config.get('mirostat_lr', 0.1)} (Mirostat learning rate)")
+        print(f"  mirostat_ent     = {generation_config.get('mirostat_ent', 5.0)} (Mirostat target entropy)")
         if enchan_config:
             print(f"  exit_layer       = {enchan_config.get('force_early_exit_layer', -1)}")
             print(f"  exit_thresh      = {enchan_config.get('early_exit_threshold', 0.15)}")
@@ -150,7 +154,7 @@ def handle_set(
     # Reset command intercept
     if len(parts) == 2 and parts[1].lower() in ("reset", "clear"):
         local_cfg = load_local_config()
-        keys_to_remove = ["temperature", "top_p", "top_k", "presence_penalty", "max_new_tokens", "ollama_ctx", "view_think", "yarn_factor"]
+        keys_to_remove = ["temperature", "top_p", "top_k", "presence_penalty", "max_new_tokens", "ollama_ctx", "view_think", "yarn_factor", "dynatemp_range", "mirostat", "mirostat_lr", "mirostat_ent"]
         removed_any = False
         for k in keys_to_remove:
             if k in local_cfg:
@@ -232,8 +236,32 @@ def handle_set(
                 raise ValueError("max_obs_chars must be between 1000 and 200000")
             generation_config["max_obs_chars"] = obs_chars
             print(f"[System] max_obs_chars = {obs_chars}")
+        elif key in ("dynatemp", "dynatemp_range", "dynatemp-range"):
+            dynatemp = float(value)
+            if dynatemp < 0.0 or dynatemp > 2.0:
+                raise ValueError("dynatemp_range must be between 0.0 and 2.0")
+            generation_config["dynatemp_range"] = dynatemp
+            print(f"[System] dynatemp_range = {dynatemp}")
+        elif key == "mirostat":
+            mirostat = int(value)
+            if mirostat not in (0, 1, 2):
+                raise ValueError("mirostat must be 0 (disabled), 1, or 2")
+            generation_config["mirostat"] = mirostat
+            print(f"[System] mirostat = {mirostat}")
+        elif key in ("mirostat_lr", "mirostat-lr"):
+            mirostat_lr = float(value)
+            if mirostat_lr <= 0.0 or mirostat_lr > 1.0:
+                raise ValueError("mirostat_lr must be between 0.0 and 1.0")
+            generation_config["mirostat_lr"] = mirostat_lr
+            print(f"[System] mirostat_lr = {mirostat_lr}")
+        elif key in ("mirostat_ent", "mirostat-ent"):
+            mirostat_ent = float(value)
+            if mirostat_ent <= 0.0:
+                raise ValueError("mirostat_ent must be positive")
+            generation_config["mirostat_ent"] = mirostat_ent
+            print(f"[System] mirostat_ent = {mirostat_ent}")
         else:
-            print("[Error] Unknown setting. Use temp, top_p, top_k, input, max, obs_chars, exit_layer, or exit_thresh.")
+            print("[Error] Unknown setting. Use temp, top_p, top_k, input, max, obs_chars, dynatemp_range, mirostat, mirostat_lr, or mirostat_ent.")
     except ValueError as e:
         print(f"[Error] {e}")
         
@@ -246,6 +274,14 @@ def handle_set(
     local_cfg["ollama_ctx"] = generation_config.get("max_input_tokens", 131072)
     local_cfg["max_obs_chars"] = generation_config.get("max_obs_chars", 10000)
     local_cfg["think"] = generation_config.get("think", True)
+    if "dynatemp_range" in generation_config:
+        local_cfg["dynatemp_range"] = generation_config["dynatemp_range"]
+    if "mirostat" in generation_config:
+        local_cfg["mirostat"] = generation_config["mirostat"]
+    if "mirostat_lr" in generation_config:
+        local_cfg["mirostat_lr"] = generation_config["mirostat_lr"]
+    if "mirostat_ent" in generation_config:
+        local_cfg["mirostat_ent"] = generation_config["mirostat_ent"]
     save_local_config(local_cfg)
     
     append_session_event(

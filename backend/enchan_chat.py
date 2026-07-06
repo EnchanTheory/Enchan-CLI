@@ -264,6 +264,10 @@ def main():
         "ollama_host": args.ollama_host if backend_mode == "ollama" else None,
         "backend": backend_mode,
         "max_obs_chars": load_local_config().get("max_obs_chars", 10000),
+        "dynatemp_range": load_local_config().get("dynatemp_range", 0.0),
+        "mirostat": load_local_config().get("mirostat", 0),
+        "mirostat_lr": load_local_config().get("mirostat_lr", 0.1),
+        "mirostat_ent": load_local_config().get("mirostat_ent", 5.0),
     }
     
     sync_generation_config_to_active_model(generation_config, active_model_name, backend_mode)

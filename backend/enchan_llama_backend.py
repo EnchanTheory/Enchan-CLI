@@ -685,6 +685,10 @@ def start_enchan_llama_server(
     text_only: bool = False,
     mtp: bool = False,
     yarn_factor: float = 1.0,
+    dynatemp_range: float = 0.0,
+    mirostat: int = 0,
+    mirostat_lr: float = 0.1,
+    mirostat_ent: float = 5.0,
 ) -> subprocess.Popen:
     """
     Spawns the custom Enchan llama-server runtime in the background
@@ -795,6 +799,30 @@ def start_enchan_llama_server(
         cmd.extend(["--mmproj", projector_path])
         if not quiet:
             print(f"  * Projector (Vision): {Path(projector_path).name}")
+
+    # Dynamic Lookup Cache (Always Enabled as a fast fallback feature)
+    lookup_cache_path = CLI_DIR / "temp_workspace" / "llama_lookup_cache.txt"
+    lookup_cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd.extend(["-lcd", str(lookup_cache_path.resolve())])
+
+    # Dynamic Temperature & Mirostat (Passed from solved priority parameters)
+    if dynatemp_range > 0.0:
+        cmd.extend(["--dynatemp-range", str(dynatemp_range)])
+    if mirostat > 0:
+        cmd.extend(["--mirostat", str(mirostat)])
+        if mirostat_lr != 0.1:
+            cmd.extend(["--mirostat-lr", str(mirostat_lr)])
+        if mirostat_ent != 5.0:
+            cmd.extend(["--mirostat-ent", str(mirostat_ent)])
+
+    if not quiet:
+        details = []
+        if dynatemp_range > 0.0:
+            details.append(f"dynatemp-range={dynatemp_range}")
+        if mirostat > 0:
+            details.append(f"mirostat={mirostat} (lr={mirostat_lr}, ent={mirostat_ent})")
+        details.append("dynamic lookup cache enabled")
+        print(f"  * Advanced parameters: {', '.join(details)}")
     if mmap_mode == "off":
         cmd.append("--no-mmap")
     elif mmap_mode == "on":
@@ -869,6 +897,10 @@ def ensure_enchan_llama_running(
     text_only: bool = False,
     mtp: bool = False,
     yarn_factor: float = 1.0,
+    dynatemp_range: float = 0.0,
+    mirostat: int = 0,
+    mirostat_lr: float = 0.1,
+    mirostat_ent: float = 5.0,
 ) -> bool:
     return bool(
         start_enchan_llama_server(
@@ -887,6 +919,10 @@ def ensure_enchan_llama_running(
             text_only=text_only,
             mtp=mtp,
             yarn_factor=yarn_factor,
+            dynatemp_range=dynatemp_range,
+            mirostat=mirostat,
+            mirostat_lr=mirostat_lr,
+            mirostat_ent=mirostat_ent,
         )
     )
 
@@ -896,6 +932,17 @@ def ensure_enchan_llama_for_request(generation_config: dict | None, args, quiet:
     if not model_path:
         print("[Error] No model configured for Enchan Llama.")
         return False
+        
+    dynatemp_range = 0.0
+    mirostat = 0
+    mirostat_lr = 0.1
+    mirostat_ent = 5.0
+    if generation_config is not None:
+        dynatemp_range = float(generation_config.get("dynatemp_range", 0.0))
+        mirostat = int(generation_config.get("mirostat", 0))
+        mirostat_lr = float(generation_config.get("mirostat_lr", 0.1))
+        mirostat_ent = float(generation_config.get("mirostat_ent", 5.0))
+
     ok = ensure_enchan_llama_running(
         model_path=model_path,
         screen_strength=getattr(args, "screen_strength", 0.3),
@@ -912,6 +959,10 @@ def ensure_enchan_llama_for_request(generation_config: dict | None, args, quiet:
         text_only=getattr(args, "text_only", False),
         mtp=getattr(args, "mtp", False),
         yarn_factor=float(getattr(args, "yarn_factor", 1.0)),
+        dynatemp_range=dynatemp_range,
+        mirostat=mirostat,
+        mirostat_lr=mirostat_lr,
+        mirostat_ent=mirostat_ent,
     )
     runtime_ctx_size = get_enchan_llama_context_size()
     if runtime_ctx_size > 0 and generation_config is not None:

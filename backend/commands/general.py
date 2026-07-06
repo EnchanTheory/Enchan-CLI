@@ -14,21 +14,23 @@ def handle_help(file_context: str, **kwargs) -> tuple[bool, str, bool]:
     print("  /new                  Start a new session and clear current context.")
     print("  /status               Show active model, backend, context, and generation settings.")
     print("  /resume [num|name]    Resume a saved session.")
-    print("  /model [num|name]     List or switch Ollama/Enchan models.")
+    print("  /model [num|name]     List or switch Ollama/Enchan models.")     
     print("  /compress             Optimize older conversation turns invisibly.")
     print("  /set                  Show or change generation settings interactively.")
-    print("  /set temp <value>     Set temperature, e.g. /set temp 0.3")
+    print("  /set temp <value>     Set temperature, e.g. /set temp 0.3")      
     print("  /set top_p <value>    Set top_p, e.g. /set top_p 0.9")
     print("  /set input <tokens>   Set max_input_tokens, e.g. /set input 4096")
-    print("  /set max <tokens>     Set max_new_tokens, e.g. /set max 1024")
+    print("  /set max <tokens>     Set max_new_tokens, e.g. /set max 1024")   
+    print("  /set dynatemp <val>   Set dynamic temperature range, e.g. /set dynatemp 0.2")
+    print("  /set mirostat <0|1|2> Set Mirostat mode, e.g. /set mirostat 2")
     print("  /exit                 Exit the CLI.")
     print("\n[Smart Reading]")
-    print("  Paste or drag a file path and Enchan will read it directly.")
+    print("  Paste or drag a file or image path and Enchan will read/view it directly.")    
     print("  Large files are compressed internally with Enchan Engine; compressed context is hidden from display and logs.")
     print("  Ask naturally: summaries, characters, errors, settings, code behavior, or document analysis.")
     print("\n[Agent Tools]")
     print("  Enchan chooses tools when local evidence helps. Common tools include read_document, search_pattern, replace_text, write_text_file, and execute_command.")
-    
+
     return True, file_context, False
 
 
@@ -67,8 +69,14 @@ def handle_status(
     print(f"  Last loaded files: {len(loaded_files)}")
     print(f"  max_input_tokens: {generation_config.get('max_input_tokens', 'N/A')}")
     print(f"  max_new_tokens: {generation_config.get('max_new_tokens', 'N/A')}")
-    print(f"  temperature: {generation_config.get('temperature', 'N/A')}")
+    print(f"  temperature: {generation_config.get('temperature', 'N/A')}")    
     print(f"  top_p: {generation_config.get('top_p', 'N/A')}")
+    print(f"  top_k: {generation_config.get('top_k', 'N/A')}")
+    print(f"  dynatemp_range: {generation_config.get('dynatemp_range', 0.0)}")
+    print(f"  mirostat: {generation_config.get('mirostat', 0)} (0=off, 1=Mirostat, 2=Mirostat 2.0)")
+    if generation_config.get("mirostat", 0) > 0:
+        print(f"  mirostat_lr: {generation_config.get('mirostat_lr', 0.1)}")
+        print(f"  mirostat_ent: {generation_config.get('mirostat_ent', 5.0)}")
     print(f"  max_obs_chars: {generation_config.get('max_obs_chars', 10000)}")
     
     if enchan_config:
