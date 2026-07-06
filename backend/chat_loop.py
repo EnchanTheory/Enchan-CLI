@@ -128,7 +128,7 @@ def run_chat_loop(
                 enchan_preload_thread.start()
 
             append_session_event(session_log_path, {"type": "input", "content": user_input})
-            if user_input.strip().startswith("/"):
+            if is_known_slash_command(user_input):
                 handled, file_context, should_exit = handle_cli_command(
                     user_input,
                     chat_history,
