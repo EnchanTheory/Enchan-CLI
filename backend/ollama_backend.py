@@ -154,13 +154,31 @@ def generate_ollama_response(
             "content": sanitize_for_json(system_context),
         })
 
-    messages.extend([
-        {
-            "role": "assistant" if msg.get("role") in ("assistant", "model") else msg.get("role", "user"),
-            "content": sanitize_for_json(msg.get("content", "")),
-        }
-        for msg in chat_history
-    ])
+    for msg in chat_history:
+        role = msg.get("role")
+        if role in ("assistant", "model"):
+            item = {
+                "role": "assistant",
+                "content": sanitize_for_json(msg.get("content", "")) or "",
+            }
+            if "tool_calls" in msg:
+                item["tool_calls"] = msg["tool_calls"]
+            messages.append(item)
+        elif role == "system":
+            messages.append({
+                "role": "system",
+                "content": sanitize_for_json(msg.get("content", ""))
+            })
+        elif role == "tool":
+            messages.append({
+                "role": "tool",
+                "content": sanitize_for_json(msg.get("content", ""))
+            })
+        else:
+            messages.append({
+                "role": "user",
+                "content": sanitize_for_json(msg.get("content", ""))
+            })
     payload = {
         "model": ollama_model,
         "messages": messages,
