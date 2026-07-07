@@ -87,6 +87,41 @@ def run_chat_loop(
     def consolidate_memory(reason: str) -> None:
         return None
 
+    enchan_preload_thread = None
+    enchan_preload_result = {"ok": True}
+
+    def start_enchan_preload_if_needed() -> None:
+        """Warm up the Enchan llama-server while the user is still typing.
+
+        Previously this preload was started only after the first prompt was submitted,
+        so the first response still paid the full model startup cost. Starting it before
+        the prompt keeps the interactive input responsive and hides most cold-start time.
+        """
+        nonlocal enchan_preload_thread, enchan_preload_result
+        if backend_mode != "enchan":
+            return
+        if enchan_preload_thread is not None and enchan_preload_thread.is_alive():
+            return
+        if enchan_preload_thread is not None and not enchan_preload_result.get("ok", True):
+            return
+
+        enchan_preload_result = {"ok": True}
+
+        def preload_enchan_engine():
+            try:
+                from backend.enchan_llama_backend import ensure_enchan_llama_for_request
+                enchan_preload_result["ok"] = ensure_enchan_llama_for_request(generation_config, args)
+            except Exception as exc:
+                enchan_preload_result["ok"] = False
+                enchan_preload_result["error"] = str(exc)
+
+        enchan_preload_thread = threading.Thread(
+            target=preload_enchan_engine,
+            name="enchan-llama-preload",
+            daemon=True,
+        )
+        enchan_preload_thread.start()
+
     if backend_mode == "enchan":
         from backend.kv_cache_config import apply_enchan_kv_cache_patch
         kv_cache_type = apply_enchan_kv_cache_patch(getattr(args, "kv_cache_type", None))
@@ -96,8 +131,9 @@ def run_chat_loop(
     while True:
         try:
             auto_compressed = False
-            enchan_preload_thread = None
-            enchan_preload_result = {"ok": True}
+
+            if backend_mode == "enchan":
+                start_enchan_preload_if_needed()
 
             if session is not None:
                 width = shutil.get_terminal_size().columns
@@ -116,22 +152,6 @@ def run_chat_loop(
 
             if not user_input.strip():
                 continue
-
-            if backend_mode == "enchan" and not is_known_slash_command(user_input):
-                def preload_enchan_engine():
-                    try:
-                        from backend.enchan_llama_backend import ensure_enchan_llama_for_request
-                        enchan_preload_result["ok"] = ensure_enchan_llama_for_request(None, args)
-                    except Exception as exc:
-                        enchan_preload_result["ok"] = False
-                        enchan_preload_result["error"] = str(exc)
-
-                enchan_preload_thread = threading.Thread(
-                    target=preload_enchan_engine,
-                    name="enchan-llama-preload",
-                    daemon=True,
-                )
-                enchan_preload_thread.start()
 
             append_session_event(session_log_path, {"type": "input", "content": user_input})
             if is_known_slash_command(user_input):
@@ -164,6 +184,8 @@ def run_chat_loop(
                         args.kv_cache_type = generation_config["kv_cache_type"]
                     if generation_config.get("llama_extra_args") is not None:
                         args.llama_arg = generation_config["llama_extra_args"]
+                    enchan_preload_thread = None
+                    enchan_preload_result = {"ok": True}
                     continue
 
             if not agent_mode and user_input.strip().lower() == "enchan --agent":
@@ -266,7 +288,10 @@ def run_chat_loop(
                                 "message": err_msg,
                             },
                         )
+                        enchan_preload_thread = None
+                        enchan_preload_result = {"ok": True}
                         continue
+                    enchan_preload_thread = None
                 run_enchan_llama_agent_turn(chat_history, generation_config, session_log_path, args, tokenizer=tokenizer)
                 consolidate_memory("active_turn")
                 continue
