@@ -1,5 +1,6 @@
 from pathlib import Path
 from backend.core import registry
+from backend.llama_args import format_llama_extra_args
 
 # Path resolution for LICENSE file
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -14,14 +15,15 @@ def handle_help(file_context: str, **kwargs) -> tuple[bool, str, bool]:
     print("  /new                          Start a new session and clear current context.")
     print("  /status                       Show active model, backend, context, and generation settings.")
     print("  /resume [num|name]            Resume a saved session.")
-    print("  /model [num|name]             List or switch Ollama/Enchan models.")     
+    print("  /model [num|name]             List or switch Ollama/Enchan models.")
     print("  /compress                     Optimize older conversation turns invisibly.")
     print("  /set                          Show or change generation settings interactively.")
-    print("  /set temperature <value>      Set temperature, e.g. /set temperature 0.3")      
+    print("  /llama_set                    Show or change unmanaged llama-server passthrough args.")
+    print("  /set temperature <value>      Set temperature, e.g. /set temperature 0.3")
     print("  /set top_p <value>            Set top_p, e.g. /set top_p 0.9")
     print("  /set top_k <value>            Set top_k, e.g. /set top_k 64")
     print("  /set max_input_tokens <n>     Set max input tokens, e.g. /set max_input_tokens 4096")
-    print("  /set max_new_tokens <n>       Set max new tokens, e.g. /set max_new_tokens 1024")   
+    print("  /set max_new_tokens <n>       Set max new tokens, e.g. /set max_new_tokens 1024")
     print("  /set dynatemp_range <val>     Set dynamic temperature range, e.g. /set dynatemp_range 0.2")
     print("  /set mirostat <0|1|2>         Set Mirostat mode, e.g. /set mirostat 2")
     print("  /set screen_strength <val>    Set Enchan screening strength, e.g. /set screen_strength 0.4")
@@ -31,9 +33,10 @@ def handle_help(file_context: str, **kwargs) -> tuple[bool, str, bool]:
     print("  --backend <name>              Select backend: enchan or ollama.")
     print("  --screen-strength <value>     Enchan screening strength at startup.")
     print("  --kv-cache-type <type>        Enchan KV cache dtype: q4_0, q8_0, or f16 (default: q4_0).")
+    print("  --llama-arg <arg>             Append an unmanaged raw llama-server argument; repeat as needed.")
     print("                                q4_0 minimizes RAM for large models / long context; use q8_0 or f16 for more precision.")
     print("\n[Smart Reading]")
-    print("  Paste or drag a file or image path and Enchan will read/view it directly.")    
+    print("  Paste or drag a file or image path and Enchan will read/view it directly.")
     print("  Large files are compressed internally with Enchan Engine; compressed context is hidden from display and logs.")
     print("  Ask naturally: summaries, characters, errors, settings, code behavior, or document analysis.")
     print("\n[Agent Tools]")
@@ -51,7 +54,7 @@ def handle_license(file_context: str, **kwargs) -> tuple[bool, str, bool]:
         print(license_path.read_text(encoding="utf-8").rstrip())
     except Exception as e:
         print(f"[Error] Failed to read LICENSE: {e}")
-        
+
     return True, file_context, False
 
 
@@ -68,7 +71,7 @@ def handle_status(
     """Prints runtime status of the active inference model, parameters, and session contexts."""
     model_id = model.config._name_or_path if model is not None and hasattr(model, "config") else generation_config.get("model_id", "ollama")
     enchan_config = getattr(model, "enchan_config", {}) if model is not None else {}
-    
+
     print("\n[Status]")
     print(f"  Model: {model_id}")
     print(f"  Backend: {generation_config.get('backend', 'enchan')}")
@@ -77,25 +80,26 @@ def handle_status(
     print(f"  Last loaded files: {len(loaded_files)}")
     print(f"  max_input_tokens: {generation_config.get('max_input_tokens', 'N/A')}")
     print(f"  max_new_tokens: {generation_config.get('max_new_tokens', 'N/A')}")
-    print(f"  temperature: {generation_config.get('temperature', 'N/A')}")    
+    print(f"  temperature: {generation_config.get('temperature', 'N/A')}")
     print(f"  top_p: {generation_config.get('top_p', 'N/A')}")
     print(f"  top_k: {generation_config.get('top_k', 'N/A')}")
     if generation_config.get("backend") == "enchan":
         print(f"  screen_strength: {generation_config.get('screen_strength', 'N/A')}")
         print(f"  kv_cache_type: {generation_config.get('kv_cache_type', 'q4_0')}")
+        print(f"  llama_extra_args: {format_llama_extra_args(generation_config.get('llama_extra_args', []))}")
     print(f"  dynatemp_range: {generation_config.get('dynatemp_range', 0.0)}")
     print(f"  mirostat: {generation_config.get('mirostat', 0)} (0=off, 1=Mirostat, 2=Mirostat 2.0)")
     if generation_config.get("mirostat", 0) > 0:
         print(f"  mirostat_lr: {generation_config.get('mirostat_lr', 0.1)}")
         print(f"  mirostat_ent: {generation_config.get('mirostat_ent', 5.0)}")
     print(f"  max_obs_chars: {generation_config.get('max_obs_chars', 10000)}")
-    
+
     if enchan_config:
         print(f"  early_exit_threshold: {enchan_config.get('early_exit_threshold', 0.15)}")
         print(f"  force_early_exit_layer: {enchan_config.get('force_early_exit_layer', -1)}")
-        
+
     print(f"  agent_mode: {agent_mode}")
     print(f"  Agent tools: {'active; forced tool-aware mode' if agent_mode else 'available; Enchan chooses when local evidence is needed'}")
     print(f"  Esc cancellation: enabled")
-    
+
     return True, file_context, False

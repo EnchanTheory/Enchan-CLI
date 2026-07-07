@@ -1,4 +1,5 @@
 from backend.core.config import EnchanConfig
+from backend.llama_args import normalize_llama_extra_args
 
 def sync_generation_config_to_active_model(generation_config: dict, active_model_name: str, backend_mode: str):
     """Loads official model recommendations, merges with user-set JSON overrides, and updates generation_config in-place."""
@@ -71,6 +72,8 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
         default_params["mirostat_lr"] = float(local_cfg["mirostat_lr"])
     if "mirostat_ent" in local_cfg:
         default_params["mirostat_ent"] = float(local_cfg["mirostat_ent"])
+    if "llama_extra_args" in local_cfg:
+        default_params["llama_extra_args"] = normalize_llama_extra_args(local_cfg["llama_extra_args"])
 
     # 4. Synchronize all values back to the generation_config in-place
     generation_config["temperature"] = default_params["temperature"]
@@ -84,3 +87,5 @@ def sync_generation_config_to_active_model(generation_config: dict, active_model
     generation_config["mirostat"] = default_params["mirostat"]
     generation_config["mirostat_lr"] = default_params["mirostat_lr"]
     generation_config["mirostat_ent"] = default_params["mirostat_ent"]
+    if "llama_extra_args" in default_params:
+        generation_config["llama_extra_args"] = default_params["llama_extra_args"]

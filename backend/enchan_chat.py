@@ -54,6 +54,7 @@ from backend.ui_theme import (
 )
 
 from backend.core.config import load_local_config, save_local_config
+from backend.llama_args import find_managed_llama_flags, normalize_llama_extra_args
 from backend.runtime_config import sync_generation_config_to_active_model
 from backend.chat_loop import KNOWN_SLASH_COMMANDS, run_chat_loop
 
@@ -66,7 +67,7 @@ def main():
 
     # 1. Parse Arguments via modern modular CLI Args parser
     args = parse_args()
-    
+
     backend_explicit = any(arg == "--backend" or arg.startswith("--backend=") for arg in sys.argv[1:])
     single_turn_requested = bool(args.ask or args.ask_file)
     interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
@@ -75,7 +76,7 @@ def main():
         if local_cfg.get("backend") != args.backend:
             local_cfg["backend"] = args.backend
             save_local_config(local_cfg)
-        
+
     # Dynamic defaults based on official Ollama Modelfile parameters
     active_model_name = args.gguf_model if args.backend == "enchan" and args.gguf_model else args.ollama_model
     if active_model_name:
@@ -93,7 +94,7 @@ def main():
                     args.presence_penalty = float(official_params["presence_penalty"])
         except Exception:
             pass
-            
+
     plain_output = bool(args.plain and single_turn_requested)
     backend_mode = "ollama" if single_turn_requested and args.backend == "hf" else args.backend
 
@@ -106,7 +107,7 @@ def main():
             header_line += " [Agent]"
         print(header_line)
         print("=" * 70)
-    
+
     if backend_mode == "enchan":
         import atexit
         from backend.enchan_llama_backend import shutdown_enchan_llama
@@ -161,7 +162,7 @@ def main():
             else:
                 print("[Error] Ollama API is not available.")
             return
-            
+
         if interactive_startup:
             installed = list_installed_ollama_models(args.ollama_host)
             if args.ollama_model not in installed:
@@ -175,7 +176,7 @@ def main():
                 args.ollama_model = chosen
                 local_cfg["ollama_model"] = chosen
                 save_local_config(local_cfg)
-    
+
     if not plain_output:
         update_notice_path = CLI_DIR / ".enchan-update-available"
         if update_notice_path.exists():
@@ -222,7 +223,7 @@ def main():
 
     def consolidate_memory(reason: str) -> None:
         return None
-        
+
     try:
         tokenizer = load_enchan_tokenizer_for_ollama()
     except Exception as e:
@@ -233,7 +234,7 @@ def main():
     chat_history = []
     file_context = ""
     loaded_files = []
-    
+
     single_turn_prompt = None
     if args.ask_file:
         ask_path = Path(args.ask_file)
@@ -273,10 +274,11 @@ def main():
         "mirostat": load_local_config().get("mirostat", 0),
         "mirostat_lr": load_local_config().get("mirostat_lr", 0.1),
         "mirostat_ent": load_local_config().get("mirostat_ent", 5.0),
+        "llama_extra_args": normalize_llama_extra_args(getattr(args, "llama_arg", [])),
     }
-    
+
     sync_generation_config_to_active_model(generation_config, active_model_name, backend_mode)
-    
+
     # Re-apply explicit command-line overrides to prevent them from being wiped out by sync logic
     explicit_overrides = getattr(args, "explicit_overrides", {})
     if "temperature" in explicit_overrides:
@@ -293,7 +295,15 @@ def main():
         generation_config["max_new_tokens"] = explicit_overrides["max_new_tokens"]
     if "ollama_ctx" in explicit_overrides:
         generation_config["max_input_tokens"] = explicit_overrides["ollama_ctx"]
-    
+    if "llama_arg" in explicit_overrides:
+        generation_config["llama_extra_args"] = normalize_llama_extra_args(getattr(args, "llama_arg", []))
+
+    managed_llama = find_managed_llama_flags(generation_config.get("llama_extra_args", []))
+    if managed_llama:
+        print(f"[Error] --llama-arg contains Enchan-managed flag(s): {', '.join(sorted(set(managed_llama)))}")
+        print("Use /set or dedicated startup options for managed settings.")
+        return
+
     if agent_mode:
         generation_config["temperature"] = 0.1
         generation_config["top_p"] = 1.0

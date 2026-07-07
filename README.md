@@ -137,10 +137,14 @@ Persistent runtime settings inside interactive CLI:
 ```text
 /set screen_strength 0.4
 /set kv_cache_type q4_0
+/llama_set --swa-full
+/llama_set --n-cpu-moe 8
 /status
 ```
 
-These `/set` values are saved to `enchan_config.json`. For Enchan runtime settings that affect the running llama-server process, Enchan restarts the engine on the next request so the new setting is applied cleanly.
+These `/set` values are saved to `enchan_config.json`. `/set` is for Enchan-managed settings that Enchan validates and understands. For raw llama.cpp options that Enchan does not manage, use `/llama_set`; those values are saved as `llama_extra_args` and appended to the llama-server command after Enchan's managed flags. Enchan rejects managed flags in `/llama_set` so model path, host/port, context size, KV cache type, projector binding, reasoning, and Enchan defaults stay controlled by their dedicated settings. You can also repeat `--llama-arg` at startup for unmanaged raw flags, and llama.cpp `LLAMA_ARG_*` environment variables remain available for flags supported by llama-server. For Enchan runtime settings that affect the running llama-server process, Enchan restarts the engine on the next request so the new setting is applied cleanly.
+
+Enchan launches llama-server with native reasoning separation (`--reasoning-format deepseek`). `message.reasoning_content` is used for optional thinking display, while `message.content` is kept clean for chat history.
 
 ## Enchan Engine (Attention Screening)
 
@@ -227,10 +231,12 @@ Inside the interactive CLI, type `/` to see the following commands:
 - `/resume`: List resumable sessions or resume a specific session
 - `/compress`: Optimize older conversation turns
 - `/model`: Switch the active model
-- `/status`: Show model, history, context, and generation settings, including Enchan `screen_strength` and `kv_cache_type`
-- `/set`: Configure and persist generation/runtime parameters
+- `/status`: Show model, history, context, and generation settings, including Enchan `screen_strength`, `kv_cache_type`, and `llama_extra_args`
+- `/set`: Configure and persist Enchan-managed generation/runtime parameters
+- `/llama_set`: Configure unmanaged raw llama-server passthrough args
 - `/set screen_strength <value>`: Set and save Enchan Attention Screening strength
 - `/set kv_cache_type q4_0|q8_0|f16`: Set and save Enchan KV cache precision
+- `/llama_set clear`: Clear unmanaged llama-server passthrough args
 - `/help`: Show help menu and available commands
 - `/license`: Show repository license terms
 - `/new`: Start a new session (clears chat history and file context)
@@ -239,6 +245,7 @@ Inside the interactive CLI, type `/` to see the following commands:
 Useful startup options:
 
 - `--backend enchan|ollama`: choose the runtime backend
+- `--llama-arg <arg>`: append an unmanaged raw llama-server argument; repeat as needed
 - `--screen-strength <value>`: choose Enchan Attention Screening strength at startup
 - `--kv-cache-type q4_0|q8_0|f16`: choose Enchan KV cache precision; default `q4_0`
 

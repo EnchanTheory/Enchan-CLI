@@ -1,4 +1,6 @@
 from backend.agent_tools_schema import AGENT_TOOLS_SCHEMA
+from backend.llama_args import find_managed_llama_flags, format_llama_extra_args, normalize_llama_extra_args
+from backend.thinking import split_thought_blocks
 import os
 import sys
 import platform
@@ -39,6 +41,7 @@ _server_process: Optional[subprocess.Popen] = None
 _current_loaded_model: Optional[str] = None
 _current_server_port: int = DEFAULT_ENCHAN_LLAMA_PORT
 _current_context_size: int = 0
+_current_server_fingerprint: tuple[str, ...] = ()
 _ram_guard_stop: Optional[threading.Event] = None
 _wrapper_port: Optional[int] = None
 
@@ -78,13 +81,6 @@ def get_free_port() -> int:
     return port
 
 
-def strip_thought_blocks(text: str) -> str:
-    """Removes <thought>...</thought> and <think>...</think> blocks to keep multi-turn context clean."""
-    if not text:
-        return text
-    text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    return text.strip()
 
 
 def append_tool_result_event(session_log_path: Path, result: dict, iteration: int, backend: Optional[str] = None):
@@ -176,7 +172,7 @@ def is_server_responding(host: str) -> bool:
                 return True
     except Exception:
         pass
-    
+
     # Fallback to checking the models endpoint
     try:
         url = host.rstrip("/") + "/v1/models"
@@ -325,7 +321,7 @@ def _listening_pids_on_port(port: int) -> set[int]:
 
 def shutdown_enchan_llama() -> None:
     """Safely terminates the running custom llama-server background process."""
-    global _server_process, _current_loaded_model, _current_server_port, _current_context_size, _ram_guard_stop
+    global _server_process, _current_loaded_model, _current_server_port, _current_context_size, _current_server_fingerprint, _ram_guard_stop
     shutdown_port = _current_server_port
     shutdown_ok = True
 
@@ -403,7 +399,7 @@ def shutdown_enchan_llama() -> None:
         shutdown_ok = False
         if "process_pid" in locals():
             _schedule_windows_cleanup(process_pid, shutdown_port)
-            
+
     _current_loaded_model = None
     _current_server_port = DEFAULT_ENCHAN_LLAMA_PORT
     _current_context_size = 0
@@ -466,7 +462,7 @@ def resolve_ollama_model_to_blob(model_name: str) -> tuple[Optional[str], dict]:
             if media_type == "application/vnd.ollama.image.model":
                 if blob_path.exists():
                     resolved_blob = str(blob_path.resolve())
-            elif media_type == "application/vnd.ollama.image.params":  
+            elif media_type == "application/vnd.ollama.image.params":
                 if blob_path.exists():
                     try:
                         with open(blob_path, "r", encoding="utf-8") as pf:
@@ -626,15 +622,15 @@ def _start_ram_guard(
     return stop
 
 
-def _spawn_server_process(cmd: list[str], env: dict[str, str], creationflags: int) -> subprocess.Popen:
+def _spawn_server_process(cmd: list[str], env: dict[str, str], creationflags: int) -> bool:
     global _wrapper_port
-    
+
     wrapper_port = get_free_port()
     _wrapper_port = wrapper_port
-    
+
     wrapper_script = str(BACKEND_DIR / "enchan_llama_wrapper.py")
     cmd = [sys.executable, wrapper_script, str(wrapper_port)] + cmd
-    
+
     startupinfo = None
     if sys.platform == "win32":
         creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0x00000010)
@@ -689,13 +685,48 @@ def start_enchan_llama_server(
     mirostat: int = 0,
     mirostat_lr: float = 0.1,
     mirostat_ent: float = 5.0,
-) -> subprocess.Popen:
+    llama_extra_args: list[str] | None = None,
+    enable_thinking: bool = True,
+    preserve_thinking: bool = False,
+) -> bool:
     """
     Spawns the custom Enchan llama-server runtime in the background
     statically linking with our secure enchan_screening library.
     """
-    global _server_process, _current_loaded_model, _current_server_port, _current_context_size, _ram_guard_stop
+    global _server_process, _current_loaded_model, _current_server_port, _current_context_size, _current_server_fingerprint, _ram_guard_stop
     host = f"http://localhost:{port}"
+    llama_extra_args = normalize_llama_extra_args(llama_extra_args)
+    managed_extra = find_managed_llama_flags(llama_extra_args)
+    if managed_extra:
+        names = ", ".join(sorted(set(managed_extra)))
+        print(f"[Error] Refusing Enchan-managed llama-server flag(s) in llama_extra_args: {names}")
+        return False
+
+    reasoning_args = ["--reasoning-format", "deepseek"]
+    reasoning_args.extend(["--reasoning", "auto" if enable_thinking else "off"])
+    if preserve_thinking:
+        reasoning_args.append("--reasoning-preserve")
+
+    server_fingerprint = (
+        str(model_path),
+        str(port),
+        str(ctx_size),
+        str(gpu_layers),
+        str(screen_strength),
+        str(H_c),
+        str(m),
+        str(mmap_mode),
+        str(fit_mode),
+        str(text_only),
+        str(mtp),
+        str(yarn_factor),
+        str(dynatemp_range),
+        str(mirostat),
+        str(mirostat_lr),
+        str(mirostat_ent),
+        *reasoning_args,
+        *llama_extra_args,
+    )
 
     # Resolve Ollama tag to actual GGUF blob path dynamically
     resolved_path, official_params = resolve_ollama_model_to_blob(model_path)
@@ -707,7 +738,7 @@ def start_enchan_llama_server(
     # If the port is busy but we don't own the process (e.g. from an orphaned previous run),
     # robustly kill the orphaned process first so we can start fresh with our new parameters!
     if _server_process is not None and _server_process.poll() is None:
-        if _current_loaded_model == model_path and _current_server_port == port:
+        if _current_loaded_model == model_path and _current_server_port == port and _current_server_fingerprint == server_fingerprint:
             return True
         print(f"[System] Swapping engine model from '{_current_loaded_model}' to '{model_path}'...")
         shutdown_enchan_llama()
@@ -845,6 +876,14 @@ def start_enchan_llama_server(
             "--yarn-orig-ctx", "262144"
         ])
 
+    cmd.extend(reasoning_args)
+    if llama_extra_args:
+        cmd.extend(llama_extra_args)
+    if not quiet:
+        if llama_extra_args:
+            print(f"  * llama-server extra args: {format_llama_extra_args(llama_extra_args)}")
+        print(f"  * llama-server command: {format_llama_extra_args(cmd)}")
+
     try:
         _server_process = _spawn_server_process(cmd, env, creationflags)
         if not _enable_windows_kill_on_exit(_server_process, job_memory_limit):
@@ -862,6 +901,7 @@ def start_enchan_llama_server(
         if is_server_responding(host):
             _current_loaded_model = model_path
             _current_context_size = ctx_size
+            _current_server_fingerprint = server_fingerprint
             if not quiet:
                 print(
                     f"[System] Enchan Llama is active on {host} "
@@ -901,6 +941,9 @@ def ensure_enchan_llama_running(
     mirostat: int = 0,
     mirostat_lr: float = 0.1,
     mirostat_ent: float = 5.0,
+    llama_extra_args: list[str] | None = None,
+    enable_thinking: bool = True,
+    preserve_thinking: bool = False,
 ) -> bool:
     return bool(
         start_enchan_llama_server(
@@ -923,6 +966,9 @@ def ensure_enchan_llama_running(
             mirostat=mirostat,
             mirostat_lr=mirostat_lr,
             mirostat_ent=mirostat_ent,
+            llama_extra_args=llama_extra_args,
+            enable_thinking=enable_thinking,
+            preserve_thinking=preserve_thinking,
         )
     )
 
@@ -932,16 +978,22 @@ def ensure_enchan_llama_for_request(generation_config: dict | None, args, quiet:
     if not model_path:
         print("[Error] No model configured for Enchan Llama.")
         return False
-        
+
     dynatemp_range = 0.0
     mirostat = 0
     mirostat_lr = 0.1
     mirostat_ent = 5.0
+    llama_extra_args = normalize_llama_extra_args(getattr(args, "llama_arg", []))
+    enable_thinking = not getattr(args, "no_thinking", False)
+    preserve_thinking = bool(getattr(args, "preserve_thinking", False))
     if generation_config is not None:
         dynatemp_range = float(generation_config.get("dynatemp_range", 0.0))
         mirostat = int(generation_config.get("mirostat", 0))
         mirostat_lr = float(generation_config.get("mirostat_lr", 0.1))
         mirostat_ent = float(generation_config.get("mirostat_ent", 5.0))
+        llama_extra_args = normalize_llama_extra_args(generation_config.get("llama_extra_args", llama_extra_args))
+        enable_thinking = bool(generation_config.get("enable_thinking", enable_thinking))
+        preserve_thinking = bool(generation_config.get("preserve_thinking", preserve_thinking))
 
     ok = ensure_enchan_llama_running(
         model_path=model_path,
@@ -963,6 +1015,9 @@ def ensure_enchan_llama_for_request(generation_config: dict | None, args, quiet:
         mirostat=mirostat,
         mirostat_lr=mirostat_lr,
         mirostat_ent=mirostat_ent,
+        llama_extra_args=llama_extra_args,
+        enable_thinking=enable_thinking,
+        preserve_thinking=preserve_thinking,
     )
     runtime_ctx_size = get_enchan_llama_context_size()
     if runtime_ctx_size > 0 and generation_config is not None:
@@ -986,9 +1041,9 @@ def generate_enchan_llama_response(
     from backend.ui_theme import get_spinner_status
 
     api_url = host.rstrip("/") + "/v1/chat/completions"
-    
+
     messages = []
-    
+
     # Prepend the ephemeral system context
     system_context = generation_config.get("system_context")
     if system_context:
@@ -1069,14 +1124,14 @@ def generate_enchan_llama_response(
         "max_tokens": int(generation_config.get("max_new_tokens", -1)),
         "tools": AGENT_TOOLS_SCHEMA,
     }
-    
+
     # Qwen3.6 chat_template_kwargs handling
     chat_template_kwargs = {}
     if not generation_config.get("enable_thinking", True):
         chat_template_kwargs["enable_thinking"] = False
-    if generation_config.get("preserve_thinking", True):
+    if generation_config.get("preserve_thinking", False):
         chat_template_kwargs["preserve_thinking"] = True
-        
+
     if chat_template_kwargs:
         payload["chat_template_kwargs"] = chat_template_kwargs
 
@@ -1092,12 +1147,12 @@ def generate_enchan_llama_response(
 
     start_time = time.perf_counter()
     content_parts = []
+    thinking_parts = []
     tool_calls_merged = []
-    printed_len = 0
-    printed_rendered_len = 0
     think_opt = bool(generation_config.get("think", False)) # deprecated, use view_think
     view_think = bool(generation_config.get("view_think", think_opt))
     content_started = False
+    thinking_started = False
     cancelled = False
     final_timings = {}
     status = None
@@ -1105,9 +1160,6 @@ def generate_enchan_llama_response(
         status = get_spinner_status()
         if hasattr(status, "start"):
             status.start()
-
-    reasoning_started = False
-    reasoning_ended = False
 
     def esc_pressed() -> bool:
         if sys.platform != "win32":
@@ -1133,15 +1185,15 @@ def generate_enchan_llama_response(
                 if esc_pressed():
                     cancelled = True
                     break
-                
+
                 raw_line = raw_line.strip()
                 if not raw_line or not raw_line.startswith(b"data: "):
                     continue
-                
+
                 data_bytes = raw_line[6:]
                 if data_bytes == b"[DONE]":
                     break
-                
+
                 try:
                     chunk = json.loads(data_bytes.decode("utf-8"))
                     timings = chunk.get("timings")
@@ -1150,110 +1202,54 @@ def generate_enchan_llama_response(
                     delta = chunk["choices"][0].get("delta", {})
                     reasoning = delta.get("reasoning_content", "")
                     content = delta.get("content", "")
-                    
+
                     tool_calls_chunk = delta.get("tool_calls")
                     if tool_calls_chunk:
                         for tc in tool_calls_chunk:
                             idx = tc.get("index", 0)
                             while len(tool_calls_merged) <= idx:
                                 tool_calls_merged.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-                            
+
                             if "id" in tc and tc["id"]:
                                 tool_calls_merged[idx]["id"] += tc["id"]
-                                
+
                             func_chunk = tc.get("function", {})
                             if "name" in func_chunk and func_chunk["name"]:
                                 tool_calls_merged[idx]["function"]["name"] += func_chunk["name"]
-                            
+
                             if "arguments" in func_chunk and func_chunk["arguments"]:
                                 tool_calls_merged[idx]["function"]["arguments"] += func_chunk["arguments"]
-                    
+
                     if reasoning:
-                        if not reasoning_started:
-                            content_parts.append("<think>\n")
-                            reasoning_started = True
-                        content_parts.append(reasoning)
+                        thinking_parts.append(reasoning)
+                        if stream_output:
+                            if view_think:
+                                if status is not None:
+                                    status.stop()
+                                    status = None
+                                if not thinking_started:
+                                    print("\x1b[3;38;2;150;150;150m", end="", flush=True)
+                                    thinking_started = True
+                                print(reasoning, end="", flush=True)
+                            elif status is not None:
+                                from backend.ui_theme import RICH_AVAILABLE
+                                text_to_show = "Thinking... (esc to cancel)"
+                                if RICH_AVAILABLE:
+                                    status.update(f"[italic rgb(150,150,150)]{text_to_show}[/]")
+                                else:
+                                    status.update(text_to_show)
 
                     if content:
-                        if reasoning_started and not reasoning_ended:
-                            content_parts.append("\n</think>\n")
-                            reasoning_ended = True
                         content_parts.append(content)
-
-                    if reasoning or content:
                         if stream_output:
                             content_started = True
-                            accumulated = "".join(content_parts)
-                            
-                            tags = ["<thought>", "</thought>", "<think>", "</think>"]
-                            max_match = 0
-                            for t in tags:
-                                for i in range(1, min(len(accumulated), len(t)) + 1):
-                                    suffix = accumulated[-i:]
-                                    if t.startswith(suffix):
-                                        max_match = max(max_match, i)
-
-                            safe_len = len(accumulated) - max_match
-                            if safe_len > printed_len:
-                                rendered_text = ""
-                                temp_in_thought = False
-                                temp_in_think = False
-                                i = 0
-                                while i < safe_len:
-                                    if accumulated[i:i+9] == "<thought>":
-                                        temp_in_thought = True
-                                        if view_think:
-                                            rendered_text += "\x1b[3;38;2;120;140;180m<thought>\n" # Italic blue-ish for thought
-                                        i += 9
-                                    elif accumulated[i:i+10] == "</thought>":
-                                        temp_in_thought = False
-                                        if view_think:
-                                            rendered_text += "\n</thought>\x1b[0m"
-                                        i += 10
-                                    elif accumulated[i:i+7] == "<think>":
-                                        temp_in_think = True
-                                        if view_think:
-                                            rendered_text += "\x1b[3;38;2;150;150;150m<think>\n" # Italic gray for think
-                                        i += 7
-                                    elif accumulated[i:i+8] == "</think>":
-                                        temp_in_think = False
-                                        if view_think:
-                                            rendered_text += "\n</think>\x1b[0m"
-                                        i += 8
-                                    else:
-                                        if view_think:
-                                            rendered_text += accumulated[i]
-                                        elif not temp_in_thought and not temp_in_think:
-                                            # If we are NOT viewing thoughts, only render if we are NOT inside a thought block
-                                            rendered_text += accumulated[i]
-                                        i += 1
-
-                                if len(rendered_text) > printed_rendered_len:
-                                    if status is not None:
-                                        status.stop()
-                                        status = None
-                                    print(rendered_text[printed_rendered_len:], end="", flush=True)
-                                    printed_rendered_len = len(rendered_text)
-                                else:
-                                    # If not printed on screen, we are inside a thinking block or raw tag block.
-                                    # We dynamically update the spinner label to represent the exact phase!
-                                    if status is not None:
-                                        from backend.ui_theme import RICH_AVAILABLE
-                                        if temp_in_thought:
-                                            # Inside <thought> block (local model reasoning)
-                                            text_to_show = "Thought... (esc to cancel)"
-                                            if RICH_AVAILABLE:
-                                                status.update(f"[italic rgb(120,140,180)]{text_to_show}[/]")
-                                            else:
-                                                status.update(text_to_show)
-                                        elif temp_in_think or reasoning_started:
-                                            # Inside <think> block (deepseek style reasoning)
-                                            text_to_show = "Thinking... (esc to cancel)"
-                                            if RICH_AVAILABLE:
-                                                status.update(f"[italic rgb(150,150,150)]{text_to_show}[/]")
-                                            else:
-                                                status.update(text_to_show)
-                                printed_len = safe_len
+                            if thinking_started:
+                                print("\x1b[0m", end="", flush=True)
+                                thinking_started = False
+                            if status is not None:
+                                status.stop()
+                                status = None
+                            print(content, end="", flush=True)
                 except Exception:
                     pass
 
@@ -1274,6 +1270,14 @@ def generate_enchan_llama_response(
 
     elapsed = time.perf_counter() - start_time
     response = "".join(content_parts)
+    thinking = "".join(thinking_parts)
+    if thinking_started and stream_output:
+        print("\x1b[0m", end="", flush=True)
+    if response:
+        clean_response, fallback_thinking = split_thought_blocks(response)
+        if fallback_thinking and not thinking:
+            thinking = fallback_thinking
+        response = clean_response
     if status is not None:
         status.stop()
 
@@ -1301,6 +1305,7 @@ def generate_enchan_llama_response(
         return {
             "cancelled": True,
             "response": response,
+            "thinking": thinking,
             "tool_calls": parsed_tool_calls,
             "elapsed_sec": elapsed,
         }
@@ -1329,6 +1334,7 @@ def generate_enchan_llama_response(
     return {
         "cancelled": False,
         "response": response,
+        "thinking": thinking,
         "tool_calls": parsed_tool_calls,
         "elapsed_sec": elapsed,
         "tps": tps,

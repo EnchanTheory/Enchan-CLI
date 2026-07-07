@@ -5,8 +5,8 @@ import time
 import urllib.error
 import urllib.request
 import shutil
-import re
 from pathlib import Path
+from backend.thinking import strip_thought_blocks
 from typing import Optional
 
 from backend.ui_theme import print_agent_action, print_agent_observation, get_spinner_status
@@ -33,14 +33,6 @@ DEFAULT_OLLAMA_MODEL = "gemma4:e2b-it-qat"
 # --- Local Helpers to prevent circular imports ---
 def sanitize_for_json(text: str) -> str:
     return text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-
-def strip_thought_blocks(text: str) -> str:
-    """Removes <thought>...</thought> and <think>...</think> blocks to keep multi-turn context clean."""
-    if not text:
-        return text
-    text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    return text.strip()
 
 def format_count(n: int) -> str:
     if n >= 1_000_000:
@@ -266,11 +258,11 @@ def generate_ollama_response(
                     for i, tc in enumerate(message["tool_calls"]):
                         if i >= len(tool_calls_merged):
                             tool_calls_merged.append({"function": {"name": "", "arguments": {}}})
-                        
+
                         func_chunk = tc.get("function", {})
                         if "name" in func_chunk and func_chunk["name"]:
                             tool_calls_merged[i]["function"]["name"] = func_chunk["name"]
-                        
+
                         args_chunk = func_chunk.get("arguments", {})
                         for k, v in args_chunk.items():
                             if k not in tool_calls_merged[i]["function"]["arguments"]:

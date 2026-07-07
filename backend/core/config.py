@@ -16,14 +16,14 @@ class EnchanConfig:
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "gemma4:e2b-it-qat"
     ollama_ctx: int = 131072
-    
+
     # Generation parameters
     temperature: float = 1.0
     top_p: float = 0.95
     top_k: int = 64
     max_new_tokens: int = -1
     presence_penalty: float = 0.0
-    
+
     # Enchan (llama-server) specific parameters
     screen_strength: float = 0.2
     H_c: float = 1.6
@@ -35,11 +35,12 @@ class EnchanConfig:
     llama_fit: bool = False
     yarn_factor: float = 1.0
     kv_cache_type: str = "q4_0"
-    
+    llama_extra_args: list[str] = field(default_factory=list)
+
     # UI and tracing options
     view_think: bool = False
     screen_width: int = 100
-    
+
     # For any custom or extra keys that aren't explicitly declared
     extra: Dict[str, Any] = field(default_factory=dict)
 
@@ -49,7 +50,7 @@ class EnchanConfig:
         path = file_path or (CLI_DIR / "enchan_config.json")
         if not path.exists():
             return cls()
-        
+
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -57,18 +58,18 @@ class EnchanConfig:
             # Safe fallback if JSON parsing fails
             print(f"[Warning] Failed to read/parse config from {path}: {e}")
             return cls()
-            
+
         # Class fields partition
         allowed_keys = {f.name for f in fields(cls)}
         kwargs = {}
         extra = {}
-        
+
         for k, v in data.items():
             if k in allowed_keys:
                 kwargs[k] = v
             else:
                 extra[k] = v
-                
+
         return cls(**kwargs, extra=extra)
 
     def save(self, file_path: Optional[Path] = None):

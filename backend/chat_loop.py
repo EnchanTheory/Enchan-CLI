@@ -14,7 +14,7 @@ from backend.ollama_backend import run_ollama_agent_turn
 from backend.ui_theme import print_response_header
 
 KNOWN_SLASH_COMMANDS = frozenset({
-    "/resume", "/compress", "/model", "/status", "/set",
+    "/resume", "/compress", "/model", "/status", "/set", "/llama_set",
     "/help", "/license", "/new", "/exit", "/quit", "/delegate",
 })
 
@@ -80,7 +80,7 @@ def run_chat_loop(
     tokenizer,
 ) -> None:
     """Runs the main interactive chat loop, driving prompts, completions, and model turns."""
-    
+
     def record_memory(reason: str) -> None:
         return None
 
@@ -98,7 +98,7 @@ def run_chat_loop(
             auto_compressed = False
             enchan_preload_thread = None
             enchan_preload_result = {"ok": True}
-            
+
             if session is not None:
                 width = shutil.get_terminal_size().columns
                 print("\n\x1b[90m" + "─" * width + "\x1b[0m")
@@ -162,6 +162,8 @@ def run_chat_loop(
                         args.screen_strength = generation_config["screen_strength"]
                     if generation_config.get("kv_cache_type"):
                         args.kv_cache_type = generation_config["kv_cache_type"]
+                    if generation_config.get("llama_extra_args") is not None:
+                        args.llama_arg = generation_config["llama_extra_args"]
                     continue
 
             if not agent_mode and user_input.strip().lower() == "enchan --agent":
@@ -203,7 +205,7 @@ def run_chat_loop(
                 images = find_and_encode_images(user_input)
             except Exception:
                 pass
-            
+
             user_msg = {"role": "user", "content": current_prompt}
             if images:
                 user_msg["images"] = images

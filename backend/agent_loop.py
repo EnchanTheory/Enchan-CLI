@@ -1,5 +1,5 @@
 from pathlib import Path
-import re
+from backend.thinking import strip_thought_blocks
 import sys
 from typing import Callable
 
@@ -29,12 +29,6 @@ SENSITIVE_SPINNER_TOOLS = {
 }
 
 
-def strip_thought_blocks(text: str) -> str:
-    if not text:
-        return text
-    text = re.sub(r"<thought>.*?</thought>", "", text, flags=re.DOTALL)
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-    return text.strip()
 
 
 def _assistant_message_from_generation(response_text: str, generation: dict, *, strip_thoughts: bool) -> dict:
@@ -180,7 +174,7 @@ def run_agent_loop(
 
         response_text = generation["response"]
         tool_calls = generation.get("tool_calls")
-        
+
         if not tool_calls:
             chat_history.append(
                 _assistant_message_from_generation(
