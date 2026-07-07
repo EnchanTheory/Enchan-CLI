@@ -55,7 +55,8 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - apply_patch(patch) is the unified diff patcher.
 - git_status(), git_diff(staged, paths), git_add(paths), git_commit(message) are git version controllers.
 - Installed skills are first-class capabilities, auto-loaded from skills/ into the Skill Capability Registry below and into the use_skill tool schema. When a task matches a skill description, call use_skill(name, method, params) before generic tools. Do not require the user to run list_skills first.
-- web_search(query), list_skills(), use_skill(name, arg), delegate_agent(agent, prompt) are auxiliary tools. list_skills is for expanded detail, not initial discovery.
+- web_browse(url/query) is the primary web reading surface. For current news or web content questions, use web_browse and answer from opened page text with source URLs. web_search(query) is only a candidate-page finder; do not summarize news from snippets alone.
+- list_skills(), use_skill(name, arg), delegate_agent(agent, prompt) are auxiliary tools. list_skills is for expanded detail, not initial discovery.
 
 ## Workspace & Workflow Rules
 - README.md is the project blueprint. If you take actions in any directory, read README.md first to understand the context.
@@ -851,6 +852,64 @@ def tool_web_search(args: dict) -> dict:
     return {"ok": True, "content": content}
 
 
+
+def tool_web_browse(args: dict) -> dict:
+    from backend.web_browse_service import browse_query, fetch_url
+
+    url = args.get("url")
+    query = args.get("query")
+    try:
+        max_pages = max(1, min(int(args.get("max_pages", 3) or 3), 5))
+    except (TypeError, ValueError):
+        max_pages = 3
+    try:
+        max_chars_per_page = max(2000, min(int(args.get("max_chars_per_page", 12000) or 12000), 30000))
+    except (TypeError, ValueError):
+        max_chars_per_page = 12000
+
+    if isinstance(url, str) and url.strip():
+        page = fetch_url(url.strip(), max_chars=max_chars_per_page)
+        if not page.get("ok"):
+            return {"ok": False, "error": page.get("error", "web_browse failed."), "content": str(page)}
+        title = page.get("title") or "(no title)"
+        content = (
+            f"Opened URL: {page.get('url')}\n"
+            f"Title: {title}\n"
+            f"Content-Type: {page.get('content_type')}\n\n"
+            f"{page.get('text', '')}"
+        )
+        return {"ok": True, "content": truncate_observation(content, max_chars=max_chars_per_page + 2000)}
+
+    if isinstance(query, str) and query.strip():
+        pages = browse_query(query.strip(), max_pages=max_pages, max_chars_per_page=max_chars_per_page)
+        if not pages:
+            return {"ok": False, "error": "No browsable pages found."}
+        chunks = [f"Browse query: {query.strip()}"]
+        ok_count = 0
+        for index, page in enumerate(pages, 1):
+            if page.get("ok"):
+                ok_count += 1
+                chunks.append(
+                    f"\n--- Page {index} ---\n"
+                    f"URL: {page.get('url')}\n"
+                    f"Title: {page.get('title') or page.get('search_title') or '(no title)'}\n"
+                    f"Search snippet: {page.get('search_snippet') or ''}\n\n"
+                    f"{page.get('text', '')}"
+                )
+            else:
+                chunks.append(
+                    f"\n--- Page {index} failed ---\n"
+                    f"URL: {page.get('url') or ''}\n"
+                    f"Search title: {page.get('search_title') or ''}\n"
+                    f"Error: {page.get('error') or 'unknown error'}"
+                )
+        if ok_count == 0:
+            return {"ok": False, "error": "Search found pages, but none could be opened.", "content": "\n".join(chunks)}
+        return {"ok": True, "content": truncate_observation("\n".join(chunks), max_chars=max_chars_per_page * max_pages + 4000)}
+
+    return {"ok": False, "error": "web_browse requires either 'url' or 'query'."}
+
+
 def tool_list_skills(args: dict) -> dict:
     from backend.skills_loader import list_registered_skills
     content = list_registered_skills()
@@ -988,6 +1047,7 @@ TOOL_REGISTRY = {
     "host_shell": tool_host_shell,
     "execute_command": tool_execute_command,
     "web_search": tool_web_search,
+    "web_browse": tool_web_browse,
     "list_skills": tool_list_skills,
     "use_skill": tool_use_skill,
     "delegate_agent": tool_delegate_agent,

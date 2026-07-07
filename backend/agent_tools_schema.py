@@ -172,13 +172,30 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Performs a web search to find information online.",
+            "description": "Finds candidate web pages only. Prefer web_browse for web/news questions because web_browse opens pages and returns readable page text.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "The search query"}
                 },
                 "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_browse",
+            "description": "Browses the web by opening a URL or by finding and opening pages for a query. Use this for current news, site contents, and any answer that needs page text rather than search snippets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "HTTP(S) URL to open directly (optional if query is provided)"},
+                    "query": {"type": "string", "description": "Query to find and open relevant pages (optional if url is provided)"},
+                    "max_pages": {"type": "integer", "description": "Maximum pages to open for a query (optional, default 3)"},
+                    "max_chars_per_page": {"type": "integer", "description": "Maximum readable text characters per opened page (optional, default 12000)"}
+                },
+                "required": []
             }
         }
     },
