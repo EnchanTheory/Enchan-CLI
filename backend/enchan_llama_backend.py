@@ -737,8 +737,8 @@ def start_enchan_llama_server(
 
     # If the port is busy but we don't own the process (e.g. from an orphaned previous run),
     # robustly kill the orphaned process first so we can start fresh with our new parameters!
-    if _server_process is not None and _server_process.poll() is None:
-        if _current_loaded_model == model_path and _current_server_port == port and _current_server_fingerprint == server_fingerprint:
+    if _server_process is not None and _server_process.poll() is None:       
+        if _current_loaded_model == model_path and _current_server_port == port:
             return True
         print(f"[System] Swapping engine model from '{_current_loaded_model}' to '{model_path}'...")
         shutdown_enchan_llama()
