@@ -116,19 +116,31 @@ One-shot mode:
 enchan --ask "Summarize this repository" --plain
 ```
 
-Run Enchan backend with an explicit KV cache dtype:
+Run Enchan backend with explicit startup options:
 
 ```bash
-enchan --backend enchan --kv-cache-type q4_0
+enchan --backend enchan --screen-strength 0.4 --kv-cache-type q4_0
 ```
 
-`--kv-cache-type` controls llama.cpp KV cache quantization for the Enchan backend. The default is `q4_0`, which minimizes memory use for large models and long contexts on edge devices. Use `q8_0` or `f16` when you prefer higher KV precision over lower RAM usage.
+`--screen-strength` controls Enchan Attention Screening strength for the Enchan backend. It can also be saved persistently from inside the CLI with `/set screen_strength <value>`.
 
-Supported values:
+`--kv-cache-type` controls llama.cpp KV cache quantization for the Enchan backend. The default is `q4_0`, which minimizes memory use for large models and long contexts on edge devices. Use `q8_0` or `f16` when you prefer higher KV precision over lower RAM usage. It can also be saved persistently with `/set kv_cache_type <q4_0|q8_0|f16>`.
+
+Supported KV cache values:
 
 - `q4_0`: default; smallest KV cache footprint
 - `q8_0`: larger cache, higher precision
 - `f16`: default llama.cpp-style precision, highest KV memory use
+
+Persistent runtime settings inside interactive CLI:
+
+```text
+/set screen_strength 0.4
+/set kv_cache_type q4_0
+/status
+```
+
+These `/set` values are saved to `enchan_config.json`. For Enchan runtime settings that affect the running llama-server process, Enchan restarts the engine on the next request so the new setting is applied cleanly.
 
 ## Enchan Engine (Attention Screening)
 
@@ -138,6 +150,12 @@ To customize the screening strength from the command line (e.g., setting it to `
 
 ```bash
 enchan --screen-strength 0.4
+```
+
+Or persist it from inside the CLI:
+
+```text
+/set screen_strength 0.4
 ```
 
 ### Representative Attention Distribution
@@ -209,8 +227,10 @@ Inside the interactive CLI, type `/` to see the following commands:
 - `/resume`: List resumable sessions or resume a specific session
 - `/compress`: Optimize older conversation turns
 - `/model`: Switch the active model
-- `/status`: Show model, history, context, and generation settings, including Enchan `kv_cache_type`
-- `/set`: Configure generation parameters (such as `temp`, `top_p`, `top_k`, `dynatemp_range`, and PID-controlled `mirostat` sampling)
+- `/status`: Show model, history, context, and generation settings, including Enchan `screen_strength` and `kv_cache_type`
+- `/set`: Configure and persist generation/runtime parameters
+- `/set screen_strength <value>`: Set and save Enchan Attention Screening strength
+- `/set kv_cache_type q4_0|q8_0|f16`: Set and save Enchan KV cache precision
 - `/help`: Show help menu and available commands
 - `/license`: Show repository license terms
 - `/new`: Start a new session (clears chat history and file context)
@@ -219,6 +239,7 @@ Inside the interactive CLI, type `/` to see the following commands:
 Useful startup options:
 
 - `--backend enchan|ollama`: choose the runtime backend
+- `--screen-strength <value>`: choose Enchan Attention Screening strength at startup
 - `--kv-cache-type q4_0|q8_0|f16`: choose Enchan KV cache precision; default `q4_0`
 
 You can also update the installation:
