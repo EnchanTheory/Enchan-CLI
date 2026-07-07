@@ -69,8 +69,12 @@ def main():
     
     backend_explicit = any(arg == "--backend" or arg.startswith("--backend=") for arg in sys.argv[1:])
     single_turn_requested = bool(args.ask or args.ask_file)
-    if not backend_explicit and not single_turn_requested and sys.stdin.isatty():
+    interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
+    if not backend_explicit and interactive_startup:
         args.backend = select_startup_backend(args.backend)
+        if local_cfg.get("backend") != args.backend:
+            local_cfg["backend"] = args.backend
+            save_local_config(local_cfg)
         
     # Dynamic defaults based on official Ollama Modelfile parameters
     active_model_name = args.gguf_model if args.backend == "enchan" and args.gguf_model else args.ollama_model
@@ -120,7 +124,6 @@ def main():
                     pass
 
         resolved_path = None
-        interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
         if args.gguf_model:
             gguf_model_path = args.gguf_model
         elif interactive_startup:
@@ -129,6 +132,9 @@ def main():
                 print("[System] Model selection cancelled.")
                 sys.exit(1)
             gguf_model_path = chosen
+            if local_cfg.get("gguf_model") != chosen:
+                local_cfg["gguf_model"] = chosen
+                save_local_config(local_cfg)
         else:
             gguf_model_path = args.ollama_model
 
@@ -156,7 +162,6 @@ def main():
                 print("[Error] Ollama API is not available.")
             return
             
-        interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
         if interactive_startup:
             installed = list_installed_ollama_models(args.ollama_host)
             if args.ollama_model not in installed:
