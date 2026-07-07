@@ -116,6 +116,20 @@ One-shot mode:
 enchan --ask "Summarize this repository" --plain
 ```
 
+Run Enchan backend with an explicit KV cache dtype:
+
+```bash
+enchan --backend enchan --kv-cache-type q4_0
+```
+
+`--kv-cache-type` controls llama.cpp KV cache quantization for the Enchan backend. The default is `q4_0`, which minimizes memory use for large models and long contexts on edge devices. Use `q8_0` or `f16` when you prefer higher KV precision over lower RAM usage.
+
+Supported values:
+
+- `q4_0`: default; smallest KV cache footprint
+- `q8_0`: larger cache, higher precision
+- `f16`: default llama.cpp-style precision, highest KV memory use
+
 ## Enchan Engine (Attention Screening)
 
 While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprietary **Enchan Cosmic Engine** directly into the core Attention calculations. This mechanism is based on the **working hypothesis** that mathematically relaxing the over-concentration of Attention scores can mitigate the model fixating too rigidly on a single context path.
@@ -195,12 +209,17 @@ Inside the interactive CLI, type `/` to see the following commands:
 - `/resume`: List resumable sessions or resume a specific session
 - `/compress`: Optimize older conversation turns
 - `/model`: Switch the active model
-- `/status`: Show model, history, context, and generation settings
+- `/status`: Show model, history, context, and generation settings, including Enchan `kv_cache_type`
 - `/set`: Configure generation parameters (such as `temp`, `top_p`, `top_k`, `dynatemp_range`, and PID-controlled `mirostat` sampling)
 - `/help`: Show help menu and available commands
 - `/license`: Show repository license terms
 - `/new`: Start a new session (clears chat history and file context)
 - `/exit`: Exit the CLI
+
+Useful startup options:
+
+- `--backend enchan|ollama`: choose the runtime backend
+- `--kv-cache-type q4_0|q8_0|f16`: choose Enchan KV cache precision; default `q4_0`
 
 You can also update the installation:
 - `enchan update`: update the installed checkout and refresh the command
