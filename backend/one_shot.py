@@ -26,7 +26,11 @@ def execute_single_turn(
         return
 
     if backend_mode == "enchan":
+        from backend.kv_cache_config import apply_enchan_kv_cache_patch
         from backend.enchan_llama_backend import run_enchan_llama_once
+        kv_cache_type = apply_enchan_kv_cache_patch(getattr(args, "kv_cache_type", None))
+        if generation_config is not None:
+            generation_config["kv_cache_type"] = kv_cache_type
         memory_context = load_memory_context()
         run_enchan_llama_once(
             single_turn_prompt.strip(),
