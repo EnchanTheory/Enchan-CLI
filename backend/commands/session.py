@@ -12,7 +12,9 @@ from backend.session_log import (
 # Note: Core config and runtime utilities imported from the new dedicated modules
 from backend.core.config import load_local_config, save_local_config
 from backend.runtime_config import sync_generation_config_to_active_model
-from backend.kv_cache_config import VALID_KV_CACHE_TYPES, apply_enchan_kv_cache_patch, normalize_kv_cache_type
+from backend.kv_cache_config import DEFAULT_KV_CACHE_TYPE, VALID_KV_CACHE_TYPES, apply_enchan_kv_cache_patch, normalize_kv_cache_type
+
+DEFAULT_SCREEN_STRENGTH = 0.2
 
 @registry.command("/new", desc="Start a new session and clear current context.")
 def handle_new(
@@ -137,8 +139,8 @@ def handle_set(
         print(f"  mirostat_lr      = {generation_config.get('mirostat_lr', 0.1)} (Mirostat learning rate)")
         print(f"  mirostat_ent     = {generation_config.get('mirostat_ent', 5.0)} (Mirostat target entropy)")
         if backend_mode == "enchan":
-            print(f"  screen_strength  = {generation_config.get('screen_strength', getattr(args, 'screen_strength', 0.2))} (Enchan screening strength)")
-            print(f"  kv_cache_type    = {generation_config.get('kv_cache_type', getattr(args, 'kv_cache_type', 'q4_0'))} (Enchan KV cache dtype)")
+            print(f"  screen_strength  = {generation_config.get('screen_strength', getattr(args, 'screen_strength', DEFAULT_SCREEN_STRENGTH))} (Enchan screening strength)")
+            print(f"  kv_cache_type    = {generation_config.get('kv_cache_type', getattr(args, 'kv_cache_type', DEFAULT_KV_CACHE_TYPE))} (Enchan KV cache dtype)")
         if enchan_config:
             print(f"  exit_layer       = {enchan_config.get('force_early_exit_layer', -1)}")
             print(f"  exit_thresh      = {enchan_config.get('early_exit_threshold', 0.15)}")
@@ -171,8 +173,15 @@ def handle_set(
         active_model = generation_config.get("gguf_model") if backend_mode == "enchan" else generation_config.get("ollama_model")
         sync_generation_config_to_active_model(generation_config, active_model, backend_mode)
         if backend_mode == "enchan":
-            generation_config["screen_strength"] = getattr(args, "screen_strength", 0.2)
-            generation_config["kv_cache_type"] = normalize_kv_cache_type(getattr(args, "kv_cache_type", None))
+            generation_config["screen_strength"] = DEFAULT_SCREEN_STRENGTH
+            generation_config["kv_cache_type"] = DEFAULT_KV_CACHE_TYPE
+            if args is not None:
+                args.screen_strength = DEFAULT_SCREEN_STRENGTH
+                args.kv_cache_type = DEFAULT_KV_CACHE_TYPE
+            apply_enchan_kv_cache_patch(DEFAULT_KV_CACHE_TYPE)
+            from backend.enchan_llama_backend import shutdown_enchan_llama
+            shutdown_enchan_llama()
+            print("[System] Enchan engine will restart with default runtime settings on the next request.")
         
         print("[System] Configuration overrides cleared. Reset to factory and model-specific recommended defaults.")
         return True, file_context, False
