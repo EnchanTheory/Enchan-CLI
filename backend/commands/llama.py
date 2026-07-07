@@ -45,6 +45,7 @@ def _show_current(args: list[str]) -> None:
     print("\n[llama_set]")
     print(f"  llama_extra_args: {format_llama_extra_args(args)}")
     print("  These unmanaged args are appended after Enchan-managed llama-server flags.")
+    print("  Reference: https://github.com/ggml-org/llama.cpp/blob/master/tools/cli/README.md")
 
 
 def _print_static_help() -> None:
@@ -107,7 +108,13 @@ def handle_llama_set(
 
     if not rest:
         _show_current(current)
-        return True, file_context, False
+        from backend.ui_theme import styled_input
+        print()
+        change_input = styled_input("Select parameter and value to change (e.g. '--n-cpu-moe 8', 'reset' to clear, or Enter to cancel): ")
+        if not change_input:
+            print("[System] No changes made.")
+            return True, file_context, False
+        rest = change_input.strip()
 
     lowered = rest.lower()
     if lowered == "help":

@@ -145,7 +145,8 @@ def handle_set(
             print(f"  exit_layer       = {enchan_config.get('force_early_exit_layer', -1)}")
             print(f"  exit_thresh      = {enchan_config.get('early_exit_threshold', 0.15)}")
         
-        change_input = styled_input("\nSelect parameter and value to change (e.g. 'screen_strength 0.4', 'reset' to clear, or Enter to cancel): ")
+        print()
+        change_input = styled_input("Select parameter and value to change (e.g. 'screen_strength 0.4', 'reset' to clear, or Enter to cancel): ")
         if not change_input:
             print("[System] No changes made.")
             return True, file_context, False
