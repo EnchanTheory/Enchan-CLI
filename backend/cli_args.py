@@ -2,6 +2,8 @@ import argparse
 from pathlib import Path
 from backend.core.config import EnchanConfig
 from backend.ollama_backend import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_HOST
+from backend.kv_cache_config import DEFAULT_KV_CACHE_TYPE, VALID_KV_CACHE_TYPES
+
 
 def parse_args() -> argparse.Namespace:
     """Configures the ArgumentParser and parses CLI flags, merging with local_config overrides."""
@@ -23,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ram-pressure-action", choices=["warn", "kill"], default=cfg.ram_pressure_action, help="what to do when Enchan Llama crosses the RAM reserve (default: warn)")
     parser.add_argument("--llama-mmap", choices=["on", "off"], default=cfg.llama_mmap, help="memory-map GGUF model files for --backend enchan (default: off)")
     parser.add_argument("--llama-fit", action="store_true", default=cfg.llama_fit, help="enable llama.cpp --fit memory fitting for --backend enchan")
+    parser.add_argument("--kv-cache-type", choices=sorted(VALID_KV_CACHE_TYPES), default=getattr(cfg, "kv_cache_type", DEFAULT_KV_CACHE_TYPE), help="KV cache dtype for --backend enchan (default: q4_0; choices: q4_0, q8_0, f16)")
     parser.add_argument("--ollama-model", default=cfg.ollama_model, help=f"Ollama model name for --backend ollama (default: {DEFAULT_OLLAMA_MODEL})")
     parser.add_argument("--ollama-host", default=cfg.ollama_host, help=f"Ollama API host for --backend ollama (default: {DEFAULT_OLLAMA_HOST})")
     parser.add_argument("--ollama-ctx", type=int, default=cfg.ollama_ctx, help="Ollama num_ctx for --backend ollama/enchan (default: 131072)")
@@ -57,6 +60,7 @@ def parse_args() -> argparse.Namespace:
     parser_detect.add_argument("--yarn-factor", type=float)
     parser_detect.add_argument("--max-new-tokens", type=int)
     parser_detect.add_argument("--ollama-ctx", type=int)
+    parser_detect.add_argument("--kv-cache-type")
     
     explicit_ns, _ = parser_detect.parse_known_args()
     args.explicit_overrides = vars(explicit_ns)
