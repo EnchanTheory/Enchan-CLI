@@ -34,6 +34,7 @@ class EnchanConfig:
     llama_mmap: str = "off"
     llama_fit: bool = False
     yarn_factor: float = 1.0
+    kv_cache_type: str = "q4_0"
     
     # UI and tracing options
     view_think: bool = False
