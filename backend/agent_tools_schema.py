@@ -5,7 +5,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "host_shell",
-            "description": "Executes terminal commands with a PowerShell default. Use this for git, python, npm, tests, diagnostics, builds, etc.",
+            "description": "Executes terminal commands with the OS-native default shell. Use this for git, python, npm, tests, diagnostics, builds, etc.",
             "parameters": {
                 "type": "object",
                 "properties": {

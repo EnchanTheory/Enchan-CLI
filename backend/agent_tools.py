@@ -16,6 +16,8 @@ CLI_DIR = BACKEND_DIR.parent
 
 AGENT_MAX_ITERATIONS = 20
 DEFAULT_OBSERVATION_MAX_CHARS = 10000
+DEFAULT_HOST_SHELL = "powershell" if os.name == "nt" else "sh"
+DEFAULT_HOST_SHELL_DESCRIPTION = "PowerShell on Windows, sh on macOS/Linux"
 
 def get_max_obs_chars() -> int:
     try:
@@ -42,7 +44,7 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - Tone is plain and professional. If guidelines specify custom titles, use those titles.
 
 ## Host Execution & Primitives
-- host_shell(command, cwd, shell, timeout_seconds) executes terminal commands with a PowerShell default.
+- host_shell(command, cwd, shell, timeout_seconds) executes terminal commands with the OS-native default shell ({DEFAULT_HOST_SHELL_DESCRIPTION}).
 - read_document(path, lines, mode, query) is the file reader.
 - search_pattern(regex) is the regex file scanner.
 - list_directory(path, depth) is the directory lister.
@@ -65,11 +67,11 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - Code Change Loop is the version control sequence. If you change code, follow this sequence: inspect -> validate before edits -> edit -> verify after edits (tests/builds/diffs) -> check status/diff -> stage scoped files -> commit ONLY if requested.
 """
 NORMAL_MODE_TOOL_GUIDANCE = f"""This chat can use Enchan CLI host runtime automatically. host_shell is the primary open-ended local execution surface; typed helpers exist for safer inspection, editing, Git, and delegation.
-If you want every turn to be forced through explicit ReAct tool mode, restart Enchan from PowerShell with:
+If you want every turn to be forced through explicit ReAct tool mode, restart Enchan from your terminal with:
 
 enchan --agent
 
-Do not claim that shell commands typed inside the chat were executed. Shell launch commands must be run in PowerShell, not inside the model conversation.
+Do not claim that shell commands typed inside the chat were executed. Shell launch commands must be run through host_shell or in the user's terminal, not inside the model conversation.
 When the user asks for local setup or installation, Enchan should use host_shell and typed file tools to diagnose, act, and verify instead of defaulting to manual instructions. If the user reports completing an external step such as restarting the terminal, continue by running the next verification command yourself."""
 
 
@@ -736,16 +738,28 @@ def _resolve_command_cwd(args: dict) -> Path:
     return cwd
 
 
-def _host_shell_argv(command: str, shell_name: str) -> tuple[list[str], str]:
-    shell_name = (shell_name or "powershell").strip().lower()
+def _host_shell_argv(command: str, shell_name: Optional[str] = None) -> tuple[list[str], str]:
+    shell_name = (shell_name or DEFAULT_HOST_SHELL).strip().lower()
     if shell_name in {"powershell", "pwsh", "ps"}:
-        exe = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+        exe = shutil.which("pwsh") or shutil.which("powershell")
+        if not exe:
+            raise ValueError("PowerShell was requested but neither 'pwsh' nor 'powershell' was found on PATH. On macOS/Linux, omit shell or use shell='sh' or shell='bash'.")
+        if command.lower() == "pwd":
+            command = "Get-Location"
         preamble = "[Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding; "
         return [exe, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", preamble + command], "powershell"
     if shell_name in {"cmd", "cmd.exe"}:
-        return ["cmd.exe", "/d", "/s", "/c", command], "cmd"
+        exe = shutil.which("cmd.exe")
+        if not exe:
+            raise ValueError("cmd was requested but 'cmd.exe' was not found on PATH.")
+        return [exe, "/d", "/s", "/c", command], "cmd"
     if shell_name in {"sh", "bash"}:
-        return [shell_name, "-lc", command], shell_name
+        exe = shutil.which(shell_name)
+        if not exe and shell_name == "sh" and Path("/bin/sh").exists():
+            exe = "/bin/sh"
+        if not exe:
+            raise ValueError(f"{shell_name} was requested but it was not found on PATH.")
+        return [exe, "-lc", command], shell_name
     raise ValueError("host_shell shell must be powershell, cmd, sh, or bash.")
 
 
@@ -763,7 +777,8 @@ def tool_host_shell(args: dict) -> dict:
             1000,
             min(int(args.get("max_output_chars", get_max_obs_chars()) or get_max_obs_chars()), 500000),
         )
-        argv, shell_name = _host_shell_argv(command, str(args.get("shell") or "powershell"))
+        shell_value = args.get("shell")
+        argv, shell_name = _host_shell_argv(command, str(shell_value) if shell_value else None)
         started = time.perf_counter()
         completed = subprocess.run(
             argv,

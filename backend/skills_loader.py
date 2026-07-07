@@ -161,7 +161,7 @@ class JsonRpcSkillSession:
             return tool_host_shell({
                 "command": params.get("command"),
                 "cwd": params.get("cwd"),
-                "shell": params.get("shell") or "powershell",
+                "shell": params.get("shell"),
                 "timeout_seconds": params.get("timeout_seconds", 30),
                 "max_output_chars": params.get("max_output_chars", 12000),
             })
