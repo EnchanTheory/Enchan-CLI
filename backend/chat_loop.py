@@ -221,13 +221,14 @@ def run_chat_loop(
                     chat_history = compress_chat_history(chat_history, tokenizer=tokenizer, keep_turns=dynamic_keep_turns)
 
             if backend_mode in ("hf", "ollama", "enchan"):
-                from backend.agent_tools import AGENT_SYSTEM_PROMPT
+                from backend.agent_tools import get_agent_system_prompt
                 memory_context = load_memory_context()
+                agent_system_prompt = get_agent_system_prompt()
                 system_context = build_memory_prompt_section(memory_context)
                 if system_context:
-                     generation_config["system_context"] = f"{AGENT_SYSTEM_PROMPT}{system_context}"
+                     generation_config["system_context"] = f"{agent_system_prompt}{system_context}"
                 else:
-                     generation_config["system_context"] = AGENT_SYSTEM_PROMPT
+                     generation_config["system_context"] = agent_system_prompt
 
             if backend_mode == "enchan":
                 input_length = count_text_tokens(tokenizer, current_prompt) if tokenizer is not None else estimate_text_tokens_rough(current_prompt)

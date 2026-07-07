@@ -185,7 +185,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_skills",
-            "description": "Lists available registered skills.",
+            "description": "Lists the full registered skill catalog, including method schemas. Installed skills are also summarized in the agent context.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -197,7 +197,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "use_skill",
-            "description": "Runs a registered skill with a specific method and arguments.",
+            "description": "Runs an installed skill. When a task matches an installed skill description from the agent context, call this before using generic tools.",
             "parameters": {
                 "type": "object",
                 "properties": {

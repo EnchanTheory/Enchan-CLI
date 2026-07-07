@@ -343,6 +343,63 @@ def list_registered_skills() -> str:
         return "No valid skills registered in the skills/ directory."
     return "Available Enchan CLI Skills:\n" + "\n".join(skills)
 
+def _compact_schema_text(schema: Any, *, max_chars: int = 360) -> str:
+    if not isinstance(schema, dict) or not schema:
+        return ""
+    text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3] + "..."
+
+
+def render_skill_catalog_for_prompt(max_chars: int = 5000) -> str:
+    """Render a bounded live skill catalog for injection into agent context."""
+    if not SKILLS_DIR.exists():
+        return "No Enchan CLI skills directory found."
+
+    entries: list[str] = []
+    for item in sorted(SKILLS_DIR.iterdir(), key=lambda p: p.name.lower()):
+        if not item.is_dir():
+            continue
+        manifest, error = _load_skill_manifest(item)
+        if error:
+            entries.append(f"- {item.name}: unavailable ({error})")
+            continue
+
+        name = str(manifest.get("name") or item.name)
+        desc = str(manifest.get("description") or "No description provided.").strip()
+        suffix = " [legacy]" if manifest.get("legacy") else ""
+        lines = [f"- {name}: {desc}{suffix}"]
+        methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
+        method_lines: list[str] = []
+        for method_name, method_spec in methods.items():
+            method_desc = "No description provided."
+            input_schema = None
+            if isinstance(method_spec, dict):
+                method_desc = str(method_spec.get("description") or method_desc).strip()
+                input_schema = method_spec.get("input")
+            schema_text = _compact_schema_text(input_schema)
+            if schema_text:
+                method_lines.append(f"  - {method_name}: {method_desc}; input={schema_text}")
+            else:
+                method_lines.append(f"  - {method_name}: {method_desc}")
+        if method_lines:
+            lines.extend(method_lines)
+        entries.append("\n".join(lines))
+
+    if not entries:
+        return "No valid Enchan CLI skills are registered."
+
+    header = (
+        "These skills are installed now. When a user task matches a skill description, "
+        "call use_skill with that skill name and method before falling back to generic tools. "
+        "Call list_skills for the complete catalog if more detail is needed.\n"
+    )
+    content = header + "\n".join(entries)
+    if len(content) <= max_chars:
+        return content
+    return content[: max_chars - 80].rstrip() + "\n...\n[Skill catalog truncated; call list_skills for full details.]"
+
 
 def run_skill(skill_name: str, argument: str = "", *, method: str = DEFAULT_LEGACY_METHOD, params: dict[str, Any] | None = None) -> str:
     """Run a modern JSON-RPC skill method or a legacy auto-wrapped entrypoint."""

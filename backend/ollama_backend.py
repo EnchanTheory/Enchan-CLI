@@ -22,7 +22,7 @@ CLI_DIR = BACKEND_DIR.parent
 
 
 from backend.session_log import append_session_event
-from backend.agent_tools import AGENT_SYSTEM_PROMPT
+from backend.agent_tools import get_agent_system_prompt
 from backend.agent_loop import run_agent_loop
 from backend.memory_store import build_memory_prompt_section
 from backend.agent_tools_schema import AGENT_TOOLS_SCHEMA
@@ -71,7 +71,7 @@ def count_text_tokens(tokenizer, text: str) -> int:
 
 def build_agent_goal_prompt(goal: str, memory_context: str = "") -> str:
     memory_section = build_memory_prompt_section(memory_context)
-    return f"{AGENT_SYSTEM_PROMPT}{memory_section}\n\nGoal:\n{goal}"
+    return f"{get_agent_system_prompt()}{memory_section}\n\nGoal:\n{goal}"
 
 def append_tool_result_event(session_log_path: Path, result: dict, iteration: int, backend: Optional[str] = None):
     event = result.get("event")
