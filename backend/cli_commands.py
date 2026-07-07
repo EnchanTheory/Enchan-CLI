@@ -53,6 +53,7 @@ def handle_cli_command(
     agent_mode: bool = False,
     memory_recorder=None,
     tokenizer=None,
+    args=None,
 ) -> tuple[bool, str, bool]:
     """Dynamically dispatches slash commands to declarative core registry handlers."""
     parts = user_input.strip().split()
@@ -76,6 +77,7 @@ def handle_cli_command(
             "agent_mode": agent_mode,
             "memory_recorder": memory_recorder,
             "tokenizer": tokenizer,
+            "args": args,
         }
         return registry.commands[command].handler(**context)
         
