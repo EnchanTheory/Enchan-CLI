@@ -161,7 +161,8 @@ if (args[0] === 'update' || args[0] === 'self-update') {
     process.exit(0);
 }
 
-refreshUpdateNotice({ timeoutMs: 2500 });
+// Keep normal startup responsive. The update check may perform network I/O, so it must
+// never block the Python chat backend from starting.
 notifyUpdateAvailableAsync();
 
 const pythonPath = resolvePython();
