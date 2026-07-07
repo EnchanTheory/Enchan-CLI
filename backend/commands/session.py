@@ -12,6 +12,7 @@ from backend.session_log import (
 # Note: Core config and runtime utilities imported from the new dedicated modules
 from backend.core.config import load_local_config, save_local_config
 from backend.runtime_config import sync_generation_config_to_active_model
+from backend.kv_cache_config import VALID_KV_CACHE_TYPES, apply_enchan_kv_cache_patch, normalize_kv_cache_type
 
 @registry.command("/new", desc="Start a new session and clear current context.")
 def handle_new(
@@ -119,10 +120,11 @@ def handle_set(
     file_context = kwargs.get("file_context", "")
     backend_mode = generation_config.get("backend", "enchan")
     enchan_config = getattr(model, "enchan_config", {}) if model is not None else {}
+    args = kwargs.get("args")
     
     if len(parts) == 1:
         print("\n[Configurable Parameters]")
-        print(f"  temp             = {generation_config.get('temperature', 1.0)} (sampling temperature)")
+        print(f"  temperature      = {generation_config.get('temperature', 1.0)} (sampling temperature)")
         print(f"  top_p            = {generation_config.get('top_p', 0.95)}")
         print(f"  top_k            = {generation_config.get('top_k', 64)}")
         print(f"  presence         = {generation_config.get('presence_penalty', 1.5)} (presence penalty)")
@@ -134,11 +136,14 @@ def handle_set(
         print(f"  mirostat         = {generation_config.get('mirostat', 0)} (Mirostat mode: 0, 1, 2)")
         print(f"  mirostat_lr      = {generation_config.get('mirostat_lr', 0.1)} (Mirostat learning rate)")
         print(f"  mirostat_ent     = {generation_config.get('mirostat_ent', 5.0)} (Mirostat target entropy)")
+        if backend_mode == "enchan":
+            print(f"  screen_strength  = {generation_config.get('screen_strength', getattr(args, 'screen_strength', 0.2))} (Enchan screening strength)")
+            print(f"  kv_cache_type    = {generation_config.get('kv_cache_type', getattr(args, 'kv_cache_type', 'q4_0'))} (Enchan KV cache dtype)")
         if enchan_config:
             print(f"  exit_layer       = {enchan_config.get('force_early_exit_layer', -1)}")
             print(f"  exit_thresh      = {enchan_config.get('early_exit_threshold', 0.15)}")
         
-        change_input = styled_input("\nSelect parameter and value to change (e.g. 'temp 0.5', 'reset' to clear, or Enter to cancel): ")
+        change_input = styled_input("\nSelect parameter and value to change (e.g. 'screen_strength 0.4', 'reset' to clear, or Enter to cancel): ")
         if not change_input:
             print("[System] No changes made.")
             return True, file_context, False
@@ -148,13 +153,13 @@ def handle_set(
         elif len(change_parts) == 2:
             parts = ["/set", change_parts[0], change_parts[1]]
         else:
-            print("[Error] Invalid format. Use 'temp 0.5', 'reset' to clear, or Enter to cancel.")
+            print("[Error] Invalid format. Use 'screen_strength 0.4', 'reset' to clear, or Enter to cancel.")
             return True, file_context, False
 
     # Reset command intercept
     if len(parts) == 2 and parts[1].lower() in ("reset", "clear"):
         local_cfg = load_local_config()
-        keys_to_remove = ["temperature", "top_p", "top_k", "presence_penalty", "max_new_tokens", "ollama_ctx", "view_think", "yarn_factor", "dynatemp_range", "mirostat", "mirostat_lr", "mirostat_ent"]
+        keys_to_remove = ["temperature", "top_p", "top_k", "presence_penalty", "max_new_tokens", "ollama_ctx", "view_think", "yarn_factor", "dynatemp_range", "mirostat", "mirostat_lr", "mirostat_ent", "screen_strength", "kv_cache_type"]
         removed_any = False
         for k in keys_to_remove:
             if k in local_cfg:
@@ -165,12 +170,15 @@ def handle_set(
         
         active_model = generation_config.get("gguf_model") if backend_mode == "enchan" else generation_config.get("ollama_model")
         sync_generation_config_to_active_model(generation_config, active_model, backend_mode)
+        if backend_mode == "enchan":
+            generation_config["screen_strength"] = getattr(args, "screen_strength", 0.2)
+            generation_config["kv_cache_type"] = normalize_kv_cache_type(getattr(args, "kv_cache_type", None))
         
         print("[System] Configuration overrides cleared. Reset to factory and model-specific recommended defaults.")
         return True, file_context, False
 
     if len(parts) != 3:
-        print("[Error] Usage: /set <parameter> <value> (e.g. /set temp 0.7) or /set reset")
+        print("[Error] Usage: /set <parameter> <value> (e.g. /set screen_strength 0.4) or /set reset")
         return True, file_context, False
         
     key = parts[1].lower()
@@ -260,10 +268,36 @@ def handle_set(
                 raise ValueError("mirostat_ent must be positive")
             generation_config["mirostat_ent"] = mirostat_ent
             print(f"[System] mirostat_ent = {mirostat_ent}")
+        elif key == "screen_strength":
+            screen_strength = float(value)
+            if screen_strength < 0.0 or screen_strength > 2.0:
+                raise ValueError("screen_strength must be between 0.0 and 2.0")
+            generation_config["screen_strength"] = screen_strength
+            if args is not None:
+                args.screen_strength = screen_strength
+            print(f"[System] screen_strength = {screen_strength}")
+            if backend_mode == "enchan":
+                from backend.enchan_llama_backend import shutdown_enchan_llama
+                shutdown_enchan_llama()
+                print("[System] Enchan engine will restart with the new screen_strength on the next request.")
+        elif key == "kv_cache_type":
+            kv_type = value.strip().lower()
+            if kv_type not in VALID_KV_CACHE_TYPES:
+                raise ValueError("kv_cache_type must be one of: q4_0, q8_0, f16")
+            generation_config["kv_cache_type"] = kv_type
+            if args is not None:
+                args.kv_cache_type = kv_type
+            if backend_mode == "enchan":
+                apply_enchan_kv_cache_patch(kv_type)
+                from backend.enchan_llama_backend import shutdown_enchan_llama
+                shutdown_enchan_llama()
+                print("[System] Enchan engine will restart with the new kv_cache_type on the next request.")
+            print(f"[System] kv_cache_type = {kv_type}")
         else:
-            print("[Error] Unknown setting. Use temp, top_p, top_k, input, max, obs_chars, dynatemp_range, mirostat, mirostat_lr, or mirostat_ent.")
+            print("[Error] Unknown setting. Use temperature, top_p, top_k, max_input_tokens, max_new_tokens, obs_chars, dynatemp_range, mirostat, mirostat_lr, mirostat_ent, screen_strength, or kv_cache_type.")
     except ValueError as e:
         print(f"[Error] {e}")
+        return True, file_context, False
         
     # Persist updated parameters to enchan_config.json
     local_cfg = load_local_config()
@@ -282,6 +316,10 @@ def handle_set(
         local_cfg["mirostat_lr"] = generation_config["mirostat_lr"]
     if "mirostat_ent" in generation_config:
         local_cfg["mirostat_ent"] = generation_config["mirostat_ent"]
+    if "screen_strength" in generation_config:
+        local_cfg["screen_strength"] = generation_config["screen_strength"]
+    if "kv_cache_type" in generation_config:
+        local_cfg["kv_cache_type"] = generation_config["kv_cache_type"]
     save_local_config(local_cfg)
     
     append_session_event(
