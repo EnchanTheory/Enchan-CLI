@@ -24,6 +24,24 @@ def get_engine_lib_path() -> Path:
 ENGINE_LIB_PATH = get_engine_lib_path()
 COSMIC_AVAILABLE = ENGINE_LIB_PATH.exists()
 _ENGINE_DLL: Optional[ctypes.CDLL] = None
+_PRELOADED_ENGINE_DEPS: list[ctypes.CDLL] = []
+
+
+def _preload_engine_deps(base_dir: Path) -> None:
+    """Preload sibling ggml libraries so libenchan can resolve dynamic symbols."""
+    if sys.platform == "win32":
+        return
+    mode = getattr(ctypes, "RTLD_GLOBAL", 0)
+    ext = ".dylib" if sys.platform == "darwin" else ".so"
+    order = ("libggml-base", "libggml-cpu", "libggml-blas", "libggml-metal", "libggml")
+    for name in order:
+        candidates = sorted(base_dir.glob(f"{name}.*{ext}")) or list(base_dir.glob(f"{name}{ext}"))
+        for candidate in candidates:
+            try:
+                _PRELOADED_ENGINE_DEPS.append(ctypes.CDLL(str(candidate), mode=mode))
+                break
+            except OSError:
+                continue
 
 
 def get_engine_dll() -> ctypes.CDLL:
@@ -33,6 +51,7 @@ def get_engine_dll() -> ctypes.CDLL:
     if not ENGINE_LIB_PATH.exists():
         raise RuntimeError(f"Enchan Engine library not found: {ENGINE_LIB_PATH}")
 
+    _preload_engine_deps(ENGINE_LIB_PATH.parent)
     dll = ctypes.CDLL(str(ENGINE_LIB_PATH))
     dll.enchan_engine_init.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
     dll.enchan_engine_init.restype = ctypes.c_int
@@ -105,4 +124,3 @@ def select_text_indices(
     if preserve_order:
         selected.sort()
     return selected[:budget]
-
