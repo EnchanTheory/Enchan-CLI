@@ -76,7 +76,7 @@ def _tool_spinner(call: dict):
         "Compressing..."
         if tool_name == "read_document"
         and str(call.get("args", {}).get("mode", "")).lower() == "compress"
-        else f"Calling {tool_name}... (esc to cancel)"
+        else f"Calling {tool_name}..."
     )
     status = get_spinner_status(spinner_text)
     if hasattr(status, "start"):
@@ -112,9 +112,17 @@ def _run_tool_observation(
     append_session_event(session_log_path, event)
 
     status = _tool_spinner(call)
-    result = execute_agent_tool(call, tokenizer=tokenizer)
-    if status is not None and hasattr(status, "stop"):
-        status.stop()
+    try:
+        result = execute_agent_tool(call, tokenizer=tokenizer)
+    except Exception as e:
+        result = {
+            "tool": call.get("tool"),
+            "ok": False,
+            "observation": f"Tool raised an exception: {e}",
+        }
+    finally:
+        if status is not None and hasattr(status, "stop"):
+            status.stop()
 
     observation = truncate_observation(
         result["observation"],
@@ -197,33 +205,38 @@ def run_agent_loop(
                     print(strip_thought_blocks(response_text))
             return
 
-        # Process the first tool call (we only execute one per turn currently)
-        tc = tool_calls[0]
-        call = {
-            "tool": tc.get("function", {}).get("name", ""),
-            "args": tc.get("function", {}).get("arguments", {})
-        }
-
-        observation_text = _run_tool_observation(
-            call,
-            tokenizer=tokenizer,
-            backend=backend,
-            iteration=iteration,
-            session_log_path=session_log_path,
-            single_turn=single_turn,
-            plain=plain,
-            print_before_action_newline=print_before_action_newline,
-            append_tool_result_event=append_tool_result_event,
-        )
-        
-        # Append the assistant message including tool_calls
+        # Append the assistant message including every requested tool call before results.
         assistant_msg = {"role": "assistant", "content": strip_thought_blocks(response_text), "tool_calls": tool_calls}
         if generation.get("thinking"):
             assistant_msg["thinking"] = generation["thinking"]
         chat_history.append(assistant_msg)
-        
-        # Append the tool result
-        chat_history.append({"role": "tool", "content": observation_text + "\nContinue."})
+
+        # Execute every returned tool call sequentially. One tool result is appended per tool_call id.
+        for index, tc in enumerate(tool_calls):
+            call = {
+                "tool": tc.get("function", {}).get("name", ""),
+                "args": tc.get("function", {}).get("arguments", {})
+            }
+
+            observation_text = _run_tool_observation(
+                call,
+                tokenizer=tokenizer,
+                backend=backend,
+                iteration=iteration,
+                session_log_path=session_log_path,
+                single_turn=single_turn,
+                plain=plain,
+                print_before_action_newline=print_before_action_newline,
+                append_tool_result_event=append_tool_result_event,
+            )
+
+            if index == len(tool_calls) - 1:
+                observation_text += "\nContinue."
+
+            tool_msg = {"role": "tool", "content": observation_text}
+            if tc.get("id"):
+                tool_msg["tool_call_id"] = tc.get("id")
+            chat_history.append(tool_msg)
 
     append_session_event(
         session_log_path,
@@ -236,4 +249,3 @@ def run_agent_loop(
     )
     if not plain:
         print(f"[Agent] Aborted after {AGENT_MAX_ITERATIONS} tool iterations.")
-
