@@ -1,3 +1,4 @@
+import copy
 from typing import Any
 
 AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
@@ -185,7 +186,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_skills",
-            "description": "Lists the full registered skill catalog, including method schemas. Installed skills are also summarized in the agent context.",
+            "description": "Lists the full registered skill catalog, including method schemas. Use for expanded detail only; installed skills are already auto-surfaced in the agent context and use_skill schema.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -197,7 +198,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "use_skill",
-            "description": "Runs an installed skill. When a task matches an installed skill description from the agent context, call this before using generic tools.",
+            "description": "Runs an installed skill as a first-class capability. Installed skill names and summaries are injected dynamically at runtime; when a task matches one, call this before generic tools.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -226,3 +227,43 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         }
     }
 ]
+
+
+def get_agent_tools_schema() -> list[dict[str, Any]]:
+    """Return the tool schema with the live skill registry embedded in skill tools."""
+    schema = copy.deepcopy(AGENT_TOOLS_SCHEMA)
+    try:
+        from backend.skills_loader import get_registered_skill_names, render_skill_tool_hint
+        skill_names = get_registered_skill_names()
+        skill_hint = render_skill_tool_hint()
+    except Exception as e:
+        skill_names = []
+        skill_hint = f"Skill registry unavailable: {e}"
+
+    for tool in schema:
+        function = tool.get("function") if isinstance(tool, dict) else None
+        if not isinstance(function, dict):
+            continue
+        name = function.get("name")
+        if name == "list_skills":
+            function["description"] = (
+                "Lists the full registered skill catalog, including method schemas. "
+                "Do not use this for initial discovery; installed skills are already auto-surfaced. "
+                f"Current installed skills: {skill_hint}"
+            )
+        elif name == "use_skill":
+            function["description"] = (
+                "Runs an installed skill as a first-class capability. "
+                "If the user task matches any installed skill below, call use_skill before generic tools. "
+                f"Current installed skills: {skill_hint}"
+            )
+            params = function.get("parameters")
+            if isinstance(params, dict):
+                props = params.get("properties")
+                if isinstance(props, dict):
+                    skill_name_prop = props.get("skill_name")
+                    if isinstance(skill_name_prop, dict):
+                        skill_name_prop["description"] = "Installed skill name. Choose from the live auto-registered skill catalog."
+                        if skill_names:
+                            skill_name_prop["enum"] = skill_names
+    return schema

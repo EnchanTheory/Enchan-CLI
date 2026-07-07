@@ -52,7 +52,8 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - write_text_file(path, content, overwrite) is the UTF-8 file writer. If overwriting, overwrite=true.
 - apply_patch(patch) is the unified diff patcher.
 - git_status(), git_diff(staged, paths), git_add(paths), git_commit(message) are git version controllers.
-- web_search(query), list_skills(), use_skill(name, arg), delegate_agent(agent, prompt) are auxiliary tools. Installed skills are listed in this prompt; when a task matches a skill description, use use_skill before generic tools.
+- Installed skills are first-class capabilities, auto-loaded from skills/ into the Skill Capability Registry below and into the use_skill tool schema. When a task matches a skill description, call use_skill(name, method, params) before generic tools. Do not require the user to run list_skills first.
+- web_search(query), list_skills(), use_skill(name, arg), delegate_agent(agent, prompt) are auxiliary tools. list_skills is for expanded detail, not initial discovery.
 
 ## Workspace & Workflow Rules
 - README.md is the project blueprint. If you take actions in any directory, read README.md first to understand the context.
@@ -74,7 +75,7 @@ def get_agent_system_prompt() -> str:
         skill_catalog = f"Skill catalog unavailable: {e}"
     return (
         f"{AGENT_SYSTEM_PROMPT}\n"
-        "\n## Installed Skills\n"
+        "\n## Skill Capability Registry (Auto-Loaded)\n"
         f"{skill_catalog}\n"
     )
 

@@ -1,4 +1,4 @@
-from backend.agent_tools_schema import AGENT_TOOLS_SCHEMA
+from backend.agent_tools_schema import get_agent_tools_schema
 from backend.llama_args import find_managed_llama_flags, format_llama_extra_args, normalize_llama_extra_args
 from backend.thinking import split_thought_blocks
 import os
@@ -1122,7 +1122,7 @@ def generate_enchan_llama_response(
         "top_k": int(generation_config.get("top_k", 20)),
         "presence_penalty": float(generation_config.get("presence_penalty", 1.5)),
         "max_tokens": int(generation_config.get("max_new_tokens", -1)),
-        "tools": AGENT_TOOLS_SCHEMA,
+        "tools": get_agent_tools_schema(),
     }
 
     # Qwen3.6 chat_template_kwargs handling

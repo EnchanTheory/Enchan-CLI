@@ -25,7 +25,7 @@ from backend.session_log import append_session_event
 from backend.agent_tools import get_agent_system_prompt
 from backend.agent_loop import run_agent_loop
 from backend.memory_store import build_memory_prompt_section
-from backend.agent_tools_schema import AGENT_TOOLS_SCHEMA
+from backend.agent_tools_schema import get_agent_tools_schema
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "gemma4:e2b-it-qat"
@@ -186,7 +186,7 @@ def generate_ollama_response(
             "num_predict": int(generation_config["max_new_tokens"]),
             "num_ctx": int(generation_config["max_input_tokens"]),
         },
-        "tools": AGENT_TOOLS_SCHEMA,
+        "tools": get_agent_tools_schema(),
     }
 
     if stream_output and not generation_config.get("suppress_response_header", False):

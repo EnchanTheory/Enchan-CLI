@@ -314,6 +314,45 @@ def _manifest_for_skill(skill_name: str) -> tuple[Path, dict[str, Any]]:
     return skill_dir, manifest
 
 
+
+def get_registered_skill_names() -> list[str]:
+    """Return loadable skill names for dynamic tool schema hints."""
+    if not SKILLS_DIR.exists():
+        return []
+    names: list[str] = []
+    for item in sorted(SKILLS_DIR.iterdir(), key=lambda p: p.name.lower()):
+        if not item.is_dir():
+            continue
+        manifest, error = _load_skill_manifest(item)
+        if error or manifest is None:
+            continue
+        names.append(str(manifest.get("name") or item.name))
+    return names
+
+
+def render_skill_tool_hint(max_chars: int = 1200) -> str:
+    """Compact live skill list for function-tool descriptions."""
+    if not SKILLS_DIR.exists():
+        return "No installed skills."
+    parts: list[str] = []
+    for item in sorted(SKILLS_DIR.iterdir(), key=lambda p: p.name.lower()):
+        if not item.is_dir():
+            continue
+        manifest, error = _load_skill_manifest(item)
+        if error or manifest is None:
+            continue
+        name = str(manifest.get("name") or item.name)
+        desc = str(manifest.get("description") or "No description provided.").strip()
+        methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
+        method_names = ",".join(str(method_name) for method_name in methods.keys()) or DEFAULT_LEGACY_METHOD
+        parts.append(f"{name}: {desc} (methods: {method_names})")
+    if not parts:
+        return "No loadable installed skills."
+    text = "; ".join(parts)
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
+
 def list_registered_skills() -> str:
     """List skill contracts discovered under skills/."""
     if not SKILLS_DIR.exists():
@@ -391,9 +430,10 @@ def render_skill_catalog_for_prompt(max_chars: int = 5000) -> str:
         return "No valid Enchan CLI skills are registered."
 
     header = (
-        "These skills are installed now. When a user task matches a skill description, "
-        "call use_skill with that skill name and method before falling back to generic tools. "
-        "Call list_skills for the complete catalog if more detail is needed.\n"
+        "Auto-loaded skill capability registry. These skills are installed now from skills/. "
+        "Treat each entry as a named capability available through use_skill; do not call list_skills merely to discover skill names. "
+        "When a user task matches a skill description, call use_skill with that skill name and method before falling back to generic tools. "
+        "Call list_skills only when you need expanded schemas or troubleshooting detail.\n"
     )
     content = header + "\n".join(entries)
     if len(content) <= max_chars:
