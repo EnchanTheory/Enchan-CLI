@@ -12,11 +12,7 @@ from backend.memory_store import load_memory_context, build_memory_prompt_sectio
 from backend.enchan_llama_backend import run_enchan_llama_agent_turn
 from backend.ollama_backend import run_ollama_agent_turn
 from backend.ui_theme import print_response_header
-
-KNOWN_SLASH_COMMANDS = frozenset({
-    "/resume", "/compress", "/model", "/status", "/set", "/llama_set",
-    "/help", "/license", "/new", "/exit", "/quit", "/delegate",
-})
+from backend.slash_commands import KNOWN_SLASH_COMMANDS
 
 
 def first_input_token(user_input: str) -> str:

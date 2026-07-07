@@ -146,21 +146,21 @@ def handle_set(
             print(f"  exit_thresh      = {enchan_config.get('early_exit_threshold', 0.15)}")
         
         print()
-        change_input = styled_input("Select parameter and value to change (e.g. 'screen_strength 0.4', 'reset' to clear, or Enter to cancel): ")
+        change_input = styled_input("Select parameter and value to change (e.g. 'screen_strength 0.4', 'reset', or Enter to cancel): ")
         if not change_input:
             print("[System] No changes made.")
             return True, file_context, False
         change_parts = change_input.split()
-        if len(change_parts) == 1 and change_parts[0].lower() in ("reset", "clear"):
-            parts = ["/set", change_parts[0].lower()]
+        if len(change_parts) == 1 and change_parts[0].lower() == "reset":
+            parts = ["/set", "reset"]
         elif len(change_parts) == 2:
             parts = ["/set", change_parts[0], change_parts[1]]
         else:
-            print("[Error] Invalid format. Use 'screen_strength 0.4', 'reset' to clear, or Enter to cancel.")
+            print("[Error] Invalid format. Use 'screen_strength 0.4', 'reset', or Enter to cancel.")
             return True, file_context, False
 
     # Reset command intercept
-    if len(parts) == 2 and parts[1].lower() in ("reset", "clear"):
+    if len(parts) == 2 and parts[1].lower() == "reset":
         local_cfg = load_local_config()
         keys_to_remove = ["temperature", "top_p", "top_k", "presence_penalty", "max_new_tokens", "ollama_ctx", "view_think", "yarn_factor", "dynatemp_range", "mirostat", "mirostat_lr", "mirostat_ent", "screen_strength", "kv_cache_type"]
         removed_any = False

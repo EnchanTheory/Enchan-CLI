@@ -116,15 +116,17 @@ One-shot mode:
 enchan --ask "Summarize this repository" --plain
 ```
 
-Run Enchan backend with explicit startup options:
+Configure Enchan-managed runtime settings inside the interactive CLI with `/set`:
 
-```bash
-enchan --backend enchan --screen-strength 0.4 --kv-cache-type q4_0
+```text
+/set screen_strength 0.4
+/set kv_cache_type q4_0
+/status
 ```
 
-`--screen-strength` controls Enchan Attention Screening strength for the Enchan backend. It can also be saved persistently from inside the CLI with `/set screen_strength <value>`.
+`/set screen_strength <value>` controls Enchan Attention Screening strength for the Enchan backend.
 
-`--kv-cache-type` controls llama.cpp KV cache quantization for the Enchan backend. The default is `q4_0`, which minimizes memory use for large models and long contexts on edge devices. Use `q8_0` or `f16` when you prefer higher KV precision over lower RAM usage. It can also be saved persistently with `/set kv_cache_type <q4_0|q8_0|f16>`.
+`/set kv_cache_type <q4_0|q8_0|f16>` controls llama.cpp KV cache quantization for the Enchan backend. The default is `q4_0`, which minimizes memory use for large models and long contexts on edge devices. Use `q8_0` or `f16` when you prefer higher KV precision over lower RAM usage.
 
 Supported KV cache values:
 
@@ -150,13 +152,7 @@ Enchan launches llama-server with native reasoning separation (`--reasoning-form
 
 While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprietary **Enchan Cosmic Engine** directly into the core Attention calculations. This mechanism is based on the **working hypothesis** that mathematically relaxing the over-concentration of Attention scores can mitigate the model fixating too rigidly on a single context path.
 
-To customize the screening strength from the command line (e.g., setting it to `0.4`):
-
-```bash
-enchan --screen-strength 0.4
-```
-
-Or persist it from inside the CLI:
+To customize the screening strength, set it from inside the interactive CLI:
 
 ```text
 /set screen_strength 0.4
@@ -231,23 +227,25 @@ Inside the interactive CLI, type `/` to see the following commands:
 - `/resume`: List resumable sessions or resume a specific session
 - `/compress`: Optimize older conversation turns
 - `/model`: Switch the active model
-- `/status`: Show model, history, context, and generation settings, including Enchan `screen_strength`, `kv_cache_type`, and `llama_extra_args`
-- `/set`: Configure and persist Enchan-managed generation/runtime parameters
+- `/status`: Show model, history, context, and generation settings
+- `/set`: Configure generation and early exit parameters
 - `/llama_set`: Configure unmanaged raw llama-server passthrough args
-- `/set screen_strength <value>`: Set and save Enchan Attention Screening strength
-- `/set kv_cache_type q4_0|q8_0|f16`: Set and save Enchan KV cache precision
-- `/llama_set clear`: Clear unmanaged llama-server passthrough args
-- `/help`: Show help menu and available commands
-- `/license`: Show repository license terms
 - `/new`: Start a new session (clears chat history and file context)
 - `/exit`: Exit the CLI
+- `/help`: Show help menu and available commands
+- `/license`: Show repository license terms
+
+Runtime settings are configured inside the interactive CLI:
+
+- `/set screen_strength <value>`: set Enchan Attention Screening strength
+- `/set kv_cache_type q4_0|q8_0|f16`: set Enchan KV cache precision
+- `/set reset`: reset all Enchan-managed generation/runtime parameters to their defaults
+- `/llama_set reset`: reset all unmanaged llama-server passthrough args to their defaults
 
 Useful startup options:
 
 - `--backend enchan|ollama`: choose the runtime backend
 - `--llama-arg <arg>`: append an unmanaged raw llama-server argument; repeat as needed
-- `--screen-strength <value>`: choose Enchan Attention Screening strength at startup
-- `--kv-cache-type q4_0|q8_0|f16`: choose Enchan KV cache precision; default `q4_0`
 
 You can also update the installation:
 - `enchan update`: update the installed checkout and refresh the command

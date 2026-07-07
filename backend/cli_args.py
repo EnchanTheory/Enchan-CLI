@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 from backend.core.config import EnchanConfig
 from backend.ollama_backend import DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_HOST
-from backend.kv_cache_config import DEFAULT_KV_CACHE_TYPE, VALID_KV_CACHE_TYPES
+from backend.kv_cache_config import DEFAULT_KV_CACHE_TYPE
 from backend.llama_args import normalize_llama_extra_args
 
 
@@ -17,7 +17,6 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--backend", choices=["ollama", "enchan"], default=default_backend, help="runtime backend: ollama uses local Ollama; enchan uses Enchan Llama")
     parser.add_argument("--gguf-model", default="", help="path to GGUF model for --backend enchan (interactive startup shows a model picker when omitted)")
-    parser.add_argument("--screen-strength", type=float, default=cfg.screen_strength, help="screening strength for --backend enchan (default: 0.2)")
     parser.add_argument("--H-c", type=float, default=cfg.H_c, help="scaling depth H_c for --backend enchan (default: 1.6)")
     parser.add_argument("--m", type=float, default=cfg.m, help="sharpness power m for --backend enchan (default: 1.5)")
     parser.add_argument("--no-ram-guard", action="store_true", help="disable Enchan Llama system RAM reserve guard")
@@ -26,7 +25,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ram-pressure-action", choices=["warn", "kill"], default=cfg.ram_pressure_action, help="what to do when Enchan Llama crosses the RAM reserve (default: warn)")
     parser.add_argument("--llama-mmap", choices=["on", "off"], default=cfg.llama_mmap, help="memory-map GGUF model files for --backend enchan (default: off)")
     parser.add_argument("--llama-fit", action="store_true", default=cfg.llama_fit, help="enable llama.cpp --fit memory fitting for --backend enchan")
-    parser.add_argument("--kv-cache-type", choices=sorted(VALID_KV_CACHE_TYPES), default=getattr(cfg, "kv_cache_type", DEFAULT_KV_CACHE_TYPE), help="KV cache dtype for --backend enchan (default: q4_0; choices: q4_0, q8_0, f16)")
     parser.add_argument("--llama-arg", action="append", default=list(getattr(cfg, "llama_extra_args", [])), help="append a raw unmanaged llama-server argument; repeat for multiple args")
     parser.add_argument("--ollama-model", default=cfg.ollama_model, help=f"Ollama model name for --backend ollama (default: {DEFAULT_OLLAMA_MODEL})")
     parser.add_argument("--ollama-host", default=cfg.ollama_host, help=f"Ollama API host for --backend ollama (default: {DEFAULT_OLLAMA_HOST})")
@@ -62,11 +60,12 @@ def parse_args() -> argparse.Namespace:
     parser_detect.add_argument("--yarn-factor", type=float)
     parser_detect.add_argument("--max-new-tokens", type=int)
     parser_detect.add_argument("--ollama-ctx", type=int)
-    parser_detect.add_argument("--kv-cache-type")
     parser_detect.add_argument("--llama-arg", action="append")
 
     explicit_ns, _ = parser_detect.parse_known_args()
     args.explicit_overrides = vars(explicit_ns)
+    args.screen_strength = cfg.screen_strength
+    args.kv_cache_type = getattr(cfg, "kv_cache_type", DEFAULT_KV_CACHE_TYPE)
     args.llama_arg = normalize_llama_extra_args(getattr(args, "llama_arg", []))
 
     return args

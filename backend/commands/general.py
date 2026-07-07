@@ -1,6 +1,7 @@
 from pathlib import Path
 from backend.core import registry
 from backend.llama_args import format_llama_extra_args
+from backend.slash_commands import MAIN_SLASH_COMMANDS
 
 # Path resolution for LICENSE file
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -10,15 +11,8 @@ CLI_DIR = BACKEND_DIR.parent
 def handle_help(file_context: str, **kwargs) -> tuple[bool, str, bool]:
     """Displays CLI Slash Commands and Smart Reading usage guide."""
     print("\n[Commands]")
-    print("  /help                         Show this help.")
-    print("  /license                      Show repository license terms.")
-    print("  /new                          Start a new session and clear current context.")
-    print("  /status                       Show active model, backend, context, and generation settings.")
-    print("  /resume [num|name]            Resume a saved session.")
-    print("  /model [num|name]             List or switch Ollama/Enchan models.")
-    print("  /compress                     Optimize older conversation turns invisibly.")
-    print("  /set                          Show or change generation settings interactively.")
-    print("  /llama_set                    Show or change unmanaged llama-server passthrough args.")
+    for command, description, _ in MAIN_SLASH_COMMANDS:
+        print(f"  {command:<28} {description}")
     print("  /set temperature <value>      Set temperature, e.g. /set temperature 0.3")
     print("  /set top_p <value>            Set top_p, e.g. /set top_p 0.9")
     print("  /set top_k <value>            Set top_k, e.g. /set top_k 64")
@@ -28,13 +22,12 @@ def handle_help(file_context: str, **kwargs) -> tuple[bool, str, bool]:
     print("  /set mirostat <0|1|2>         Set Mirostat mode, e.g. /set mirostat 2")
     print("  /set screen_strength <val>    Set Enchan screening strength, e.g. /set screen_strength 0.4")
     print("  /set kv_cache_type <type>     Set Enchan KV cache dtype: q4_0, q8_0, or f16")
-    print("  /exit                         Exit the CLI.")
+    print("                                q4_0 minimizes RAM; use q8_0 or f16 for more precision.")
+    print("  /set reset                    Reset all Enchan-managed generation/runtime parameters to their defaults")
+    print("  /llama_set reset              Reset all unmanaged llama-server passthrough args to their defaults")
     print("\n[Startup Options]")
     print("  --backend <name>              Select backend: enchan or ollama.")
-    print("  --screen-strength <value>     Enchan screening strength at startup.")
-    print("  --kv-cache-type <type>        Enchan KV cache dtype: q4_0, q8_0, or f16 (default: q4_0).")
     print("  --llama-arg <arg>             Append an unmanaged raw llama-server argument; repeat as needed.")
-    print("                                q4_0 minimizes RAM for large models / long context; use q8_0 or f16 for more precision.")
     print("\n[Smart Reading]")
     print("  Paste or drag a file or image path and Enchan will read/view it directly.")
     print("  Large files are compressed internally with Enchan Engine; compressed context is hidden from display and logs.")
