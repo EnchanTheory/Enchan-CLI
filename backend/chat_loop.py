@@ -91,6 +91,7 @@ def run_chat_loop(
         from backend.kv_cache_config import apply_enchan_kv_cache_patch
         kv_cache_type = apply_enchan_kv_cache_patch(getattr(args, "kv_cache_type", None))
         generation_config["kv_cache_type"] = kv_cache_type
+        generation_config["screen_strength"] = getattr(args, "screen_strength", 0.2)
 
     while True:
         try:
@@ -144,6 +145,7 @@ def run_chat_loop(
                     agent_mode=agent_mode,
                     memory_recorder=record_memory,
                     tokenizer=tokenizer,
+                    args=args,
                 )
                 if should_exit:
                     break
@@ -156,6 +158,10 @@ def run_chat_loop(
                         args.ollama_host = generation_config["ollama_host"]
                     if generation_config.get("gguf_model"):
                         args.gguf_model = generation_config["gguf_model"]
+                    if generation_config.get("screen_strength") is not None:
+                        args.screen_strength = generation_config["screen_strength"]
+                    if generation_config.get("kv_cache_type"):
+                        args.kv_cache_type = generation_config["kv_cache_type"]
                     continue
 
             if not agent_mode and user_input.strip().lower() == "enchan --agent":
