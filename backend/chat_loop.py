@@ -87,6 +87,11 @@ def run_chat_loop(
     def consolidate_memory(reason: str) -> None:
         return None
 
+    if backend_mode == "enchan":
+        from backend.kv_cache_config import apply_enchan_kv_cache_patch
+        kv_cache_type = apply_enchan_kv_cache_patch(getattr(args, "kv_cache_type", None))
+        generation_config["kv_cache_type"] = kv_cache_type
+
     while True:
         try:
             auto_compressed = False
