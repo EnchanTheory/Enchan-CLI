@@ -24,6 +24,10 @@ def handle_help(file_context: str, **kwargs) -> tuple[bool, str, bool]:
     print("  /set dynatemp <val>   Set dynamic temperature range, e.g. /set dynatemp 0.2")
     print("  /set mirostat <0|1|2> Set Mirostat mode, e.g. /set mirostat 2")
     print("  /exit                 Exit the CLI.")
+    print("\n[Startup Options]")
+    print("  --backend <name>      Select backend: enchan or ollama.")
+    print("  --kv-cache-type <t>   Enchan KV cache dtype: q4_0, q8_0, or f16 (default: q4_0).")
+    print("                       q4_0 minimizes RAM for large models / long context; use q8_0 or f16 for more precision.")
     print("\n[Smart Reading]")
     print("  Paste or drag a file or image path and Enchan will read/view it directly.")    
     print("  Large files are compressed internally with Enchan Engine; compressed context is hidden from display and logs.")
@@ -72,6 +76,8 @@ def handle_status(
     print(f"  temperature: {generation_config.get('temperature', 'N/A')}")    
     print(f"  top_p: {generation_config.get('top_p', 'N/A')}")
     print(f"  top_k: {generation_config.get('top_k', 'N/A')}")
+    if generation_config.get("backend") == "enchan":
+        print(f"  kv_cache_type: {generation_config.get('kv_cache_type', 'q4_0')}")
     print(f"  dynatemp_range: {generation_config.get('dynatemp_range', 0.0)}")
     print(f"  mirostat: {generation_config.get('mirostat', 0)} (0=off, 1=Mirostat, 2=Mirostat 2.0)")
     if generation_config.get("mirostat", 0) > 0:
