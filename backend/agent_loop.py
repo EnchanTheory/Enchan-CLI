@@ -17,6 +17,7 @@ from backend.ui_theme import get_spinner_status, print_agent_action, print_agent
 
 
 SENSITIVE_SPINNER_TOOLS = {
+    "edit_file",
     "write_text_file",
     "apply_patch",
     "host_shell",
@@ -29,6 +30,11 @@ SENSITIVE_SPINNER_TOOLS = {
 }
 
 
+def _is_compress_call(call: dict) -> bool:
+    return (
+        call.get("tool") in {"read_file", "read_document", "search_code"}
+        and str(call.get("args", {}).get("mode", "")).lower() == "compress"
+    )
 
 
 def _assistant_message_from_generation(response_text: str, generation: dict, *, strip_thoughts: bool) -> dict:
@@ -66,12 +72,7 @@ def _tool_spinner(call: dict):
     tool_name = call.get("tool")
     if tool_name in SENSITIVE_SPINNER_TOOLS:
         return None
-    spinner_text = (
-        "Compressing..."
-        if tool_name == "read_document"
-        and str(call.get("args", {}).get("mode", "")).lower() == "compress"
-        else f"Calling {tool_name}..."
-    )
+    spinner_text = "Compressing..." if _is_compress_call(call) else f"Calling {tool_name}..."
     status = get_spinner_status(spinner_text)
     if hasattr(status, "start"):
         status.start()
@@ -122,12 +123,9 @@ def _run_tool_observation(
         result["observation"],
         max_chars=int(result.get("observation_max_chars") or get_max_obs_chars()),
     )
-    hide_observation = (
-        call.get("tool") == "read_document"
-        and str(call.get("args", {}).get("mode", "")).lower() == "compress"
-    )
+    hide_observation = _is_compress_call(call)
     visible_observation = (
-        "[Internal compressed document context hidden from display and session log; delivered to the agent for analysis.]"
+        "[Internal compressed context hidden from display and session log; delivered to the agent for analysis.]"
         if hide_observation
         else observation
     )
@@ -199,13 +197,11 @@ def run_agent_loop(
                     print(strip_thought_blocks(response_text))
             return
 
-        # Append the assistant message including every requested tool call before results.
         assistant_msg = {"role": "assistant", "content": strip_thought_blocks(response_text), "tool_calls": tool_calls}
         if generation.get("thinking"):
             assistant_msg["thinking"] = generation["thinking"]
         chat_history.append(assistant_msg)
 
-        # Execute every returned tool call sequentially. One tool result is appended per tool_call id.
         for index, tc in enumerate(tool_calls):
             call = {
                 "tool": tc.get("function", {}).get("name", ""),
@@ -220,26 +216,7 @@ def run_agent_loop(
                 session_log_path=session_log_path,
                 single_turn=single_turn,
                 plain=plain,
-                print_before_action_newline=print_before_action_newline,
+                print_before_action_newline=(print_before_action_newline or index > 0),
                 append_tool_result_event=append_tool_result_event,
             )
-
-            if index == len(tool_calls) - 1:
-                observation_text += "\nContinue."
-
-            tool_msg = {"role": "tool", "content": observation_text}
-            if tc.get("id"):
-                tool_msg["tool_call_id"] = tc.get("id")
-            chat_history.append(tool_msg)
-
-    append_session_event(
-        session_log_path,
-        {
-            "type": "agent_loop_limit",
-            "max_iterations": AGENT_MAX_ITERATIONS,
-            "backend": backend,
-            **({"single_turn": True} if single_turn else {}),
-        },
-    )
-    if not plain:
-        print(f"[Agent] Aborted after {AGENT_MAX_ITERATIONS} tool iterations.")
+            chat_history.append({"role": "tool", "content": observation_text, "tool_call_id": tc.get("id")})
