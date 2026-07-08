@@ -6,7 +6,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "host_shell",
-            "description": "Executes terminal commands with the OS-native default shell. Use this for git, python, npm, tests, diagnostics, builds, etc.",
+            "description": "Executes terminal commands with the OS-native default shell. Use this for git, directory listing, python, npm, tests, diagnostics, builds, and other command-line work. This is the general command surface; do not use narrower git/listing wrappers.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -23,23 +23,8 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "list_directory",
-            "description": "Lists the contents of a directory to a specified depth.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The path to the directory"},
-                    "depth": {"type": "integer", "description": "Maximum depth to recurse (optional, default 2)"}
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "read_document",
-            "description": "Reads a file. Supports line-range reading or content summarization/compression.",
+            "description": "Reads a file. Use line ranges for precise code work; use mode='compress' only for large files or summarization/extraction.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -56,7 +41,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_pattern",
-            "description": "Searches for a regular expression pattern across all files in the workspace.",
+            "description": "Searches for a regular expression pattern across files in the workspace. Use this before broad file reads when locating code.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -87,7 +72,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "write_text_file",
-            "description": "Creates a new UTF-8 text file or completely overwrites an existing one.",
+            "description": "Creates a new UTF-8 text file or completely overwrites an existing one. Prefer replace_text or apply_patch for normal code edits.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -103,7 +88,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "apply_patch",
-            "description": "Applies a unified diff patch to the workspace.",
+            "description": "Applies a unified diff patch to the workspace. Prefer this for multi-line or multi-file code edits.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -116,63 +101,8 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "git_status",
-            "description": "Runs 'git status --short' to show working tree status.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "git_diff",
-            "description": "Runs 'git diff' to show changes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "staged": {"type": "boolean", "description": "Set to true to diff staged changes (--cached)"},
-                    "paths": {"type": "array", "items": {"type": "string"}, "description": "Specific file paths to diff (optional)"}
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "git_add",
-            "description": "Runs 'git add' to stage files for commit.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "paths": {"type": "array", "items": {"type": "string"}, "description": "List of paths to stage"}
-                },
-                "required": ["paths"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "git_commit",
-            "description": "Runs 'git commit' to commit staged changes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string", "description": "The commit message"}
-                },
-                "required": ["message"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "web_search",
-            "description": "Finds candidate web pages only. Prefer web_browse for web/news questions because web_browse opens pages and returns readable page text.",
+            "description": "Finds candidate web pages only. Keep this because web research is a unique capability, not a duplicate of local code tools. Prefer web_browse when readable page text is needed.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -186,7 +116,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "web_browse",
-            "description": "Browses the web by opening a URL or by finding and opening pages for a query. Use this for current news, site contents, and any answer that needs page text rather than search snippets.",
+            "description": "Browses the web by opening a URL or by finding and opening pages for a query. Keep this because web reading is a unique capability, not a duplicate of local code tools.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -203,7 +133,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_skills",
-            "description": "Lists the full registered skill catalog, including method schemas. Use for expanded detail only; installed skills are already auto-surfaced in the agent context and use_skill schema.",
+            "description": "Lists the full registered skill catalog, including method schemas. Keep this because skills are a unique capability.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -232,7 +162,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "delegate_agent",
-            "description": "Delegates a complex prompt or task to an external agent model (e.g. codex, gemini, claude).",
+            "description": "Delegates a complex prompt or task to an external agent model (e.g. codex, gemini, claude). Keep this because external delegation is a unique capability.",
             "parameters": {
                 "type": "object",
                 "properties": {
