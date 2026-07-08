@@ -190,11 +190,13 @@ def run_agent_loop(
                     print(strip_thought_blocks(response_text))
             return
 
+        # Append the assistant message including every requested tool call before results.
         assistant_msg = {"role": "assistant", "content": strip_thought_blocks(response_text), "tool_calls": tool_calls}
         if generation.get("thinking"):
             assistant_msg["thinking"] = generation["thinking"]
         chat_history.append(assistant_msg)
 
+        # Execute every returned tool call sequentially. One tool result is appended per tool_call id.
         for index, tc in enumerate(tool_calls):
             call = {
                 "tool": tc.get("function", {}).get("name", ""),
@@ -209,7 +211,26 @@ def run_agent_loop(
                 session_log_path=session_log_path,
                 single_turn=single_turn,
                 plain=plain,
-                print_before_action_newline=(print_before_action_newline or index > 0),
+                print_before_action_newline=print_before_action_newline,
                 append_tool_result_event=append_tool_result_event,
             )
-            chat_history.append({"role": "tool", "content": observation_text, "tool_call_id": tc.get("id")})
+
+            if index == len(tool_calls) - 1:
+                observation_text += "\nContinue."
+
+            tool_msg = {"role": "tool", "content": observation_text}
+            if tc.get("id"):
+                tool_msg["tool_call_id"] = tc.get("id")
+            chat_history.append(tool_msg)
+
+    append_session_event(
+        session_log_path,
+        {
+            "type": "agent_loop_limit",
+            "max_iterations": AGENT_MAX_ITERATIONS,
+            "backend": backend,
+            **({"single_turn": True} if single_turn else {}),
+        },
+    )
+    if not plain:
+        print(f"[Agent] Aborted after {AGENT_MAX_ITERATIONS} tool iterations.")
