@@ -246,24 +246,6 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
 ]
 
 
-def _tighten_tool_argument_schema(parameters: dict[str, Any]) -> None:
-    """Make top-level tool arguments closed without affecting nested free-form params.
-
-    llama.cpp and Ollama already receive the tool schema from each request. Closing the
-    top-level argument object gives constrained decoders a stricter target and reduces
-    out-of-schema keys from small models, while keeping normal prose responses untouched.
-    The nested use_skill.params object intentionally remains open because skill methods
-    have their own dynamic schemas.
-    """
-    if not isinstance(parameters, dict):
-        return
-    if parameters.get("type") != "object":
-        return
-    if not isinstance(parameters.get("properties"), dict):
-        return
-    parameters.setdefault("additionalProperties", False)
-
-
 def get_agent_tools_schema() -> list[dict[str, Any]]:
     """Return the tool schema with the live skill registry embedded in skill tools."""
     schema = copy.deepcopy(AGENT_TOOLS_SCHEMA)
@@ -279,9 +261,6 @@ def get_agent_tools_schema() -> list[dict[str, Any]]:
         function = tool.get("function") if isinstance(tool, dict) else None
         if not isinstance(function, dict):
             continue
-        parameters = function.get("parameters")
-        if isinstance(parameters, dict):
-            _tighten_tool_argument_schema(parameters)
         name = function.get("name")
         if name == "list_skills":
             function["description"] = (
