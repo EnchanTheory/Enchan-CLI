@@ -18,21 +18,14 @@ from backend.ui_theme import get_spinner_status, print_agent_action, print_agent
 
 SENSITIVE_SPINNER_TOOLS = {
     "edit_file",
-    "write_text_file",
-    "apply_patch",
-    "host_shell",
-    "execute_command",
     "use_skill",
     "delegate_agent",
-    "replace_text",
-    "git_add",
-    "git_commit",
 }
 
 
 def _is_compress_call(call: dict) -> bool:
     return (
-        call.get("tool") in {"read_file", "read_document", "search_code"}
+        call.get("tool") in {"read_file", "search_code"}
         and str(call.get("args", {}).get("mode", "")).lower() == "compress"
     )
 
