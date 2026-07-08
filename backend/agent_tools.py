@@ -50,8 +50,7 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - read_file(path, lines, mode, query) is the primary file reader. Use mode="compress" for large documents or structured extraction.
 - edit_file(path, patch, old, new, content, overwrite, apply) is the single editing surface for patch, exact replace, and write operations.
 - run_command(command, cwd, shell, timeout_seconds) executes terminal commands with the OS-native default shell ({DEFAULT_HOST_SHELL_DESCRIPTION}).
-- web_browse, web_search, list_skills, use_skill, and delegate_agent are unique capabilities and must remain reachable.
-- Legacy local tool names still resolve for compatibility, but prefer the clean core surface above.
+- web_browse, web_search, list_skills, use_skill, and delegate_agent are unique capabilities and remain reachable.
 
 ## Workspace & Workflow Rules
 - README.md is the project blueprint. If you take actions in any directory, read README.md first to understand the context.
@@ -202,10 +201,6 @@ def tool_read_file(args: dict) -> dict:
     return {"ok": True, "content": content}
 
 
-def tool_read_document(args: dict) -> dict:
-    return tool_read_file(args)
-
-
 def _iter_search_files(root: Path):
     ignore_dirs = {".git", ".venv", ".venv_cuda", "__pycache__", "node_modules", ".idea", "dist", "build"}
     blocked_ext = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".webp", ".zip", ".exe", ".dll", ".pyc"}
@@ -218,11 +213,11 @@ def _iter_search_files(root: Path):
 
 
 def tool_search_code(args: dict) -> dict:
-    query = args.get("query") or args.get("regex")
+    query = args.get("query")
     if not isinstance(query, str) or not query.strip():
         return {"ok": False, "error": "search_code requires query."}
     query = query.strip()
-    regex = bool(args.get("regex", False)) or ("regex" in args and "query" not in args)
+    regex = bool(args.get("regex", False))
     context_lines = max(0, min(int(args.get("context_lines", 2) or 2), 5))
     max_results = max(1, min(int(args.get("max_results", 80) or 80), 200))
     try:
@@ -258,7 +253,7 @@ def tool_search_code(args: dict) -> dict:
                 if pattern.search(line):
                     start = max(1, idx - context_lines)
                     end = min(len(file_lines), idx + context_lines)
-                    snippet = "\n".join(f"{n}: {file_lines[n-1]}" for n in range(start, end + 1))
+                    snippet = "\n".join(f"{n}: {file_lines[n - 1]}" for n in range(start, end + 1))
                     hits.append(f"--- {path.relative_to(search_root)}:{idx} ---\n{snippet}")
                     if len(hits) >= max_results:
                         break
@@ -268,10 +263,6 @@ def tool_search_code(args: dict) -> dict:
     if args.get("mode") == "compress":
         return _compress_text(content, f"search_code({query})", str(args.get("compress_query") or query), tokenizer=args.get("__tokenizer"), model=args.get("__model"))
     return {"ok": True, "content": truncate_observation(content, max_chars=20000), "observation_max_chars": 20000}
-
-
-def tool_search_pattern(args: dict) -> dict:
-    return tool_search_code({**args, "query": args.get("regex") or args.get("query"), "regex": True})
 
 
 def tool_edit_file(args: dict) -> dict:
@@ -328,18 +319,6 @@ def tool_edit_file(args: dict) -> dict:
         path.write_text(content, encoding="utf-8")
         return {"ok": True, "content": "WROTE file.\n" + diff, "event": {"type": "edit_applied", "tool": "edit_file", "path": str(path), "applied": True}}
     return {"ok": False, "error": "edit_file requires patch, old/new, or content."}
-
-
-def tool_replace_text(args: dict) -> dict:
-    return tool_edit_file(args)
-
-
-def tool_write_text_file(args: dict) -> dict:
-    return tool_edit_file(args)
-
-
-def tool_apply_patch(args: dict) -> dict:
-    return tool_edit_file(args)
 
 
 def _resolve_command_cwd(args: dict) -> Path:
@@ -403,56 +382,6 @@ def tool_run_command(args: dict) -> dict:
         return {"ok": False, "error": f"run_command timed out after {e.timeout} seconds."}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
-
-def tool_host_shell(args: dict) -> dict:
-    return tool_run_command(args)
-
-
-def tool_execute_command(args: dict) -> dict:
-    return tool_run_command(args)
-
-
-def tool_list_directory(args: dict) -> dict:
-    path = str(args.get("path") or ".")
-    depth = max(1, min(int(args.get("depth", 2) or 2), 6))
-    command = f"find . -maxdepth {depth} -print" if os.name != "nt" else "dir"
-    return tool_run_command({"command": command, "cwd": path, "timeout_seconds": 30})
-
-
-def _quote_paths(paths) -> str:
-    if isinstance(paths, str):
-        paths = [paths]
-    if not isinstance(paths, list):
-        paths = []
-    return " ".join(shlex.quote(str(p)) for p in paths if str(p).strip())
-
-
-def tool_git_status(args: dict) -> dict:
-    return tool_run_command({"command": "git status --short -- .", "timeout_seconds": 30})
-
-
-def tool_git_diff(args: dict) -> dict:
-    cmd = "git diff"
-    if bool(args.get("staged", False)):
-        cmd += " --cached"
-    q = _quote_paths(args.get("paths"))
-    cmd += f" -- {q}" if q else " -- ."
-    return tool_run_command({"command": cmd, "timeout_seconds": 60, "max_output_chars": 20000})
-
-
-def tool_git_add(args: dict) -> dict:
-    q = _quote_paths(args.get("paths"))
-    if not q:
-        return {"ok": False, "error": "git_add requires paths."}
-    return tool_run_command({"command": "git add -- " + q, "timeout_seconds": 60})
-
-
-def tool_git_commit(args: dict) -> dict:
-    message = args.get("message")
-    if not isinstance(message, str) or not message.strip():
-        return {"ok": False, "error": "git_commit requires message."}
-    return tool_run_command({"command": "git commit -m " + shlex.quote(message.strip()), "timeout_seconds": 120})
 
 
 def tool_web_search(args: dict) -> dict:
@@ -537,11 +466,11 @@ def tool_use_skill(args: dict) -> dict:
 
 
 def _load_local_config() -> dict:
-    p = CLI_DIR / "enchan_config.json"
-    if not p.exists():
+    path = CLI_DIR / "enchan_config.json"
+    if not path.exists():
         return {}
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -587,19 +516,6 @@ TOOL_REGISTRY = {
     "list_skills": tool_list_skills,
     "use_skill": tool_use_skill,
     "delegate_agent": tool_delegate_agent,
-    "list_directory": tool_list_directory,
-    "read_document": tool_read_document,
-    "search_pattern": tool_search_pattern,
-    "replace_text": tool_replace_text,
-    "write_text_file": tool_write_text_file,
-    "write_document": tool_write_text_file,
-    "apply_patch": tool_apply_patch,
-    "host_shell": tool_host_shell,
-    "execute_command": tool_execute_command,
-    "git_status": tool_git_status,
-    "git_diff": tool_git_diff,
-    "git_add": tool_git_add,
-    "git_commit": tool_git_commit,
 }
 
 
@@ -609,16 +525,13 @@ def _interactive_security_prompt() -> bool:
 
 
 def _tool_requires_permission(tool_name: str, args: dict) -> bool:
-    if tool_name in ("run_command", "host_shell", "execute_command"):
+    if tool_name == "run_command":
         return False
     if tool_name == "edit_file":
         val = args.get("apply", True)
         return not (val is False or str(val).lower() == "false")
-    if tool_name in ("write_text_file", "write_document", "apply_patch", "use_skill", "git_add", "git_commit"):
+    if tool_name == "use_skill":
         return True
-    if tool_name == "replace_text":
-        val = args.get("apply", False)
-        return val is True or str(val).lower() == "true"
     return False
 
 
@@ -628,13 +541,16 @@ def execute_agent_tool(call: dict, tokenizer=None, model=None) -> dict:
         return {"tool": tool_name, "ok": False, "observation": call.get("error", "Invalid tool call.")}
     tool = TOOL_REGISTRY.get(tool_name)
     if tool is None:
-        return {"tool": tool_name, "ok": False, "observation": f"Unknown tool: {tool_name}"}
+        available = ", ".join(sorted(TOOL_REGISTRY))
+        return {"tool": tool_name, "ok": False, "observation": f"Unknown tool: {tool_name}. Available tools: {available}"}
     args = dict(call.get("args", {}))
     if _tool_requires_permission(tool_name, args):
         print(f"\n\x1b[38;2;190;170;120m⚠️  [Security Request]\x1b[0m \x1b[38;2;210;200;200mThe local Enchan AI wants to perform a sensitive action:\x1b[0m")
         print(f"  \x1b[38;2;210;200;200mTool: {tool_name}\x1b[0m")
-        if tool_name in ("edit_file", "write_text_file", "write_document", "replace_text"):
-            print(f"  \x1b[38;2;210;200;200mTarget: {args.get('path')}\x1b[0m")
+        if tool_name == "edit_file":
+            print(f"  \x1b[38;2;210;200;200mTarget: {args.get('path') or '[patch]'}\x1b[0m")
+        elif tool_name == "use_skill":
+            print(f"  \x1b[38;2;210;200;200mSkill: {args.get('skill_name') or args.get('name') or 'unknown'}\x1b[0m")
         if not _interactive_security_prompt():
             print("\x1b[38;2;180;100;100m  [System] Execution denied by user.\x1b[0m")
             return {"tool": tool_name, "ok": False, "observation": "User denied permission to execute this tool."}
