@@ -17,18 +17,17 @@ from backend.ui_theme import get_spinner_status, print_agent_action, print_agent
 
 
 SENSITIVE_SPINNER_TOOLS = {
-    "write_text_file",
-    "apply_patch",
-    "host_shell",
-    "execute_command",
+    "edit_file",
     "use_skill",
     "delegate_agent",
-    "replace_text",
-    "git_add",
-    "git_commit",
 }
 
 
+def _is_compress_call(call: dict) -> bool:
+    return (
+        call.get("tool") in {"read_file", "search_code"}
+        and str(call.get("args", {}).get("mode", "")).lower() == "compress"
+    )
 
 
 def _assistant_message_from_generation(response_text: str, generation: dict, *, strip_thoughts: bool) -> dict:
@@ -66,12 +65,7 @@ def _tool_spinner(call: dict):
     tool_name = call.get("tool")
     if tool_name in SENSITIVE_SPINNER_TOOLS:
         return None
-    spinner_text = (
-        "Compressing..."
-        if tool_name == "read_document"
-        and str(call.get("args", {}).get("mode", "")).lower() == "compress"
-        else f"Calling {tool_name}..."
-    )
+    spinner_text = "Compressing..." if _is_compress_call(call) else f"Calling {tool_name}..."
     status = get_spinner_status(spinner_text)
     if hasattr(status, "start"):
         status.start()
@@ -122,12 +116,9 @@ def _run_tool_observation(
         result["observation"],
         max_chars=int(result.get("observation_max_chars") or get_max_obs_chars()),
     )
-    hide_observation = (
-        call.get("tool") == "read_document"
-        and str(call.get("args", {}).get("mode", "")).lower() == "compress"
-    )
+    hide_observation = _is_compress_call(call)
     visible_observation = (
-        "[Internal compressed document context hidden from display and session log; delivered to the agent for analysis.]"
+        "[Internal compressed context hidden from display and session log; delivered to the agent for analysis.]"
         if hide_observation
         else observation
     )

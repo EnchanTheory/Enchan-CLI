@@ -5,8 +5,65 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "host_shell",
-            "description": "Executes terminal commands with the OS-native default shell. Use this for git, python, npm, tests, diagnostics, builds, etc.",
+            "name": "search_code",
+            "description": "Primary local code search. Prefer rg when available. Returns paths, line numbers, and compact context. Supports mode='compress' to summarize/group large search results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query or regex pattern"},
+                    "regex": {"type": "boolean", "description": "Treat query as a regular expression. False uses fixed-string search where possible."},
+                    "path": {"type": "string", "description": "File or directory to search from (optional, default workspace)"},
+                    "context_lines": {"type": "integer", "description": "Context lines around each match (optional, default 2, max 5)"},
+                    "max_results": {"type": "integer", "description": "Maximum results to return (optional, default 80, max 200)"},
+                    "mode": {"type": "string", "description": "Set to 'compress' to summarize/group large search results (optional)"},
+                    "compress_query": {"type": "string", "description": "Specific extraction query when mode='compress' (optional)"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Primary file reader. Use line ranges for precise code work; use mode='compress' for large documents or structured extraction.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "The path to the file"},
+                    "lines": {"type": "string", "description": "Specific lines to read (e.g. '1-50', '50-100') (optional)"},
+                    "mode": {"type": "string", "description": "Set to 'compress' for summarization/extraction mode (optional)"},
+                    "query": {"type": "string", "description": "Specific query to extract when using 'compress' mode (optional)"}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "Single local file editing tool. Supports unified diff patches, exact old/new replacement, and explicit write/create. Use apply=false for dry runs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Target file path for replace/write operations"},
+                    "patch": {"type": "string", "description": "Unified diff patch string for patch edits"},
+                    "old": {"type": "string", "description": "Exact existing text to replace; must match exactly once"},
+                    "new": {"type": "string", "description": "Replacement text for exact replace"},
+                    "content": {"type": "string", "description": "Complete file content for create/write mode"},
+                    "overwrite": {"type": "boolean", "description": "Allow replacing an existing file in content/write mode"},
+                    "apply": {"type": "boolean", "description": "Set false for a dry run; true/default applies the edit"}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": "General terminal command execution surface. Use for git, directory listing, tests, builds, diagnostics, scripts, and fallback actions.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -23,156 +80,8 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "list_directory",
-            "description": "Lists the contents of a directory to a specified depth.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The path to the directory"},
-                    "depth": {"type": "integer", "description": "Maximum depth to recurse (optional, default 2)"}
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_document",
-            "description": "Reads a file. Supports line-range reading or content summarization/compression.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The path to the file"},
-                    "lines": {"type": "string", "description": "Specific lines to read (e.g. '1-50', '50-100') (optional)"},
-                    "mode": {"type": "string", "description": "Set to 'compress' for summarization/extraction mode (optional)"},
-                    "query": {"type": "string", "description": "Specific query to extract when using 'compress' mode (optional)"}
-                },
-                "required": ["path"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_pattern",
-            "description": "Searches for a regular expression pattern across all files in the workspace.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "regex": {"type": "string", "description": "The regular expression to search for"}
-                },
-                "required": ["regex"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "replace_text",
-            "description": "Edits a file by replacing an exact string match. Use apply=false for a dry run to check the diff before applying.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The path to the file to edit"},
-                    "old": {"type": "string", "description": "The exact existing text to replace. Must match exactly once in the file."},
-                    "new": {"type": "string", "description": "The new text to insert"},
-                    "apply": {"type": "boolean", "description": "Set to true to apply the edit. False performs a dry-run (diff)."}
-                },
-                "required": ["path", "old", "new"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_text_file",
-            "description": "Creates a new UTF-8 text file or completely overwrites an existing one.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The path to the file"},
-                    "content": {"type": "string", "description": "The complete new content of the file"},
-                    "overwrite": {"type": "boolean", "description": "Set to true to overwrite if the file already exists"}
-                },
-                "required": ["path", "content"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "apply_patch",
-            "description": "Applies a unified diff patch to the workspace.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "patch": {"type": "string", "description": "The unified diff patch string"}
-                },
-                "required": ["patch"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "git_status",
-            "description": "Runs 'git status --short' to show working tree status.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "git_diff",
-            "description": "Runs 'git diff' to show changes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "staged": {"type": "boolean", "description": "Set to true to diff staged changes (--cached)"},
-                    "paths": {"type": "array", "items": {"type": "string"}, "description": "Specific file paths to diff (optional)"}
-                },
-                "required": []
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "git_add",
-            "description": "Runs 'git add' to stage files for commit.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "paths": {"type": "array", "items": {"type": "string"}, "description": "List of paths to stage"}
-                },
-                "required": ["paths"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "git_commit",
-            "description": "Runs 'git commit' to commit staged changes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "message": {"type": "string", "description": "The commit message"}
-                },
-                "required": ["message"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "web_search",
-            "description": "Finds candidate web pages only. Prefer web_browse for web/news questions because web_browse opens pages and returns readable page text.",
+            "description": "Finds candidate web pages only. Keep this because web research is a unique capability, not a duplicate of local code tools. Prefer web_browse when readable page text is needed.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -186,7 +95,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "web_browse",
-            "description": "Browses the web by opening a URL or by finding and opening pages for a query. Use this for current news, site contents, and any answer that needs page text rather than search snippets.",
+            "description": "Browses the web by opening a URL or by finding and opening pages for a query. Keep this because web reading is a unique capability, not a duplicate of local code tools.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -203,7 +112,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_skills",
-            "description": "Lists the full registered skill catalog, including method schemas. Use for expanded detail only; installed skills are already auto-surfaced in the agent context and use_skill schema.",
+            "description": "Lists the full registered skill catalog, including method schemas. Keep this because skills are a unique capability.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -232,7 +141,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "delegate_agent",
-            "description": "Delegates a complex prompt or task to an external agent model (e.g. codex, gemini, claude).",
+            "description": "Delegates a complex prompt or task to an external agent model (e.g. codex, gemini, claude). Keep this because external delegation is a unique capability.",
             "parameters": {
                 "type": "object",
                 "properties": {
