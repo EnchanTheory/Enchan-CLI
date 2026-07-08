@@ -5,26 +5,28 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "host_shell",
-            "description": "Executes terminal commands with the OS-native default shell. Use this for git, directory listing, python, npm, tests, diagnostics, builds, and other command-line work. This is the general command surface; do not use narrower git/listing wrappers.",
+            "name": "search_code",
+            "description": "Primary local code search. Prefer rg when available. Returns paths, line numbers, and compact context. Supports mode='compress' to summarize/group large search results.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "The exact command to execute"},
-                    "cwd": {"type": "string", "description": "Working directory for the command (optional)"},
-                    "shell": {"type": "string", "description": "Shell to use: powershell, cmd, sh, or bash (optional)"},
-                    "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (optional, default 30)"},
-                    "max_output_chars": {"type": "integer", "description": "Maximum characters to capture from output (optional)"}
+                    "query": {"type": "string", "description": "Search query or regex pattern"},
+                    "regex": {"type": "boolean", "description": "Treat query as a regular expression. False uses fixed-string search where possible."},
+                    "path": {"type": "string", "description": "File or directory to search from (optional, default workspace)"},
+                    "context_lines": {"type": "integer", "description": "Context lines around each match (optional, default 2, max 5)"},
+                    "max_results": {"type": "integer", "description": "Maximum results to return (optional, default 80, max 200)"},
+                    "mode": {"type": "string", "description": "Set to 'compress' to summarize/group large search results (optional)"},
+                    "compress_query": {"type": "string", "description": "Specific extraction query when mode='compress' (optional)"}
                 },
-                "required": ["command"]
+                "required": ["query"]
             }
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "read_document",
-            "description": "Reads a file. Use line ranges for precise code work; use mode='compress' only for large files or summarization/extraction.",
+            "name": "read_file",
+            "description": "Primary file reader. Use line ranges for precise code work; use mode='compress' for large documents or structured extraction.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -40,61 +42,38 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "search_pattern",
-            "description": "Searches for a regular expression pattern across files in the workspace. Use this before broad file reads when locating code.",
+            "name": "edit_file",
+            "description": "Single local file editing tool. Supports unified diff patches, exact old/new replacement, and explicit write/create. Use apply=false for dry runs.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "regex": {"type": "string", "description": "The regular expression to search for"}
+                    "path": {"type": "string", "description": "Target file path for replace/write operations"},
+                    "patch": {"type": "string", "description": "Unified diff patch string for patch edits"},
+                    "old": {"type": "string", "description": "Exact existing text to replace; must match exactly once"},
+                    "new": {"type": "string", "description": "Replacement text for exact replace"},
+                    "content": {"type": "string", "description": "Complete file content for create/write mode"},
+                    "overwrite": {"type": "boolean", "description": "Allow replacing an existing file in content/write mode"},
+                    "apply": {"type": "boolean", "description": "Set false for a dry run; true/default applies the edit"}
                 },
-                "required": ["regex"]
+                "required": []
             }
         }
     },
     {
         "type": "function",
         "function": {
-            "name": "replace_text",
-            "description": "Edits a file by replacing an exact string match. Use apply=false for a dry run to check the diff before applying.",
+            "name": "run_command",
+            "description": "General terminal command execution surface. Use for git, directory listing, tests, builds, diagnostics, scripts, and fallback actions.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "The path to the file to edit"},
-                    "old": {"type": "string", "description": "The exact existing text to replace. Must match exactly once in the file."},
-                    "new": {"type": "string", "description": "The new text to insert"},
-                    "apply": {"type": "boolean", "description": "Set to true to apply the edit. False performs a dry-run (diff)."}
+                    "command": {"type": "string", "description": "The exact command to execute"},
+                    "cwd": {"type": "string", "description": "Working directory for the command (optional)"},
+                    "shell": {"type": "string", "description": "Shell to use: powershell, cmd, sh, or bash (optional)"},
+                    "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (optional, default 30)"},
+                    "max_output_chars": {"type": "integer", "description": "Maximum characters to capture from output (optional)"}
                 },
-                "required": ["path", "old", "new"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_text_file",
-            "description": "Creates a new UTF-8 text file or completely overwrites an existing one. Prefer replace_text or apply_patch for normal code edits.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "The path to the file"},
-                    "content": {"type": "string", "description": "The complete new content of the file"},
-                    "overwrite": {"type": "boolean", "description": "Set to true to overwrite if the file already exists"}
-                },
-                "required": ["path", "content"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "apply_patch",
-            "description": "Applies a unified diff patch to the workspace. Prefer this for multi-line or multi-file code edits.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "patch": {"type": "string", "description": "The unified diff patch string"}
-                },
-                "required": ["patch"]
+                "required": ["command"]
             }
         }
     },
