@@ -919,12 +919,12 @@ def tool_list_skills(args: dict) -> dict:
 def tool_use_skill(args: dict) -> dict:
     skill_name = args.get("skill_name") or args.get("name")
     argument = args.get("argument") or args.get("value") or ""
-    method = args.get("method") or "invoke"
+    method = args.get("method")
     params = args.get("params") if isinstance(args.get("params"), dict) else None
     if not skill_name:
         return {"ok": False, "error": "use_skill requires 'skill_name'."}
     if params is None and not argument:
-        return {"ok": False, "error": "use_skill requires either 'params' for a typed method or an 'argument' string."}
+        params = {}
     from contextlib import redirect_stderr, redirect_stdout
     from backend.skills_loader import run_skill
     from backend.ui_theme import stream_agent_observation
@@ -934,7 +934,7 @@ def tool_use_skill(args: dict) -> dict:
     content = ""
     try:
         with redirect_stdout(stream), redirect_stderr(stream):
-            content = run_skill(str(skill_name), str(argument), method=str(method), params=params)
+            content = run_skill(str(skill_name), str(argument), method=str(method) if method else None, params=params)
         returned_content = str(content or "").strip()
         if returned_content and returned_content not in stream.getvalue():
             stream.write(("\n" if stream.getvalue().strip() else "") + returned_content + "\n")

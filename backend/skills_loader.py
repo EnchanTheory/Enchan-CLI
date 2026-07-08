@@ -169,9 +169,11 @@ class JsonRpcSkillSession:
             nested_name = str(params.get("name") or params.get("skill_name") or "")
             if nested_name == self.skill_name:
                 raise RuntimeError("A skill cannot synchronously call itself through host.use_skill.")
-            nested_method = str(params.get("method") or DEFAULT_LEGACY_METHOD)
+            nested_method = str(params["method"]) if params.get("method") else None
             nested_params = params.get("params") if isinstance(params.get("params"), dict) else None
             nested_argument = str(params.get("argument") or "")
+            if nested_params is None and not nested_argument:
+                nested_params = {}
             return {"ok": True, "content": run_skill(nested_name, nested_argument, method=nested_method, params=nested_params)}
         raise ValueError(f"Unknown host capability '{capability}'.")
 
@@ -202,6 +204,21 @@ def _schema_for_method(manifest: dict[str, Any], method: str) -> dict[str, Any]:
     method_spec = methods.get(method) if isinstance(methods.get(method), dict) else {}
     input_schema = method_spec.get("input") if isinstance(method_spec.get("input"), dict) else {}
     return input_schema
+
+
+def _resolve_skill_method(manifest: dict[str, Any], method: str | None) -> str | None:
+    methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
+    if method and method != DEFAULT_LEGACY_METHOD:
+        return method
+    if method in methods:
+        return method
+
+    default_method = manifest.get("default_method")
+    if isinstance(default_method, str) and default_method in methods:
+        return default_method
+    if len(methods) == 1:
+        return next(iter(methods))
+    return method
 
 
 def _validate_and_apply_defaults(schema: dict[str, Any], params: dict[str, Any]) -> dict[str, Any]:
@@ -441,7 +458,7 @@ def render_skill_catalog_for_prompt(max_chars: int = 5000) -> str:
     return content[: max_chars - 80].rstrip() + "\n...\n[Skill catalog truncated; call list_skills for full details.]"
 
 
-def run_skill(skill_name: str, argument: str = "", *, method: str = DEFAULT_LEGACY_METHOD, params: dict[str, Any] | None = None) -> str:
+def run_skill(skill_name: str, argument: str = "", *, method: str | None = None, params: dict[str, Any] | None = None) -> str:
     """Run a modern JSON-RPC skill method or a legacy auto-wrapped entrypoint."""
     try:
         skill_dir, manifest = _manifest_for_skill(skill_name)
@@ -456,6 +473,7 @@ def run_skill(skill_name: str, argument: str = "", *, method: str = DEFAULT_LEGA
             return _run_legacy_skill(skill_name, command, argument)
 
         methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
+        method = _resolve_skill_method(manifest, method)
         if method not in methods:
             return f"[Error] Skill '{skill_name}' has no method '{method}'. Available methods: {', '.join(methods.keys())}"
 
