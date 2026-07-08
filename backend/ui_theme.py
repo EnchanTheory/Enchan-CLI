@@ -8,20 +8,19 @@ import time
 
 
 def strip_emojis(text: str) -> str:
-    # Remove common emoji ranges (Emoticons, Weather symbols, Dingbats, etc.)
     emoji_pattern = re.compile(
-        r'[\U0001F600-\U0001F64F]'  # Emoticons
-        r'|[\U0001F300-\U0001F5FF]'  # Misc Symbols and Pictographs
-        r'|[\U0001F680-\U0001F6FF]'  # Transport and Map
-        r'|[\U0001F700-\U0001F77F]'  # Alchemical Symbols
-        r'|[\U0001F780-\U0001F7FF]'  # Geometric Shapes Extended
-        r'|[\U0001F800-\U0001F8FF]'  # Supplemental Arrows-C
-        r'|[\U0001F900-\U0001F9FF]'  # Supplemental Symbols and Pictographs
-        r'|[\U0001FA00-\U0001FA6F]'  # Chess Symbols
-        r'|[\U0001FA70-\U0001FAFF]'  # Symbols and Pictographs Extended-A
-        r'|[\u2600-\u26FF]'          # Misc symbols (weather, etc.)
-        r'|[\u2700-\u27BF]'          # Dingbats
-        r'|[\uFE0F]'                 # Emoji variation selector
+        r'[\U0001F600-\U0001F64F]'
+        r'|[\U0001F300-\U0001F5FF]'
+        r'|[\U0001F680-\U0001F6FF]'
+        r'|[\U0001F700-\U0001F77F]'
+        r'|[\U0001F780-\U0001F7FF]'
+        r'|[\U0001F800-\U0001F8FF]'
+        r'|[\U0001F900-\U0001F9FF]'
+        r'|[\U0001FA00-\U0001FA6F]'
+        r'|[\U0001FA70-\U0001FAFF]'
+        r'|[\u2600-\u26FF]'
+        r'|[\u2700-\u27BF]'
+        r'|[\uFE0F]'
     )
     return emoji_pattern.sub('', text)
 
@@ -98,6 +97,108 @@ def _read_raw_char(fd: int) -> str:
     return ch or ""
 
 
+def _drain_stdin() -> None:
+    """Discard pending keypresses so Enter spam cannot leak into the next prompt."""
+    if not sys.stdin.isatty():
+        return
+    try:
+        if sys.platform == "win32":
+            if msvcrt is None:
+                return
+            while msvcrt.kbhit():
+                msvcrt.getwch()
+        else:
+            fd = sys.stdin.fileno()
+            while True:
+                ready, _, _ = select.select([fd], [], [], 0)
+                if not ready:
+                    break
+                os.read(fd, 1024)
+    except Exception:
+        pass
+
+
+class _SpinnerInputGuard:
+    """Suppress terminal echo while a spinner is active.
+
+    In canonical terminal mode, pressing Enter while a Rich spinner is repainting
+    still echoes a newline. That moves the cursor down, so subsequent spinner
+    frames become multiple stale lines. cbreak + no-echo keeps accidental
+    keypresses invisible, then flushes them before the next prompt.
+    """
+
+    def __init__(self):
+        self._fd: int | None = None
+        self._old_settings = None
+        self._active = False
+
+    def start(self) -> None:
+        if self._active or not sys.stdin.isatty() or sys.platform == "win32":
+            return
+        try:
+            import termios
+            import tty
+
+            self._fd = sys.stdin.fileno()
+            self._old_settings = termios.tcgetattr(self._fd)
+            tty.setcbreak(self._fd)
+            new_settings = termios.tcgetattr(self._fd)
+            new_settings[3] &= ~termios.ECHO
+            termios.tcsetattr(self._fd, termios.TCSANOW, new_settings)
+            self._active = True
+        except Exception:
+            self._fd = None
+            self._old_settings = None
+            self._active = False
+
+    def stop(self) -> None:
+        if sys.platform == "win32":
+            _drain_stdin()
+            return
+        if not self._active or self._fd is None or self._old_settings is None:
+            return
+        try:
+            import termios
+
+            termios.tcflush(self._fd, termios.TCIFLUSH)
+            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._old_settings)
+        except Exception:
+            pass
+        finally:
+            self._active = False
+            self._fd = None
+            self._old_settings = None
+
+
+class GuardedStatus:
+    def __init__(self, inner):
+        self._inner = inner
+        self._guard = _SpinnerInputGuard()
+
+    def start(self):
+        self._guard.start()
+        return self._inner.start()
+
+    def stop(self):
+        try:
+            return self._inner.stop()
+        finally:
+            self._guard.stop()
+
+    def update(self, *args, **kwargs):
+        if hasattr(self._inner, "update"):
+            return self._inner.update(*args, **kwargs)
+        return None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.stop()
+        return False
+
+
 def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int) -> None:
     import unicodedata
 
@@ -135,43 +236,27 @@ def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int)
 
 
 def _read_posix_escape_sequence() -> str:
-    """Read a full ANSI escape sequence without blocking on standalone ESC.
-
-    Reads from the raw file descriptor with os.read so select() reflects real
-    terminal state. sys.stdin's buffering can otherwise hide the bytes after
-    ESC and collapse arrow keys into a bare ESC on macOS terminals.
-    """
     fd = sys.stdin.fileno()
     seq = "\x1b"
     while True:
         ready, _, _ = select.select([fd], [], [], 0.01)
         if not ready:
             break
-
         ch = _read_raw_char(fd)
         if not ch:
             break
         seq += ch
-
-        # Common cursor keys: ESC [ A/B/C/D and ESC O A/B/C/D.
         if len(seq) >= 3 and seq[1] in ("[", "O") and seq[-1].isalpha():
             break
-
-        # Extended CSI sequences such as ESC [ 1 ; 2 C end with @ through ~.
         if len(seq) >= 3 and seq[1] == "[" and "@" <= seq[-1] <= "~":
             break
-
         if len(seq) >= 16:
             break
     return seq
 
 
 def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_idx: int = 0) -> int:
-    """
-    Displays an interactive arrow-key menu.
-    options: list of (label, description, is_selectable)
-    Returns the selected index, or -1 if cancelled/invalid.
-    """
+    """Displays an interactive arrow-key menu."""
     if not options:
         return -1
 
@@ -244,7 +329,6 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
                             move_selection(1)
                             draw_menu()
                         elif special_key in (b"K", b"M"):
-                            # Left/right arrows do not select anything in a vertical menu.
                             continue
                     elif key == b"\r":
                         return finish_with(current_idx)
@@ -264,7 +348,6 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
                     ch = _read_raw_char(fd)
                     if ch == "\x1b":
                         seq = _read_posix_escape_sequence()
-
                         if seq in ("\x1b[A", "\x1bOA"):
                             move_selection(-1)
                             draw_menu()
@@ -272,14 +355,9 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
                             move_selection(1)
                             draw_menu()
                         elif seq in ("\x1b[C", "\x1bOC", "\x1b[D", "\x1bOD"):
-                            # Ignore horizontal arrows instead of treating them as cancel.
                             continue
                         elif seq == "\x1b":
                             return finish_with(-1)
-                        else:
-                            # Unknown escape sequences are fully consumed and ignored so
-                            # their tail bytes cannot leak into later prompts.
-                            continue
                     elif ch in ("\r", "\n"):
                         return finish_with(current_idx)
                     elif ch == "\x03":
@@ -291,10 +369,7 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
 
 
 def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
-    """
-    Displays a horizontal Yes/No selector.
-    Selected item is gold; unselected item is white.
-    """
+    """Displays a horizontal Yes/No selector."""
     if not sys.stdin.isatty():
         print(f"\n{ANSI_WARN}  [System] Non-interactive shell detected. Denying by default.{ANSI_RESET}")
         return False
@@ -479,12 +554,17 @@ def print_agent_observation(tool_name: str, ok: bool, observation: str):
 class DummyStatus:
     def __init__(self, text):
         self.text = text
+        self._guard = _SpinnerInputGuard()
 
     def start(self):
+        self._guard.start()
         print(f"\x1b[3;38;2;150;150;150m{self.text}\x1b[0m", end="", flush=True)
 
     def stop(self):
-        print("\r\x1b[K", end="", flush=True)
+        try:
+            print("\r\x1b[K", end="", flush=True)
+        finally:
+            self._guard.stop()
 
     def update(self, text):
         self.text = text
@@ -494,62 +574,47 @@ class DummyStatus:
 
 def get_spinner_status(text: str = "Thinking... (esc to cancel)"):
     if RICH_AVAILABLE:
-        return console.status(f"[italic rgb(150,150,150)]{text}[/]", spinner="dots", spinner_style="rgb(150,150,150)")
+        status = console.status(
+            f"[italic rgb(150,150,150)]{text}[/]",
+            spinner="dots",
+            spinner_style="rgb(150,150,150)",
+        )
+        return GuardedStatus(status)
     return DummyStatus(text)
+
+
+def _print_execution_panel(title: str, stdout: str, stderr: str) -> None:
+    if RICH_AVAILABLE:
+        content = Text()
+        content.append(f"{title}\n\n", style="bold rgb(150,150,150)")
+        if stdout:
+            content.append("[stdout]\n", style="rgb(150,150,150)")
+            content.append(f"{stdout}\n", style="rgb(210,200,200)")
+        if stderr:
+            content.append("[stderr]\n", style="rgb(180,100,100)")
+            content.append(f"{stderr}\n", style="rgb(180,100,100)")
+        if len(content) > 0 and str(content)[-1] == "\n":
+            content.right_crop(1)
+        console.print(Panel(content, border_style="rgb(150,150,150)", padding=(0, 1)))
+    else:
+        print(f"\x1b[38;2;150;150;150m╭────────────────────────────────────────\x1b[0m")
+        print(f"\x1b[38;2;150;150;150m│\x1b[0m {title}")
+        print(f"\x1b[38;2;150;150;150m│\x1b[0m")
+        if stdout:
+            print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;150;150;150m[stdout]\x1b[0m")
+            for line in stdout.splitlines():
+                print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;210;200;200m{line}\x1b[0m")
+        if stderr:
+            print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m[stderr]\x1b[0m")
+            for line in stderr.splitlines():
+                print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m{line}\x1b[0m")
+        print(f"\x1b[38;2;150;150;150m╰────────────────────────────────────────\x1b[0m")
 
 
 def print_python_execution(exit_code: int, stdout: str, stderr: str):
     icon = "✓" if exit_code == 0 else "✗"
-    if RICH_AVAILABLE:
-        content = Text()
-        content.append(f"{icon}  Python Execution  exit_code={exit_code}\n\n", style="bold rgb(150,150,150)")
-        if stdout:
-            content.append("[stdout]\n", style="rgb(150,150,150)")
-            content.append(f"{stdout}\n", style="rgb(210,200,200)")
-        if stderr:
-            content.append("[stderr]\n", style="rgb(180,100,100)")
-            content.append(f"{stderr}\n", style="rgb(180,100,100)")
-        if len(content) > 0 and str(content)[-1] == "\n":
-            content.right_crop(1)
-        console.print(Panel(content, border_style="rgb(150,150,150)", padding=(0, 1)))
-    else:
-        print(f"\x1b[38;2;150;150;150m╭────────────────────────────────────────\x1b[0m")
-        print(f"\x1b[38;2;150;150;150m│\x1b[0m {icon}  Python Execution  exit_code={exit_code}")
-        print(f"\x1b[38;2;150;150;150m│\x1b[0m")
-        if stdout:
-            print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;150;150;150m[stdout]\x1b[0m")
-            for line in stdout.splitlines():
-                print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;210;200;200m{line}\x1b[0m")
-        if stderr:
-            print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m[stderr]\x1b[0m")
-            for line in stderr.splitlines():
-                print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m{line}\x1b[0m")
-        print(f"\x1b[38;2;150;150;150m╰────────────────────────────────────────\x1b[0m")
+    _print_execution_panel(f"{icon}  Python Execution  exit_code={exit_code}", stdout, stderr)
 
 
 def print_python_timeout(timeout_sec: int, stdout: str, stderr: str):
-    if RICH_AVAILABLE:
-        content = Text()
-        content.append(f"⚠  Python Timeout  {timeout_sec}s\n\n", style="bold rgb(150,150,150)")
-        if stdout:
-            content.append("[stdout]\n", style="rgb(150,150,150)")
-            content.append(f"{stdout}\n", style="rgb(210,200,200)")
-        if stderr:
-            content.append("[stderr]\n", style="rgb(180,100,100)")
-            content.append(f"{stderr}\n", style="rgb(180,100,100)")
-        if len(content) > 0 and str(content)[-1] == "\n":
-            content.right_crop(1)
-        console.print(Panel(content, border_style="rgb(150,150,150)", padding=(0, 1)))
-    else:
-        print(f"\x1b[38;2;150;150;150m╭────────────────────────────────────────\x1b[0m")
-        print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m⚠  Python Timeout  {timeout_sec}s\x1b[0m")
-        print(f"\x1b[38;2;150;150;150m│\x1b[0m")
-        if stdout:
-            print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;150;150;150m[stdout]\x1b[0m")
-            for line in stdout.splitlines():
-                print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;210;200;200m{line}\x1b[0m")
-        if stderr:
-            print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m[stderr]\x1b[0m")
-            for line in stderr.splitlines():
-                print(f"\x1b[38;2;150;150;150m│\x1b[0m \x1b[38;2;180;100;100m{line}\x1b[0m")
-        print(f"\x1b[38;2;150;150;150m╰────────────────────────────────────────\x1b[0m")
+    _print_execution_panel(f"⚠  Python Timeout  {timeout_sec}s", stdout, stderr)
