@@ -1,28 +1,50 @@
-"""Width-aware manual frames for streaming and non-Rich tool output.
+"""Width-aware manual frames for streaming tool output.
 
 Rich Panels need complete content up front, but skill output is streamed live.
 This module keeps that streaming behavior while removing the old hardcoded
-40-column frame used by the manual fallback path.
+40-column frame used by the manual streaming path.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 
-import backend.ui_theme as ui_theme
-from backend.ui_theme import RICH_AVAILABLE, console, strip_emojis
-
-if RICH_AVAILABLE:
+try:
+    from rich.console import Console
     from rich.panel import Panel
     from rich.text import Text
-else:  # Rich is optional; fallback rendering must still import cleanly.
+    RICH_AVAILABLE = True
+    console = Console()
+except ImportError:
+    RICH_AVAILABLE = False
+    console = None
     Panel = None
     Text = None
 
 _FRAME_MIN_WIDTH = 40
 _FRAME_MAX_WIDTH = 240
+
+_EMOJI_PATTERN = re.compile(
+    r'[\U0001F600-\U0001F64F]'
+    r'|[\U0001F300-\U0001F5FF]'
+    r'|[\U0001F680-\U0001F6FF]'
+    r'|[\U0001F700-\U0001F77F]'
+    r'|[\U0001F780-\U0001F7FF]'
+    r'|[\U0001F800-\U0001F8FF]'
+    r'|[\U0001F900-\U0001F9FF]'
+    r'|[\U0001FA00-\U0001FA6F]'
+    r'|[\U0001FA70-\U0001FAFF]'
+    r'|[\u2600-\u26FF]'
+    r'|[\u2700-\u27BF]'
+    r'|[\uFE0F]'
+)
+
+
+def _strip_emojis(text: str) -> str:
+    return _EMOJI_PATTERN.sub("", text)
 
 
 def _frame_width() -> int:
@@ -102,7 +124,7 @@ class StreamingObservation:
         self._stream.flush()
 
     def _write_display_line(self, line: str) -> None:
-        display_line = strip_emojis(line)
+        display_line = _strip_emojis(line)
         _write_stream(self._stream, _line(self._ansi_color, display_line, text_color="210;200;200") + "\n")
 
     def write(self, text: str) -> int:
@@ -158,7 +180,7 @@ def print_agent_action(tool_name: str, args: dict):
 
 def print_agent_observation(tool_name: str, ok: bool, observation: str):
     observation_text = f"Observation: [{tool_name}] ok={ok}\n{observation}"
-    display_obs = strip_emojis(observation)
+    display_obs = _strip_emojis(observation)
     icon = "✓" if ok else "✗"
     color_border = "rgb(150,150,150)" if tool_name == "execute_command" else "rgb(165,145,100)"
 
@@ -174,49 +196,3 @@ def print_agent_observation(tool_name: str, ok: bool, observation: str):
             print(_line(ansi_color, line, text_color="210;200;200"))
         _print_frame_end(ansi_color)
     return observation_text
-
-
-def _print_execution_panel(title: str, stdout: str, stderr: str) -> None:
-    if RICH_AVAILABLE:
-        content = Text()
-        content.append(f"{title}\n\n", style="bold rgb(150,150,150)")
-        if stdout:
-            content.append("[stdout]\n", style="rgb(150,150,150)")
-            content.append(f"{stdout}\n", style="rgb(210,200,200)")
-        if stderr:
-            content.append("[stderr]\n", style="rgb(180,100,100)")
-            content.append(f"{stderr}\n", style="rgb(180,100,100)")
-        if len(content) > 0 and str(content)[-1] == "\n":
-            content.right_crop(1)
-        console.print(Panel(content, border_style="rgb(150,150,150)", padding=(0, 1)))
-        return
-
-    ansi_color = "150;150;150"
-    _print_frame_start(ansi_color, title)
-    if stdout:
-        print(_line(ansi_color, "[stdout]", text_color="150;150;150"))
-        for line in stdout.splitlines():
-            print(_line(ansi_color, line, text_color="210;200;200"))
-    if stderr:
-        print(_line(ansi_color, "[stderr]", text_color="180;100;100"))
-        for line in stderr.splitlines():
-            print(_line(ansi_color, line, text_color="180;100;100"))
-    _print_frame_end(ansi_color)
-
-
-def print_python_execution(exit_code: int, stdout: str, stderr: str):
-    icon = "✓" if exit_code == 0 else "✗"
-    _print_execution_panel(f"{icon}  Python Execution  exit_code={exit_code}", stdout, stderr)
-
-
-def print_python_timeout(timeout_sec: int, stdout: str, stderr: str):
-    _print_execution_panel(f"⚠  Python Timeout  {timeout_sec}s", stdout, stderr)
-
-
-# Keep runtime imports from backend.ui_theme compatible without replacing the
-# large theme module through the GitHub contents API.
-ui_theme.stream_agent_observation = stream_agent_observation
-ui_theme.print_agent_action = print_agent_action
-ui_theme.print_agent_observation = print_agent_observation
-ui_theme.print_python_execution = print_python_execution
-ui_theme.print_python_timeout = print_python_timeout
