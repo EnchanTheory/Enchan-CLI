@@ -14,7 +14,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
 DEFAULT_BORDER = "rgb(165,145,100)"  # Classic Enchan Gold Accent
 MUTED_BORDER = "rgb(150,150,150)"   # Muted Gray for inactive/system elements
 DEFAULT_BODY = "rgb(210,200,200)"     # Soft Beige/Warm Gray for body text
-DEFAULT_BG = "rgb(24,20,15)"         # Optimized deep charcoal-gold backing plate for supreme selection contrast
+DEFAULT_BG = "rgb(12,10,8)"          # Deepest pitch-black gold backing plate to maximize text selection and legibility contrast
 
 # 🎨 Unified Code Theme Specifications
 DEFAULT_CODE_THEME = "zenburn"       # Elegant, low-contrast, eyes-friendly theme
