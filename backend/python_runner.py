@@ -3,6 +3,7 @@ import sys
 import subprocess
 from pathlib import Path
 from backend.session_log import append_session_event
+from backend.ui_theme import print_python_execution, print_python_timeout
 
 BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent
@@ -24,6 +25,17 @@ def truncate_observation(text: str, max_chars: int = 12000) -> str:
         return text
     half = max_chars // 2
     return text[:half] + f"\n\n... [TRUNCATED {len(text) - max_chars} CHARS] ...\n\n" + text[-half:]
+
+
+def decode_smart(data) -> str:
+    if isinstance(data, str):
+        return data
+    if not data:
+        return ""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return data.decode("cp932", errors="replace")
 
 
 def run_python_file_from_prompt(
@@ -65,63 +77,37 @@ def run_python_file_from_prompt(
             timeout=timeout_sec,
         )
 
-        def decode_smart(b: bytes) -> str:
-            if not b:
-                return ""
-            try:
-                return b.decode("utf-8")
-            except UnicodeDecodeError:
-                return b.decode("cp932", errors="replace")
-
         stdout = decode_smart(completed.stdout)
         stderr = decode_smart(completed.stderr)
-        
-        print(f"\x1b[38;2;190;170;120m╭── [ Python Execution ] ──\x1b[0m")
-        print(f"\x1b[38;2;190;170;120m│\x1b[0m \x1b[38;2;210;200;200mexit_code={completed.returncode}\x1b[0m")
-        if stdout:
-            print(f"\x1b[38;2;190;170;120m│\x1b[0m \x1b[38;2;120;160;120m[stdout]\x1b[0m")
-            for line in truncate_observation(stdout, max_chars=12000).splitlines():
-                print(f"\x1b[38;2;190;170;120m│\x1b[0m \x1b[38;2;210;200;200m{line}\x1b[0m")
-        if stderr:
-            print(f"\x1b[38;2;190;170;120m│\x1b[0m \x1b[38;2;180;100;100m[stderr]\x1b[0m")
-            for line in truncate_observation(stderr, max_chars=12000).splitlines():
-                print(f"\x1b[38;2;190;170;120m│\x1b[0m \x1b[38;2;180;100;100m{line}\x1b[0m")
-        print(f"\x1b[38;2;190;170;120m╰{'─'*30}\x1b[0m")
+        display_stdout = truncate_observation(stdout, max_chars=12000)
+        display_stderr = truncate_observation(stderr, max_chars=12000)
+
+        print_python_execution(completed.returncode, display_stdout, display_stderr)
         append_session_event(
             session_log_path,
             {
                 "type": "python_file_execution_finished",
                 "path": str(resolved_script),
                 "returncode": completed.returncode,
-                "stdout": truncate_observation(stdout, max_chars=12000),
-                "stderr": truncate_observation(stderr, max_chars=12000),
+                "stdout": display_stdout,
+                "stderr": display_stderr,
             },
         )
     except subprocess.TimeoutExpired as e:
-        def decode_smart(b) -> str:
-            if isinstance(b, str): return b
-            if not b: return ""
-            try: return b.decode("utf-8")
-            except UnicodeDecodeError: return b.decode("cp932", errors="replace")
-            
         stdout = decode_smart(e.stdout)
         stderr = decode_smart(e.stderr)
-        
-        print(f"[Host] Observation: Python execution timed out after {timeout_sec}s.")
-        if stdout:
-            print("[stdout]")
-            print(truncate_observation(stdout, max_chars=12000))
-        if stderr:
-            print("[stderr]")
-            print(truncate_observation(stderr, max_chars=12000))
+        display_stdout = truncate_observation(stdout, max_chars=12000)
+        display_stderr = truncate_observation(stderr, max_chars=12000)
+
+        print_python_timeout(timeout_sec, display_stdout, display_stderr)
         append_session_event(
             session_log_path,
             {
                 "type": "python_file_execution_timeout",
                 "path": str(resolved_script),
                 "timeout_sec": timeout_sec,
-                "stdout": truncate_observation(stdout, max_chars=12000),
-                "stderr": truncate_observation(stderr, max_chars=12000),
+                "stdout": display_stdout,
+                "stderr": display_stderr,
             },
         )
     except Exception as e:
