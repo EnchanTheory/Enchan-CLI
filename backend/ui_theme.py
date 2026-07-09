@@ -5,6 +5,12 @@ import select
 import shutil
 import sys
 import time
+import unicodedata
+
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.text import Text
 
 
 def strip_emojis(text: str) -> str:
@@ -41,8 +47,7 @@ ANSI_GOLD = "\x1b[1;38;2;165;145;100m"
 ANSI_WHITE = "\x1b[38;2;210;200;200m"
 ANSI_WARN = "\x1b[38;2;180;100;100m"
 
-_MANUAL_FRAME_MIN_WIDTH = 40
-_MANUAL_FRAME_MAX_WIDTH = 240
+console = Console()
 
 try:
     import msvcrt
@@ -54,18 +59,6 @@ try:
     PROMPT_TOOLKIT_STYLE_AVAILABLE = True
 except ImportError:
     PROMPT_TOOLKIT_STYLE_AVAILABLE = False
-
-try:
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.text import Text
-    RICH_AVAILABLE = True
-    console = Console()
-except ImportError:
-    RICH_AVAILABLE = False
-    console = None
-    Panel = None
-    Text = None
 
 
 def make_prompt_style():
@@ -97,64 +90,63 @@ def print_response_header(label: str, body: str | None = None, line_char: str = 
         print(f"[{label}]:\n{body}")
 
 
-def _manual_frame_width() -> int:
-    columns = shutil.get_terminal_size(fallback=(80, 24)).columns
-    return max(_MANUAL_FRAME_MIN_WIDTH, min(columns, _MANUAL_FRAME_MAX_WIDTH))
+def _tool_color(tool_name: str) -> str:
+    return "rgb(150,150,150)" if tool_name == "execute_command" else "rgb(165,145,100)"
 
 
-def _manual_frame_rule() -> str:
-    return "─" * max(1, _manual_frame_width() - 1)
+def _make_panel(
+    title: str,
+    body: str = "",
+    *,
+    border_style: str = "rgb(165,145,100)",
+    body_style: str = "rgb(210,200,200)",
+) -> Panel:
+    content = Text()
+    content.append(title, style=f"bold {border_style}")
+    if body:
+        content.append("\n\n")
+        content.append(body, style=body_style)
+    return Panel(content, border_style=border_style, padding=(0, 1))
 
 
-def _manual_frame_top(ansi_color: str) -> str:
-    return f"\x1b[38;2;{ansi_color}m╭{_manual_frame_rule()}\x1b[0m"
-
-
-def _manual_frame_bottom(ansi_color: str) -> str:
-    return f"\x1b[38;2;{ansi_color}m╰{_manual_frame_rule()}\x1b[0m"
-
-
-def _manual_frame_line(ansi_color: str, text: str = "", text_color: str | None = None) -> str:
-    prefix = f"\x1b[38;2;{ansi_color}m│\x1b[0m"
-    if not text:
-        return prefix
-    if text_color:
-        return f"{prefix} \x1b[38;2;{text_color}m{text}\x1b[0m"
-    return f"{prefix} {text}"
-
-
-def _manual_frame_print_start(ansi_color: str, title: str, *, leading_blank: bool = False) -> None:
+def _print_panel(
+    title: str,
+    body: str = "",
+    *,
+    border_style: str = "rgb(165,145,100)",
+    body_style: str = "rgb(210,200,200)",
+    leading_blank: bool = False,
+) -> None:
     if leading_blank:
-        print()
-    print(_manual_frame_top(ansi_color))
-    print(_manual_frame_line(ansi_color, title))
-    print(_manual_frame_line(ansi_color))
+        console.print()
+    console.print(_make_panel(title, body, border_style=border_style, body_style=body_style))
 
 
-def _manual_frame_print_end(ansi_color: str) -> None:
-    print(_manual_frame_bottom(ansi_color))
+def _visual_len(text: str) -> int:
+    width = 0
+    for char in text:
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in "WF" else 1
+    return width
 
 
-def _ascii_safe_manual_frame_text(text: str) -> str:
-    return (
-        text.replace("╭", "+")
-        .replace("╰", "+")
-        .replace("│", "|")
-        .replace("─", "-")
-        .replace("✓", "OK")
-        .replace("✗", "X")
-        .replace("⚙", "*")
-        .replace("⚠", "!")
-    )
-
-
-def _write_raw_ascii_safe(stream, text: str) -> None:
-    try:
-        stream.write(text)
-    except UnicodeEncodeError:
-        encoding = getattr(stream, "encoding", None) or "utf-8"
-        safe_text = _ascii_safe_manual_frame_text(text).encode(encoding, errors="replace").decode(encoding, errors="replace")
-        stream.write(safe_text)
+def _truncate_visual(text: str, max_width: int) -> str:
+    if max_width <= 0:
+        return ""
+    if _visual_len(text) <= max_width:
+        return text
+    marker = "..."
+    limit = max(0, max_width - len(marker))
+    width = 0
+    result = ""
+    for char in text:
+        char_width = 0 if unicodedata.combining(char) else (2 if unicodedata.east_asian_width(char) in "WF" else 1)
+        if width + char_width > limit:
+            break
+        result += char
+        width += char_width
+    return result + marker
 
 
 def _read_raw_char(fd: int) -> str:
@@ -259,24 +251,6 @@ class GuardedStatus:
 
 
 def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int) -> None:
-    import unicodedata
-
-    def visual_len(text: str) -> int:
-        return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
-
-    def truncate_visual(text: str, max_width: int) -> str:
-        if visual_len(text) <= max_width:
-            return text
-        w = 0
-        res = ""
-        for c in text:
-            cw = 2 if unicodedata.east_asian_width(c) in "WF" else 1
-            if w + cw > max_width - 3:
-                return res + "..."
-            res += c
-            w += cw
-        return res + "..."
-
     term_width = shutil.get_terminal_size(fallback=(80, 24)).columns
     for i, (label, desc, ready) in enumerate(options):
         status = "" if ready else " (Unavailable)"
@@ -289,7 +263,7 @@ def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int)
             color_start = ANSI_WHITE if ready else "\x1b[38;2;120;120;120m"
             bullet = "-"
         line_text = f"  {cursor} {bullet} {label} | {desc}{status}"
-        line_text = truncate_visual(line_text, term_width - 2)
+        line_text = _truncate_visual(line_text, term_width - 2)
         sys.stdout.write(f"\r\x1b[K{color_start}{line_text}{ANSI_RESET}\n")
     sys.stdout.flush()
 
@@ -502,44 +476,34 @@ def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
 
 
 def print_agent_action(tool_name: str, args: dict):
-    color = "rgb(150,150,150)" if tool_name == "execute_command" else "rgb(165,145,100)"
-    if RICH_AVAILABLE:
-        args_str = json.dumps(args, ensure_ascii=False)
-        content = Text()
-        content.append(f"⚙  Agent Action  {tool_name}\n\n", style=f"bold {color}")
-        content.append(f"{args_str}", style=color)
-        console.print()
-        console.print(Panel(content, border_style=color, padding=(0, 1)))
-        return
-
-    ansi_color = "150;150;150" if tool_name == "execute_command" else "165;145;100"
-    _manual_frame_print_start(ansi_color, f"⚙  Agent Action  {tool_name}", leading_blank=True)
-    print(_manual_frame_line(ansi_color, json.dumps(args, ensure_ascii=False)))
-    _manual_frame_print_end(ansi_color)
+    color = _tool_color(tool_name)
+    _print_panel(
+        f"⚙  Agent Action  {tool_name}",
+        json.dumps(args, ensure_ascii=False),
+        border_style=color,
+        body_style=color,
+        leading_blank=True,
+    )
 
 
 class StreamingObservation:
     def __init__(self, tool_name: str):
         self.tool_name = tool_name
         self._captured: list[str] = []
+        self._display_lines: list[str] = []
         self._line_buffer = ""
         self._closed = False
-        self._stream = sys.stdout
-        self._ansi_color = "150;150;150" if tool_name == "execute_command" else "165;145;100"
-        self._open()
+        self._color = _tool_color(tool_name)
+        self._live = Live(self._render_panel(), console=console, refresh_per_second=12, transient=False)
+        self._live.start(refresh=True)
 
-    def _write_raw(self, text: str) -> None:
-        _write_raw_ascii_safe(self._stream, text)
-
-    def _open(self) -> None:
-        self._write_raw(_manual_frame_top(self._ansi_color) + "\n")
-        self._write_raw(_manual_frame_line(self._ansi_color, f"✓  Observation  [{self.tool_name}]") + "\n")
-        self._write_raw(_manual_frame_line(self._ansi_color) + "\n")
-        self._stream.flush()
+    def _render_panel(self) -> Panel:
+        body = "\n".join(self._display_lines)
+        return _make_panel(f"✓  Observation  [{self.tool_name}]", body, border_style=self._color)
 
     def _write_display_line(self, line: str) -> None:
-        display_line = strip_emojis(line)
-        self._write_raw(_manual_frame_line(self._ansi_color, display_line, text_color="210;200;200") + "\n")
+        self._display_lines.append(strip_emojis(line))
+        self._live.update(self._render_panel(), refresh=True)
 
     def write(self, text: str) -> int:
         if not text:
@@ -551,11 +515,10 @@ class StreamingObservation:
         while "\n" in self._line_buffer:
             line, self._line_buffer = self._line_buffer.split("\n", 1)
             self._write_display_line(line)
-        self._stream.flush()
         return len(text)
 
     def flush(self) -> None:
-        self._stream.flush()
+        return None
 
     def close(self) -> None:
         if self._closed:
@@ -563,8 +526,8 @@ class StreamingObservation:
         if self._line_buffer:
             self._write_display_line(self._line_buffer)
             self._line_buffer = ""
-        self._write_raw(_manual_frame_bottom(self._ansi_color) + "\n")
-        self._stream.flush()
+        self._live.update(self._render_panel(), refresh=True)
+        self._live.stop()
         self._closed = True
 
     def getvalue(self) -> str:
@@ -579,19 +542,7 @@ def print_agent_observation(tool_name: str, ok: bool, observation: str):
     observation_text = f"Observation: [{tool_name}] ok={ok}\n{observation}"
     display_obs = strip_emojis(observation)
     icon = "✓" if ok else "✗"
-    color_border = "rgb(150,150,150)" if tool_name == "execute_command" else "rgb(165,145,100)"
-
-    if RICH_AVAILABLE:
-        content = Text()
-        content.append(f"{icon}  Observation  [{tool_name}]\n\n", style=f"bold {color_border}")
-        content.append(f"{display_obs}", style="rgb(210,200,200)")
-        console.print(Panel(content, border_style=color_border, padding=(0, 1)))
-    else:
-        ansi_color = "150;150;150" if tool_name == "execute_command" else "165;145;100"
-        _manual_frame_print_start(ansi_color, f"{icon}  Observation  [{tool_name}]")
-        for line in display_obs.splitlines():
-            print(_manual_frame_line(ansi_color, line, text_color="210;200;200"))
-        _manual_frame_print_end(ansi_color)
+    _print_panel(f"{icon}  Observation  [{tool_name}]", display_obs, border_style=_tool_color(tool_name))
     return observation_text
 
 
@@ -617,42 +568,21 @@ class DummyStatus:
 
 
 def get_spinner_status(text: str = "Thinking... (esc to cancel)"):
-    if RICH_AVAILABLE:
-        status = console.status(
-            f"[italic rgb(150,150,150)]{text}[/]",
-            spinner="dots",
-            spinner_style="rgb(150,150,150)",
-        )
-        return GuardedStatus(status)
-    return DummyStatus(text)
+    status = console.status(
+        f"[italic rgb(150,150,150)]{text}[/]",
+        spinner="dots",
+        spinner_style="rgb(150,150,150)",
+    )
+    return GuardedStatus(status)
 
 
 def _print_execution_panel(title: str, stdout: str, stderr: str) -> None:
-    if RICH_AVAILABLE:
-        content = Text()
-        content.append(f"{title}\n\n", style="bold rgb(150,150,150)")
-        if stdout:
-            content.append("[stdout]\n", style="rgb(150,150,150)")
-            content.append(f"{stdout}\n", style="rgb(210,200,200)")
-        if stderr:
-            content.append("[stderr]\n", style="rgb(180,100,100)")
-            content.append(f"{stderr}\n", style="rgb(180,100,100)")
-        if len(content) > 0 and str(content)[-1] == "\n":
-            content.right_crop(1)
-        console.print(Panel(content, border_style="rgb(150,150,150)", padding=(0, 1)))
-        return
-
-    ansi_color = "150;150;150"
-    _manual_frame_print_start(ansi_color, title)
+    body_parts = []
     if stdout:
-        print(_manual_frame_line(ansi_color, "[stdout]", text_color="150;150;150"))
-        for line in stdout.splitlines():
-            print(_manual_frame_line(ansi_color, line, text_color="210;200;200"))
+        body_parts.append("[stdout]\n" + stdout)
     if stderr:
-        print(_manual_frame_line(ansi_color, "[stderr]", text_color="180;100;100"))
-        for line in stderr.splitlines():
-            print(_manual_frame_line(ansi_color, line, text_color="180;100;100"))
-    _manual_frame_print_end(ansi_color)
+        body_parts.append("[stderr]\n" + stderr)
+    _print_panel(title, "\n".join(body_parts), border_style="rgb(150,150,150)")
 
 
 def print_python_execution(exit_code: int, stdout: str, stderr: str):
