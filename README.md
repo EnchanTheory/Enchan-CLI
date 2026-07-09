@@ -257,6 +257,18 @@ backend/bin/macos-arm64/libenchan.dylib
 
 ---
 
+## Reports and Contributions
+
+Public issue submissions may be limited or disabled to reduce spam, archive-based patch submissions, and supply-chain risk.
+
+For normal bug reports, provide a minimal reproduction, environment details, and the exact command/output through the maintainer's announced contact channel. Do not attach ZIP files, executables, patched archives, unofficial runtime binaries, or externally hosted "fixed versions." These files will not be opened or reviewed.
+
+Security vulnerabilities must not be reported through public issues, pull requests, comments, or discussions. Use GitHub's private vulnerability reporting feature from the repository's Security tab when available. See [SECURITY.md](SECURITY.md) for details.
+
+Pull requests may be reviewed only when the change is provided as a normal GitHub pull request with a readable diff. Archive-based patches and binary replacement submissions are not accepted.
+
+---
+
 ## License
 
 Enchan CLI is distributed under the Enchan CLI Research & Evaluation License v1.0.
