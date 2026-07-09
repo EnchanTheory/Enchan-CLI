@@ -9,8 +9,7 @@ from backend.cli_commands import handle_cli_command
 from backend.context_compression import count_text_tokens, compress_chat_history
 from backend.tokenizer_bridge import estimate_text_tokens_rough
 from backend.memory_store import load_memory_context, build_memory_prompt_section
-from backend.enchan_llama_backend import run_enchan_llama_agent_turn
-from backend.ollama_backend import run_ollama_agent_turn
+from backend.cancellable_backends import run_enchan_llama_agent_turn, run_ollama_agent_turn
 from backend.ui_theme import print_response_header
 from backend.slash_commands import KNOWN_SLASH_COMMANDS
 
