@@ -89,6 +89,11 @@ def create_interactive_session(slash_commands: tuple) -> Optional[PromptSession]
         else:
             buffer.validate_and_handle()
 
+    @kb.add('escape', 'enter')
+    def _(event):
+        """Insert a newline for Alt/Option+Enter terminals that send ESC+Enter."""
+        event.current_buffer.insert_text('\n')
+
     @kb.add('tab')
     def _(event):
         buffer = event.current_buffer
