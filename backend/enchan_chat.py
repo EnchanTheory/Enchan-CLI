@@ -110,14 +110,26 @@ def main():
 
     if backend_mode == "enchan":
         import atexit
+        import signal
         from backend.enchan_llama_backend import shutdown_enchan_llama
         atexit.register(shutdown_enchan_llama)
 
-        import signal
+        shutting_down = False
+
         def handle_termination_signal(signum, frame):
+            nonlocal shutting_down
+            if shutting_down:
+                return
+            shutting_down = True
             shutdown_enchan_llama()
             sys.exit(0)
-        for sig in (signal.SIGTERM, getattr(signal, 'SIGBREAK', None)):
+
+        for sig in (
+            signal.SIGTERM,
+            signal.SIGINT,
+            getattr(signal, "SIGHUP", None),
+            getattr(signal, "SIGBREAK", None),
+        ):
             if sig is not None:
                 try:
                     signal.signal(sig, handle_termination_signal)
