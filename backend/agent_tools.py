@@ -442,7 +442,7 @@ def tool_use_skill(args: dict) -> dict:
     if params is None and not argument:
         params = {}
     from contextlib import redirect_stderr, redirect_stdout
-    from backend.skills_loader import run_skill
+    from backend.skills_loader import SkillError, run_skill
     from backend.ui_theme import stream_agent_observation
     stream = stream_agent_observation("use_skill")
     ok = True
@@ -453,9 +453,14 @@ def tool_use_skill(args: dict) -> dict:
         returned = str(content or "").strip()
         if returned and returned not in stream.getvalue():
             stream.write(("\n" if stream.getvalue().strip() else "") + returned + "\n")
+    except SkillError as e:
+        ok = False
+        content = str(e)
+        if content:
+            stream.write(("\n" if stream.getvalue().strip() else "") + content + "\n")
     except Exception as e:
         ok = False
-        content = f"Error while running skill '{skill_name}': {e}"
+        content = f"Internal error while running skill '{skill_name}': {e}"
         stream.write(content + "\n")
     finally:
         stream.close()
