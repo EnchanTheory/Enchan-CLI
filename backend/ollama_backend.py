@@ -192,7 +192,12 @@ def generate_ollama_response(
     if stream_output and not generation_config.get("suppress_response_header", False):
         width = shutil.get_terminal_size().columns
         print("\n\x1b[90m" + "-" * width + "\x1b[0m")
-        print(f"[Enchan:{ollama_model}]:\n", end="", flush=True)
+
+    renderer = None
+    if stream_output:
+        from backend.ui.stream_renderer import RichStreamRenderer
+        renderer = RichStreamRenderer(title=f"Enchan:{ollama_model}")
+        renderer.start()
 
     start_time = time.perf_counter()
     content_parts: list[str] = []
@@ -203,12 +208,6 @@ def generate_ollama_response(
     cancelled = False
     printed_len = 0
     tool_calls_merged = []
-
-    status = None
-    if stream_output:
-        status = get_spinner_status()
-        if hasattr(status, "start"):
-            status.start()
 
     req = urllib.request.Request(
         api_url,
@@ -232,27 +231,14 @@ def generate_ollama_response(
 
                 if thinking:
                     thinking_parts.append(thinking)
-                    if stream_output and view_think:
-                        if status is not None:
-                            status.stop()
-                            status = None
-                        if not thinking_started:
-                            print("\x1b[2;90m", end="", flush=True)
-                            thinking_started = True
-                        print(thinking, end="", flush=True)
+                    if stream_output and renderer is not None:
+                        if view_think:
+                            renderer.update_thinking(thinking)
 
                 if content:
                     content_parts.append(content)
-                    if stream_output:
-                        if thinking_started and not content_started and status is None:
-                            if view_think:
-                                print("\x1b[0m", end="", flush=True)
-                        content_started = True
-
-                        if status is not None:
-                            status.stop()
-                            status = None
-                        print(content, end="", flush=True)
+                    if stream_output and renderer is not None:
+                        renderer.update_content(content)
 
                 if "tool_calls" in message:
                     for i, tc in enumerate(message["tool_calls"]):
@@ -276,26 +262,27 @@ def generate_ollama_response(
                     cancelled = True
                     break
     except urllib.error.HTTPError as e:
-        if status is not None:
-            status.stop()
+        if renderer is not None:
+            renderer.finish()
         body = e.read().decode("utf-8", errors="replace")
         if stream_output or show_metrics:
             print(f"\n[Error] Ollama HTTP error {e.code}: {body}")
         append_session_event(session_log_path, {"type": "error", "stage": "ollama_http", "status": e.code, "body": body})
         return None
     except Exception as e:
-        if status is not None:
-            status.stop()
+        if renderer is not None:
+            renderer.finish()
         if stream_output or show_metrics:
             print(f"\n[Error] Ollama request failed: {e}")
         append_session_event(session_log_path, {"type": "error", "stage": "ollama_request", "message": str(e)})
         return None
 
+    if renderer is not None:
+        renderer.finish()
+
     elapsed = time.perf_counter() - start_time
     response = "".join(content_parts)
     thinking = "".join(thinking_parts)
-    if status is not None:
-        status.stop()
     eval_count = int(final_chunk.get("eval_count") or 0)
     eval_duration_ns = int(final_chunk.get("eval_duration") or 0)
     tps = (eval_count / (eval_duration_ns / 1_000_000_000)) if eval_count and eval_duration_ns else 0.0

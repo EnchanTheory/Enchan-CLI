@@ -1,7 +1,6 @@
 import json
 from dataclasses import dataclass
 
-from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
@@ -9,11 +8,8 @@ from rich.text import Text
 from backend.ui.text_utils import strip_emojis
 from backend.ui.terminal_guard import GuardedStatus
 
-console = Console()
-
-DEFAULT_BORDER = "rgb(165,145,100)"
-MUTED_BORDER = "rgb(150,150,150)"
-DEFAULT_BODY = "rgb(210,200,200)"
+# Import centralized console instance and unified color palette from theme module
+from backend.ui.theme import console, DEFAULT_BORDER, MUTED_BORDER, DEFAULT_BODY, DEFAULT_BG
 
 
 @dataclass(frozen=True)
@@ -53,17 +49,32 @@ def python_timeout_spec(timeout_sec: int) -> PanelSpec:
 
 def make_panel(
     title: str,
-    body: str = "",
+    body: any = "",
     *,
     border_style: str = DEFAULT_BORDER,
     body_style: str = DEFAULT_BODY,
 ) -> Panel:
-    content = Text()
-    content.append(title, style=f"bold {border_style}")
-    if body:
-        content.append("\n\n")
-        content.append(body, style=body_style)
-    return Panel(content, border_style=border_style, padding=(0, 1))
+    from rich.console import Group
+    if isinstance(body, str):
+        content = Text()
+        content.append(title, style=f"bold {border_style}")
+        if body:
+            content.append("\n\n")
+            content.append(body, style=body_style)
+        return Panel(content, border_style=border_style, padding=(0, 1))
+    else:
+        title_text = Text()
+        title_text.append(title, style=f"bold {border_style}")
+        
+        # Combine title and custom renderable body with a line break spacer if body is provided
+        if body:
+            # We put a line break spacer between the title and the custom object for vertical rhythm consistency
+            spacer = Text("\n")
+            content = Group(title_text, spacer, body)
+        else:
+            content = Group(title_text)
+            
+        return Panel(content, border_style=border_style, padding=(0, 1))
 
 
 def make_message_panel(spec: PanelSpec, body: str = "") -> Panel:

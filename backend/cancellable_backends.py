@@ -125,13 +125,19 @@ def generate_enchan_llama_response(
 
     if stream_output and not generation_config.get("suppress_response_header", False):
         width = shutil.get_terminal_size().columns
+        print("\n\x1b[90m" + "-" * width + "\x1b[0m")
+
+    renderer = None
+    if stream_output:
         model_id = str(generation_config.get("model_id") or "llama")
         if model_id.startswith("enchan:"):
             model_id = model_id[len("enchan:"):]
         if model_id.endswith(".gguf") or "\\" in model_id or "/" in model_id:
             model_id = Path(model_id).stem
-        print("\n\x1b[90m" + "-" * width + "\x1b[0m")
-        print(f"[Enchan:{model_id}]:\n", end="", flush=True)
+            
+        from backend.ui.stream_renderer import RichStreamRenderer
+        renderer = RichStreamRenderer(title=f"Enchan:{model_id}")
+        renderer.start()
 
     start_time = time.perf_counter()
     content_parts = []
@@ -142,7 +148,6 @@ def generate_enchan_llama_response(
     thinking_started = False
     cancelled = False
     final_timings = {}
-    status = None
 
     req = urllib.request.Request(
         api_url,
@@ -154,11 +159,6 @@ def generate_enchan_llama_response(
     guard = GenerationInputGuard(enabled=stream_output)
     guard.start()
     try:
-        if stream_output:
-            status = get_spinner_status()
-            if hasattr(status, "start"):
-                status.start()
-
         try:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 for raw_line in resp:
@@ -208,34 +208,14 @@ def generate_enchan_llama_response(
 
                         if reasoning:
                             thinking_parts.append(reasoning)
-                            if stream_output:
+                            if stream_output and renderer is not None:
                                 if view_think:
-                                    if status is not None:
-                                        status.stop()
-                                        status = None
-                                    if not thinking_started:
-                                        print("\x1b[3;38;2;150;150;150m", end="", flush=True)
-                                        thinking_started = True
-                                    print(reasoning, end="", flush=True)
-                                elif status is not None:
-                                    from backend.ui_theme import RICH_AVAILABLE
-
-                                    text_to_show = "Thinking... (esc to cancel)"
-                                    if RICH_AVAILABLE:
-                                        status.update(f"[italic rgb(150,150,150)]{text_to_show}[/]")
-                                    else:
-                                        status.update(text_to_show)
+                                    renderer.update_thinking(reasoning)
 
                         if content:
                             content_parts.append(content)
-                            if stream_output:
-                                if thinking_started:
-                                    print("\x1b[0m", end="", flush=True)
-                                    thinking_started = False
-                                if status is not None:
-                                    status.stop()
-                                    status = None
-                                print(content, end="", flush=True)
+                            if stream_output and renderer is not None:
+                                renderer.update_content(content)
                     except Exception:
                         pass
 
@@ -243,22 +223,24 @@ def generate_enchan_llama_response(
                         cancelled = True
                         break
         except urllib.error.HTTPError as e:
+            if renderer is not None:
+                renderer.finish()
             body = e.read().decode("utf-8", errors="replace")
             print(f"\n[Error] Enchan Llama HTTP error {e.code}: {body}")
             return None
         except Exception as e:
+            if renderer is not None:
+                renderer.finish()
             print(f"\n[Error] Enchan Llama request failed: {e}")
             return None
     finally:
-        if status is not None:
-            status.stop()
+        if renderer is not None:
+            renderer.finish()
         guard.stop()
 
     elapsed = time.perf_counter() - start_time
     response = "".join(content_parts)
     thinking = "".join(thinking_parts)
-    if thinking_started and stream_output:
-        print("\x1b[0m", end="", flush=True)
     if response:
         clean_response, fallback_thinking = split_thought_blocks(response)
         if fallback_thinking and not thinking:
