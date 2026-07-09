@@ -13,7 +13,8 @@ from backend.agent_tools import (
     get_max_obs_chars,
 )
 from backend.session_log import append_session_event
-from backend.ui_theme import get_spinner_status, print_agent_action, print_agent_observation
+from backend.ui_theme import get_spinner_status
+from backend.manual_frames import print_agent_action, print_agent_observation
 
 
 SENSITIVE_SPINNER_TOOLS = {
@@ -233,4 +234,4 @@ def run_agent_loop(
         },
     )
     if not plain:
-        print(f"[Agent] Aborted after {AGENT_MAX_ITERATIONS} tool iterations.")
+        print(f"[Agent] Aborted after {AGENT_MAX_ITERATIONS} tool iterations.")}
