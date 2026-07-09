@@ -1,7 +1,7 @@
 from pathlib import Path
 from backend.session_log import append_session_event
 from backend.memory_store import load_memory_context
-from backend.ollama_backend import run_ollama_once
+from backend.cancellable_backends import run_ollama_once
 
 
 def execute_single_turn(
@@ -27,7 +27,7 @@ def execute_single_turn(
 
     if backend_mode == "enchan":
         from backend.kv_cache_config import apply_enchan_kv_cache_patch
-        from backend.enchan_llama_backend import run_enchan_llama_once
+        from backend.cancellable_backends import run_enchan_llama_once
         kv_cache_type = apply_enchan_kv_cache_patch(getattr(args, "kv_cache_type", None))
         if generation_config is not None:
             generation_config["kv_cache_type"] = kv_cache_type
