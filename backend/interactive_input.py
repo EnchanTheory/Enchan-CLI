@@ -89,21 +89,10 @@ def create_interactive_session(slash_commands: tuple) -> Optional[PromptSession]
         else:
             buffer.validate_and_handle()
 
-    def insert_newline(event):
-        event.current_buffer.insert_text('\n')
-
     @kb.add('escape', 'enter')
     def _(event):
-        """Insert a newline for Option/Alt+Enter terminals that send ESC+Enter."""
-        insert_newline(event)
-
-    try:
-        @kb.add('s-enter')
-        def _(event):
-            """Insert a newline for terminals that expose Shift+Enter distinctly."""
-            insert_newline(event)
-    except ValueError:
-        pass
+        """Insert a newline for the Enchan CLI multiline shortcut: Option/Alt+Enter."""
+        event.current_buffer.insert_text('\n')
 
     @kb.add('tab')
     def _(event):
