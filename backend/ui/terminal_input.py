@@ -3,8 +3,6 @@ import select
 import shutil
 import sys
 import time
-from collections.abc import Callable
-from typing import TypeVar
 
 from backend.ui.text_utils import truncate_visual
 
@@ -12,19 +10,6 @@ ANSI_RESET = "\x1b[0m"
 ANSI_GOLD = "\x1b[1;38;2;165;145;100m"
 ANSI_WHITE = "\x1b[38;2;210;200;200m"
 ANSI_WARN = "\x1b[38;2;180;100;100m"
-
-KEY_UP = "up"
-KEY_DOWN = "down"
-KEY_LEFT = "left"
-KEY_RIGHT = "right"
-KEY_ENTER = "enter"
-KEY_ESCAPE = "escape"
-KEY_INTERRUPT = "interrupt"
-KEY_YES = "yes"
-KEY_NO = "no"
-KEY_OTHER = "other"
-
-T = TypeVar("T")
 
 try:
     import msvcrt
@@ -57,89 +42,6 @@ def _read_posix_escape_sequence() -> str:
     return seq
 
 
-def _read_windows_key() -> str:
-    while True:
-        if not (msvcrt and msvcrt.kbhit()):
-            time.sleep(0.01)
-            continue
-        key = msvcrt.getch()
-        if key in (b"\x00", b"\xe0"):
-            special_key = msvcrt.getch()
-            return {
-                b"H": KEY_UP,
-                b"P": KEY_DOWN,
-                b"K": KEY_LEFT,
-                b"M": KEY_RIGHT,
-            }.get(special_key, KEY_OTHER)
-        if key == b"\r":
-            return KEY_ENTER
-        if key == b"\x1b":
-            return KEY_ESCAPE
-        if key == b"\x03":
-            return KEY_INTERRUPT
-        if key in (b"y", b"Y"):
-            return KEY_YES
-        if key in (b"n", b"N"):
-            return KEY_NO
-        return KEY_OTHER
-
-
-def _read_posix_key() -> str:
-    import termios
-    import tty
-
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch = _read_raw_char(fd)
-        if ch == "\x1b":
-            seq = _read_posix_escape_sequence()
-            return {
-                "\x1b[A": KEY_UP,
-                "\x1bOA": KEY_UP,
-                "\x1b[B": KEY_DOWN,
-                "\x1bOB": KEY_DOWN,
-                "\x1b[D": KEY_LEFT,
-                "\x1bOD": KEY_LEFT,
-                "\x1b[C": KEY_RIGHT,
-                "\x1bOC": KEY_RIGHT,
-                "\x1b": KEY_ESCAPE,
-            }.get(seq, KEY_OTHER)
-        if ch in ("\r", "\n"):
-            return KEY_ENTER
-        if ch == "\x03":
-            return KEY_INTERRUPT
-        if ch.lower() == "y":
-            return KEY_YES
-        if ch.lower() == "n":
-            return KEY_NO
-        return KEY_OTHER
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
-
-def _read_key() -> str:
-    if sys.platform == "win32":
-        return _read_windows_key()
-    return _read_posix_key()
-
-
-def _run_key_loop(handle_key: Callable[[str], T | None]) -> T:
-    try:
-        while True:
-            result = handle_key(_read_key())
-            if result is not None:
-                return result
-    except (KeyboardInterrupt, SystemExit):
-        sys.exit(0)
-
-
-def _finish_inline_prompt(result: T) -> T:
-    sys.stdout.write("\r\n")
-    return result
-
-
 def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int) -> None:
     term_width = shutil.get_terminal_size(fallback=(80, 24)).columns
     for i, (label, desc, ready) in enumerate(options):
@@ -158,59 +60,43 @@ def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int)
     sys.stdout.flush()
 
 
-def _is_interactive_terminal() -> bool:
-    return sys.stdin.isatty() and (msvcrt is not None or sys.platform != "win32")
-
-
-def _selectable_indices(options: list[tuple[str, str, bool]]) -> list[int]:
-    return [i for i, (_, _, ready) in enumerate(options) if ready]
-
-
-def _normalized_default_idx(options: list[tuple[str, str, bool]], default_idx: int) -> int:
-    selectable_indices = _selectable_indices(options)
-    if not selectable_indices:
-        return -1
-    if default_idx < 0 or default_idx >= len(options) or not options[default_idx][2]:
-        return selectable_indices[0]
-    return default_idx
-
-
-def _prompt_menu_number(title: str, options: list[tuple[str, str, bool]], default_idx: int) -> int:
-    print(f"\n[{title}]")
-    for i, (label, desc, ready) in enumerate(options, 1):
-        marker = "*" if i - 1 == default_idx else " "
-        status = "" if ready else " (Unavailable)"
-        color_start = "\x1b[38;2;210;200;200m" if ready else "\x1b[38;2;120;120;120m"
-        print(f"  {color_start}{i}. {label:<20} {marker} {desc}{status}{ANSI_RESET}")
-
-    default_index = default_idx + 1
-    try:
-        raw = input(f"Select number [{default_index}] (or Enter to cancel): ").strip()
-        if not raw:
-            return default_idx
-        if raw.isdigit():
-            idx = int(raw) - 1
-            if 0 <= idx < len(options) and options[idx][2]:
-                return idx
-        return -1
-    except (KeyboardInterrupt, EOFError):
-        return -1
-
-
 def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_idx: int = 0) -> int:
     """Displays an interactive arrow-key menu."""
     if not options:
         return -1
 
-    current_idx = _normalized_default_idx(options, default_idx)
-    if current_idx < 0:
+    selectable_indices = [i for i, (_, _, ready) in enumerate(options) if ready]
+    if not selectable_indices:
         return -1
+    if default_idx < 0 or default_idx >= len(options) or not options[default_idx][2]:
+        default_idx = selectable_indices[0]
 
-    if not _is_interactive_terminal():
-        return _prompt_menu_number(title, options, current_idx)
+    is_interactive = sys.stdin.isatty() and (msvcrt is not None or sys.platform != "win32")
+
+    if not is_interactive:
+        print(f"\n[{title}]")
+        for i, (label, desc, ready) in enumerate(options, 1):
+            marker = "*" if i - 1 == default_idx else " "
+            status = "" if ready else " (Unavailable)"
+            color_start = "\x1b[38;2;210;200;200m" if ready else "\x1b[38;2;120;120;120m"
+            print(f"  {color_start}{i}. {label:<20} {marker} {desc}{status}{ANSI_RESET}")
+
+        default_index = default_idx + 1
+        try:
+            raw = input(f"Select number [{default_index}] (or Enter to cancel): ").strip()
+            if not raw:
+                return default_idx
+            if raw.isdigit():
+                idx = int(raw) - 1
+                if 0 <= idx < len(options) and options[idx][2]:
+                    return idx
+            return -1
+        except (KeyboardInterrupt, EOFError):
+            return -1
 
     print(f"\n[{title}] (Use Up/Down arrows and press Enter to select)")
     num_options = len(options)
+    current_idx = default_idx
 
     def draw_menu() -> None:
         _draw_menu_lines(options, current_idx)
@@ -230,23 +116,61 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
             if options[current_idx][2] or current_idx == orig_idx:
                 break
 
-    def handle_key(key: str) -> int | None:
-        if key == KEY_UP:
-            move_selection(-1)
-            draw_menu()
-        elif key == KEY_DOWN:
-            move_selection(1)
-            draw_menu()
-        elif key == KEY_ENTER:
-            return finish_with(current_idx)
-        elif key in (KEY_ESCAPE, KEY_INTERRUPT):
-            return finish_with(-1)
-        return None
-
     _draw_menu_lines(options, current_idx)
     sys.stdout.write(f"\x1b[{num_options}A")
     sys.stdout.flush()
-    return _run_key_loop(handle_key)
+
+    try:
+        if sys.platform == "win32":
+            while True:
+                if msvcrt.kbhit():
+                    key = msvcrt.getch()
+                    if key in (b"\x00", b"\xe0"):
+                        special_key = msvcrt.getch()
+                        if special_key == b"H":
+                            move_selection(-1)
+                            draw_menu()
+                        elif special_key == b"P":
+                            move_selection(1)
+                            draw_menu()
+                        elif special_key in (b"K", b"M"):
+                            continue
+                    elif key == b"\r":
+                        return finish_with(current_idx)
+                    elif key in (b"\x03", b"\x1b"):
+                        return finish_with(-1)
+                else:
+                    time.sleep(0.01)
+        else:
+            import termios
+            import tty
+
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                while True:
+                    ch = _read_raw_char(fd)
+                    if ch == "\x1b":
+                        seq = _read_posix_escape_sequence()
+                        if seq in ("\x1b[A", "\x1bOA"):
+                            move_selection(-1)
+                            draw_menu()
+                        elif seq in ("\x1b[B", "\x1bOB"):
+                            move_selection(1)
+                            draw_menu()
+                        elif seq in ("\x1b[C", "\x1bOC", "\x1b[D", "\x1bOD"):
+                            continue
+                        elif seq == "\x1b":
+                            return finish_with(-1)
+                    elif ch in ("\r", "\n"):
+                        return finish_with(current_idx)
+                    elif ch == "\x03":
+                        return finish_with(-1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except (KeyboardInterrupt, SystemExit):
+        sys.exit(0)
 
 
 def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
@@ -268,18 +192,56 @@ def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
         sys.stdout.write(f"{no_color} {no_cursor} [ No ] {ANSI_RESET}")
         sys.stdout.flush()
 
-    def handle_key(key: str) -> bool | None:
-        nonlocal selected_yes
-        if key in (KEY_LEFT, KEY_RIGHT):
-            selected_yes = not selected_yes
-            draw()
-        elif key == KEY_ENTER:
-            return _finish_inline_prompt(selected_yes)
-        elif key == KEY_YES:
-            return _finish_inline_prompt(True)
-        elif key in (KEY_NO, KEY_ESCAPE, KEY_INTERRUPT):
-            return _finish_inline_prompt(False)
-        return None
+    try:
+        draw()
+        if sys.platform == "win32":
+            while True:
+                if msvcrt and msvcrt.kbhit():
+                    key = msvcrt.getch()
+                    if key in (b"\x00", b"\xe0"):
+                        special_key = msvcrt.getch()
+                        if special_key in (b"K", b"M"):
+                            selected_yes = not selected_yes
+                            draw()
+                    elif key == b"\r":
+                        sys.stdout.write("\n")
+                        return selected_yes
+                    elif key in (b"y", b"Y"):
+                        sys.stdout.write("\n")
+                        return True
+                    elif key in (b"n", b"N", b"\x03"):
+                        sys.stdout.write("\n")
+                        return False
+                else:
+                    time.sleep(0.01)
+        else:
+            import termios
+            import tty
 
-    draw()
-    return _run_key_loop(handle_key)
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                while True:
+                    ch = _read_raw_char(fd)
+                    if ch == "\x1b":
+                        seq = _read_posix_escape_sequence()
+                        if seq in ("\x1b[D", "\x1bOD", "\x1b[C", "\x1bOC"):
+                            selected_yes = not selected_yes
+                            draw()
+                        elif seq == "\x1b":
+                            sys.stdout.write("\r\n")
+                            return False
+                    elif ch in ("\r", "\n"):
+                        sys.stdout.write("\r\n")
+                        return selected_yes
+                    elif ch.lower() == "y":
+                        sys.stdout.write("\r\n")
+                        return True
+                    elif ch.lower() == "n" or ch == "\x03":
+                        sys.stdout.write("\r\n")
+                        return False
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    except (KeyboardInterrupt, SystemExit):
+        sys.exit(0)
