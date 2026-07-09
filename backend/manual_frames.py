@@ -12,7 +12,14 @@ import shutil
 import sys
 
 import backend.ui_theme as ui_theme
-from backend.ui_theme import RICH_AVAILABLE, Panel, Text, console, strip_emojis
+from backend.ui_theme import RICH_AVAILABLE, console, strip_emojis
+
+if RICH_AVAILABLE:
+    from rich.panel import Panel
+    from rich.text import Text
+else:  # Rich is optional; fallback rendering must still import cleanly.
+    Panel = None
+    Text = None
 
 _FRAME_MIN_WIDTH = 40
 _FRAME_MAX_WIDTH = 240
