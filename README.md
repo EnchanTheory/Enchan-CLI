@@ -166,13 +166,6 @@ A small model can form a sharp probability peak over a small number of semantic 
 
 This is not a claim that a small model becomes a large model. The point is narrower: Enchan Screening reduces Attention over-concentration and gives the model more room to express alternatives already present in its own distribution.
 
-### Vision & Image Recognition
-
-If you are using a multimodal GGUF model with Vision capabilities (such as `gemma4:e2b-it-qat` or any Gemma 3 Vision model), Enchan CLI natively supports image recognition and visual context understanding.
-
-- **Auto-binding Projectors (`--mmproj`):** Enchan automatically scans your Ollama library manifests to resolve and bind the model's corresponding image projector (CLIP) layer during GGUF server startup. No manual `--mmproj` path specification is required.
-- **Seamless Image Loading:** You can simply type, paste, or drag-and-drop the path to an existing image file (supporting `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) anywhere inside your chat prompt. Enchan will automatically detect the path, base64-encode the file, and inject it into the model's visual attention context.
-
 #### How it changes the output
 
 Under this working hypothesis, by selectively reducing matrix-level Attention over-concentration, the engine is designed to broaden the probability distribution of alternative candidates.
