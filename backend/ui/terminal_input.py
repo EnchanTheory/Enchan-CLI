@@ -3,6 +3,8 @@ import select
 import shutil
 import sys
 import time
+from collections.abc import Callable
+from typing import TypeVar
 
 from backend.ui.text_utils import truncate_visual
 
@@ -21,6 +23,8 @@ KEY_INTERRUPT = "interrupt"
 KEY_YES = "yes"
 KEY_NO = "no"
 KEY_OTHER = "other"
+
+T = TypeVar("T")
 
 try:
     import msvcrt
@@ -121,6 +125,21 @@ def _read_key() -> str:
     return _read_posix_key()
 
 
+def _run_key_loop(handle_key: Callable[[str], T | None]) -> T:
+    try:
+        while True:
+            result = handle_key(_read_key())
+            if result is not None:
+                return result
+    except (KeyboardInterrupt, SystemExit):
+        sys.exit(0)
+
+
+def _finish_inline_prompt(result: T) -> T:
+    sys.stdout.write("\r\n")
+    return result
+
+
 def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int) -> None:
     term_width = shutil.get_terminal_size(fallback=(80, 24)).columns
     for i, (label, desc, ready) in enumerate(options):
@@ -143,41 +162,55 @@ def _is_interactive_terminal() -> bool:
     return sys.stdin.isatty() and (msvcrt is not None or sys.platform != "win32")
 
 
+def _selectable_indices(options: list[tuple[str, str, bool]]) -> list[int]:
+    return [i for i, (_, _, ready) in enumerate(options) if ready]
+
+
+def _normalized_default_idx(options: list[tuple[str, str, bool]], default_idx: int) -> int:
+    selectable_indices = _selectable_indices(options)
+    if not selectable_indices:
+        return -1
+    if default_idx < 0 or default_idx >= len(options) or not options[default_idx][2]:
+        return selectable_indices[0]
+    return default_idx
+
+
+def _prompt_menu_number(title: str, options: list[tuple[str, str, bool]], default_idx: int) -> int:
+    print(f"\n[{title}]")
+    for i, (label, desc, ready) in enumerate(options, 1):
+        marker = "*" if i - 1 == default_idx else " "
+        status = "" if ready else " (Unavailable)"
+        color_start = "\x1b[38;2;210;200;200m" if ready else "\x1b[38;2;120;120;120m"
+        print(f"  {color_start}{i}. {label:<20} {marker} {desc}{status}{ANSI_RESET}")
+
+    default_index = default_idx + 1
+    try:
+        raw = input(f"Select number [{default_index}] (or Enter to cancel): ").strip()
+        if not raw:
+            return default_idx
+        if raw.isdigit():
+            idx = int(raw) - 1
+            if 0 <= idx < len(options) and options[idx][2]:
+                return idx
+        return -1
+    except (KeyboardInterrupt, EOFError):
+        return -1
+
+
 def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_idx: int = 0) -> int:
     """Displays an interactive arrow-key menu."""
     if not options:
         return -1
 
-    selectable_indices = [i for i, (_, _, ready) in enumerate(options) if ready]
-    if not selectable_indices:
+    current_idx = _normalized_default_idx(options, default_idx)
+    if current_idx < 0:
         return -1
-    if default_idx < 0 or default_idx >= len(options) or not options[default_idx][2]:
-        default_idx = selectable_indices[0]
 
     if not _is_interactive_terminal():
-        print(f"\n[{title}]")
-        for i, (label, desc, ready) in enumerate(options, 1):
-            marker = "*" if i - 1 == default_idx else " "
-            status = "" if ready else " (Unavailable)"
-            color_start = "\x1b[38;2;210;200;200m" if ready else "\x1b[38;2;120;120;120m"
-            print(f"  {color_start}{i}. {label:<20} {marker} {desc}{status}{ANSI_RESET}")
-
-        default_index = default_idx + 1
-        try:
-            raw = input(f"Select number [{default_index}] (or Enter to cancel): ").strip()
-            if not raw:
-                return default_idx
-            if raw.isdigit():
-                idx = int(raw) - 1
-                if 0 <= idx < len(options) and options[idx][2]:
-                    return idx
-            return -1
-        except (KeyboardInterrupt, EOFError):
-            return -1
+        return _prompt_menu_number(title, options, current_idx)
 
     print(f"\n[{title}] (Use Up/Down arrows and press Enter to select)")
     num_options = len(options)
-    current_idx = default_idx
 
     def draw_menu() -> None:
         _draw_menu_lines(options, current_idx)
@@ -197,25 +230,23 @@ def interactive_menu(title: str, options: list[tuple[str, str, bool]], default_i
             if options[current_idx][2] or current_idx == orig_idx:
                 break
 
+    def handle_key(key: str) -> int | None:
+        if key == KEY_UP:
+            move_selection(-1)
+            draw_menu()
+        elif key == KEY_DOWN:
+            move_selection(1)
+            draw_menu()
+        elif key == KEY_ENTER:
+            return finish_with(current_idx)
+        elif key in (KEY_ESCAPE, KEY_INTERRUPT):
+            return finish_with(-1)
+        return None
+
     _draw_menu_lines(options, current_idx)
     sys.stdout.write(f"\x1b[{num_options}A")
     sys.stdout.flush()
-
-    try:
-        while True:
-            key = _read_key()
-            if key == KEY_UP:
-                move_selection(-1)
-                draw_menu()
-            elif key == KEY_DOWN:
-                move_selection(1)
-                draw_menu()
-            elif key == KEY_ENTER:
-                return finish_with(current_idx)
-            elif key in (KEY_ESCAPE, KEY_INTERRUPT):
-                return finish_with(-1)
-    except (KeyboardInterrupt, SystemExit):
-        sys.exit(0)
+    return _run_key_loop(handle_key)
 
 
 def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
@@ -237,24 +268,18 @@ def interactive_yes_no(prompt: str, default_yes: bool = True) -> bool:
         sys.stdout.write(f"{no_color} {no_cursor} [ No ] {ANSI_RESET}")
         sys.stdout.flush()
 
-    try:
-        draw()
-        while True:
-            key = _read_key()
-            if key in (KEY_LEFT, KEY_RIGHT):
-                selected_yes = not selected_yes
-                draw()
-            elif key == KEY_ENTER:
-                sys.stdout.write("\r\n")
-                return selected_yes
-            elif key == KEY_YES:
-                sys.stdout.write("\r\n")
-                return True
-            elif key in (KEY_NO, KEY_INTERRUPT):
-                sys.stdout.write("\r\n")
-                return False
-            elif key == KEY_ESCAPE:
-                sys.stdout.write("\r\n")
-                return False
-    except (KeyboardInterrupt, SystemExit):
-        sys.exit(0)
+    def handle_key(key: str) -> bool | None:
+        nonlocal selected_yes
+        if key in (KEY_LEFT, KEY_RIGHT):
+            selected_yes = not selected_yes
+            draw()
+        elif key == KEY_ENTER:
+            return _finish_inline_prompt(selected_yes)
+        elif key == KEY_YES:
+            return _finish_inline_prompt(True)
+        elif key in (KEY_NO, KEY_ESCAPE, KEY_INTERRUPT):
+            return _finish_inline_prompt(False)
+        return None
+
+    draw()
+    return _run_key_loop(handle_key)
