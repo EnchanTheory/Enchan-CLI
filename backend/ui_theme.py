@@ -2,7 +2,7 @@ import shutil
 
 from prompt_toolkit.styles import Style
 
-from backend.terminal_input import (
+from backend.ui.terminal_input import (
     ANSI_GOLD,
     ANSI_RESET,
     ANSI_WARN,
@@ -10,8 +10,8 @@ from backend.terminal_input import (
     interactive_menu,
     interactive_yes_no,
 )
-from backend.text_utils import strip_emojis, truncate_visual, visual_len
-from backend.ui_panels import (
+from backend.ui.text_utils import strip_emojis, truncate_visual, visual_len
+from backend.ui.panels import (
     console,
     get_spinner_status,
     print_agent_action,
