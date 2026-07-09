@@ -21,6 +21,10 @@ class SkillManifestError(Exception):
     pass
 
 
+class SkillError(Exception):
+    """Raised when a skill call fails and should surface as ok=False."""
+
+
 class JsonRpcSkillSession:
     """Persistent bidirectional JSON-RPC session over a skill process' stdio."""
 
@@ -370,6 +374,7 @@ def render_skill_tool_hint(max_chars: int = 1200) -> str:
         return text
     return text[: max_chars - 3].rstrip() + "..."
 
+
 def list_registered_skills() -> str:
     """List skill contracts discovered under skills/."""
     if not SKILLS_DIR.exists():
@@ -398,6 +403,7 @@ def list_registered_skills() -> str:
     if not skills:
         return "No valid skills registered in the skills/ directory."
     return "Available Enchan CLI Skills:\n" + "\n".join(skills)
+
 
 def _compact_schema_text(schema: Any, *, max_chars: int = 360) -> str:
     if not isinstance(schema, dict) or not schema:
@@ -458,13 +464,21 @@ def render_skill_catalog_for_prompt(max_chars: int = 5000) -> str:
     return content[: max_chars - 80].rstrip() + "\n...\n[Skill catalog truncated; call list_skills for full details.]"
 
 
+def _format_skill_response_error(skill_name: str, error: Any) -> str:
+    if isinstance(error, dict):
+        message = error.get("message", "Unknown skill error")
+        data = error.get("data") or ""
+        return f"Skill '{skill_name}' failed.\nError: {message}\n{data}".strip()
+    return f"Skill '{skill_name}' failed.\nError: {error}"
+
+
 def run_skill(skill_name: str, argument: str = "", *, method: str | None = None, params: dict[str, Any] | None = None) -> str:
     """Run a modern JSON-RPC skill method or a legacy auto-wrapped entrypoint."""
     try:
         skill_dir, manifest = _manifest_for_skill(skill_name)
         command = _runtime_command(manifest.get("runtime"))
         if not command:
-            return f"[Error] Skill '{skill_name}' configuration has no runtime command defined."
+            raise SkillError(f"[Error] Skill '{skill_name}' configuration has no runtime command defined.")
 
         if manifest.get("legacy"):
             print(f"\n[System] Launching skill '{skill_name}'...")
@@ -475,7 +489,7 @@ def run_skill(skill_name: str, argument: str = "", *, method: str | None = None,
         methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
         method = _resolve_skill_method(manifest, method)
         if method not in methods:
-            return f"[Error] Skill '{skill_name}' has no method '{method}'. Available methods: {', '.join(methods.keys())}"
+            raise SkillError(f"[Error] Skill '{skill_name}' has no method '{method}'. Available methods: {', '.join(methods.keys())}")
 
         raw_params = params if isinstance(params, dict) else {"argument": argument}
         call_params = _validate_and_apply_defaults(_schema_for_method(manifest, method), raw_params)
@@ -487,12 +501,7 @@ def run_skill(skill_name: str, argument: str = "", *, method: str | None = None,
 
         print("-" * 60)
         if "error" in response:
-            error = response["error"]
-            if isinstance(error, dict):
-                message = error.get("message", "Unknown skill error")
-                data = error.get("data") or ""
-                return f"Skill '{skill_name}' failed.\nError: {message}\n{data}".strip()
-            return f"Skill '{skill_name}' failed.\nError: {error}"
+            raise SkillError(_format_skill_response_error(skill_name, response["error"]))
 
         result = response.get("result")
         if isinstance(result, dict):
@@ -503,8 +512,10 @@ def run_skill(skill_name: str, argument: str = "", *, method: str | None = None,
             content = str(result)
         print(f"[System] Skill '{skill_name}' method '{method}' completed.")
         return f"Skill '{skill_name}' completed.\nMethod: {method}\nOutput:\n{content}".strip()
+    except SkillError:
+        raise
     except Exception as e:
-        return f"[Error] Failed to execute skill '{skill_name}': {e}"
+        raise SkillError(f"[Error] Failed to execute skill '{skill_name}': {e}") from e
 
 
 def _session_for(skill_name: str, command: list[str], manifest: dict[str, Any]) -> JsonRpcSkillSession:
