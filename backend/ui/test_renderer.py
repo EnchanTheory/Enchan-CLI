@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from backend.ui.stream_renderer import RichStreamRenderer
+from backend.ui.theme import get_enchan_progress
 
 def run_test():
     print("=== RichStreamRenderer Streaming Test ===")
@@ -67,6 +68,17 @@ def run_test():
     renderer.finish()
     print("\n=== Test Completed ===")
     print("Please verify that the layout and the Markdown tables/code blocks are rendered beautifully.")
+    
+    # 5. Minimalist Progress Bar Demonstration
+    print("\n=== Minimalist Progress Bar Demonstration ===")
+    time.sleep(0.5)
+    with get_enchan_progress("Downloading Enchan Update") as progress:
+        task = progress.add_task("Downloading", total=100)
+        while not progress.finished:
+            # Advance progress smoothly
+            progress.update(task, advance=5)
+            time.sleep(0.08)
+    print("Download completed successfully!")
 
 if __name__ == "__main__":
     run_test()

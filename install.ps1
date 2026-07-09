@@ -24,14 +24,18 @@ function Require-Command($Name) {
 
 
 function Download-RuntimeAsset {
+    $oldProgress = $ProgressPreference
     try {
+        $ProgressPreference = 'SilentlyContinue'
         Invoke-WebRequest -Uri $RuntimeAssetUrl -OutFile $ZipPath -UseBasicParsing -ErrorAction Stop
+        $ProgressPreference = $oldProgress
         $Magic = [System.IO.File]::ReadAllBytes($ZipPath)
         if ($Magic.Length -ge 2 -and $Magic[0] -eq 0x50 -and $Magic[1] -eq 0x4b) {
             return
         }
         Write-Host "Direct runtime download did not return a zip; trying GitHub CLI fallback"
     } catch {
+        $ProgressPreference = $oldProgress
         Write-Host "Direct runtime download failed; trying GitHub CLI fallback"
     }
 

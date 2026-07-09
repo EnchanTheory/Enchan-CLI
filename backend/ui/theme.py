@@ -1,5 +1,6 @@
 from rich.console import Console
 from rich.theme import Theme
+from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
 
 # ==============================================================================
 # 🎨 Enchan CLI Unified Color Palette & Theme Specifications
@@ -66,10 +67,34 @@ ENCHAN_MARKDOWN_THEME = Theme({
     # Code Blocks (Full block with beautiful centralized dynamic DEFAULT_BG backing plate)
     "markdown.code_block": f"{DEFAULT_BODY} on {DEFAULT_BG}",
     
-    # Strong & Emphasis (Uses central DEFAULT_BORDER to make bold/italic stand out in Gold)
+    # Strong & Emphasis (Uses central DEFAULT_BORDER to make bold/italic points stand out in Gold)
     "markdown.strong": f"bold {DEFAULT_BORDER}",
     "markdown.em": f"italic {DEFAULT_BORDER}",
     
     # Horizontal Rules (Identical to default border)
     "markdown.hr": DEFAULT_BORDER,
 })
+
+
+# ==============================================================================
+# 📊 Centralized Unified Progress Bar Constructor
+# ==============================================================================
+# Generates a minimal, ultra-low color progress bar for downloads/updates.
+# Uses only gold and gray to maintain a high-end, distraction-free aesthetic.
+# ==============================================================================
+def get_enchan_progress(description: str = "Processing") -> Progress:
+    """
+    Returns an ultra-elegant, low-color progress bar matching the Enchan CLI design.
+    """
+    return Progress(
+        TextColumn(f"[bold {DEFAULT_BORDER}]{description}[/]"),
+        BarColumn(
+            bar_width=35,
+            style=MUTED_BORDER,            # Muted gray background track
+            complete_style=DEFAULT_BORDER,  # Solid gold completed segments
+            finished_style=DEFAULT_BORDER   # Solid gold finished segments
+        ),
+        TaskProgressColumn(style=f"bold {DEFAULT_BORDER}"),
+        console=console,
+        transient=False  # Keeps the finalized progress bar in terminal history
+    )
