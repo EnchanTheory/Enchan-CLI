@@ -14,10 +14,10 @@ from rich.progress import Progress, BarColumn, TextColumn, TaskProgressColumn
 DEFAULT_BORDER = "rgb(165,145,100)"  # Classic Enchan Gold Accent
 MUTED_BORDER = "rgb(150,150,150)"   # Muted Gray for inactive/system elements
 DEFAULT_BODY = "rgb(210,200,200)"     # Soft Beige/Warm Gray for body text
-DEFAULT_BG = "rgb(12,10,8)"          # Deepest pitch-black gold backing plate to maximize text selection and legibility contrast
+DEFAULT_BG = "rgb(29,32,33)"         # Subtle charcoal-gold matching the gruvbox-dark background plate to define boundaries elegantly
 
 # 🎨 Unified Code Theme Specifications
-DEFAULT_CODE_THEME = "zenburn"       # Elegant, low-contrast, eyes-friendly theme
+DEFAULT_CODE_THEME = "gruvbox-dark"   # Legendary warm-contrast, eyes-friendly theme with a perfect charcoal-gold background
 
 # 🎛️ Shared Console Instance
 console = Console()
@@ -73,6 +73,21 @@ ENCHAN_MARKDOWN_THEME = Theme({
     
     # Horizontal Rules (Identical to default border)
     "markdown.hr": DEFAULT_BORDER,
+
+    # ==========================================================================
+    # 💻 Advanced Syntax Highlight overrides (Eradicates harsh Pygments colors)
+    # ==========================================================================
+    # We dynamically map pygments code tokens to our unified, high-end gold
+    # and soft gray palette to completely eliminate neon reds or harsh colors.
+    # ==========================================================================
+    "pygments.keyword": f"bold {DEFAULT_BORDER}",       # def, import, if, etc. in Gold
+    "pygments.string": DEFAULT_BODY,                     # Strings in Soft Beige
+    "pygments.comment": f"italic {MUTED_BORDER}",       # Comments in soft Muted Gray
+    "pygments.number": f"bold {DEFAULT_BORDER}",         # Numbers in Gold
+    "pygments.operator": DEFAULT_BODY,                  # Fixes harsh red operators (=, +, -, ==) to Soft Beige
+    "pygments.name": DEFAULT_BODY,                      # Variable names in Soft Beige
+    "pygments.name.function": f"bold {DEFAULT_BORDER}", # Function names in Gold
+    "pygments.name.class": f"bold {DEFAULT_BORDER}",    # Class names in Gold
 })
 
 
