@@ -5,6 +5,7 @@ import select
 import shutil
 import sys
 import time
+import unicodedata
 
 
 def strip_emojis(text: str) -> str:
@@ -43,6 +44,7 @@ ANSI_WARN = "\x1b[38;2;180;100;100m"
 
 _MANUAL_FRAME_MIN_WIDTH = 40
 _MANUAL_FRAME_MAX_WIDTH = 240
+_ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 try:
     import msvcrt
@@ -97,30 +99,69 @@ def print_response_header(label: str, body: str | None = None, line_char: str = 
         print(f"[{label}]:\n{body}")
 
 
+def _visible_text(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+def _visual_len(text: str) -> int:
+    width = 0
+    for char in _visible_text(text):
+        if unicodedata.combining(char):
+            continue
+        width += 2 if unicodedata.east_asian_width(char) in "WF" else 1
+    return width
+
+
+def _truncate_visual(text: str, max_width: int) -> str:
+    if max_width <= 0:
+        return ""
+    if _visual_len(text) <= max_width:
+        return text
+    marker = "..."
+    limit = max(0, max_width - len(marker))
+    width = 0
+    result = ""
+    for char in text:
+        char_width = 0 if unicodedata.combining(char) else (2 if unicodedata.east_asian_width(char) in "WF" else 1)
+        if width + char_width > limit:
+            break
+        result += char
+        width += char_width
+    return result + marker
+
+
+def _pad_visual(text: str, width: int) -> str:
+    return text + " " * max(0, width - _visual_len(text))
+
+
 def _manual_frame_width() -> int:
     columns = shutil.get_terminal_size(fallback=(80, 24)).columns
     return max(_MANUAL_FRAME_MIN_WIDTH, min(columns, _MANUAL_FRAME_MAX_WIDTH))
 
 
+def _manual_frame_inner_width() -> int:
+    return max(1, _manual_frame_width() - 4)
+
+
 def _manual_frame_rule() -> str:
-    return "─" * max(1, _manual_frame_width() - 1)
+    return "─" * max(1, _manual_frame_width() - 2)
 
 
 def _manual_frame_top(ansi_color: str) -> str:
-    return f"\x1b[38;2;{ansi_color}m╭{_manual_frame_rule()}\x1b[0m"
+    return f"\x1b[38;2;{ansi_color}m╭{_manual_frame_rule()}╮\x1b[0m"
 
 
 def _manual_frame_bottom(ansi_color: str) -> str:
-    return f"\x1b[38;2;{ansi_color}m╰{_manual_frame_rule()}\x1b[0m"
+    return f"\x1b[38;2;{ansi_color}m╰{_manual_frame_rule()}╯\x1b[0m"
 
 
 def _manual_frame_line(ansi_color: str, text: str = "", text_color: str | None = None) -> str:
-    prefix = f"\x1b[38;2;{ansi_color}m│\x1b[0m"
-    if not text:
-        return prefix
-    if text_color:
-        return f"{prefix} \x1b[38;2;{text_color}m{text}\x1b[0m"
-    return f"{prefix} {text}"
+    inner_width = _manual_frame_inner_width()
+    content = _pad_visual(_truncate_visual(str(text), inner_width), inner_width)
+    border = f"\x1b[38;2;{ansi_color}m"
+    if text_color and text:
+        content = f"\x1b[38;2;{text_color}m{content}\x1b[0m"
+    return f"{border}│\x1b[0m {content} {border}│\x1b[0m"
 
 
 def _manual_frame_print_start(ansi_color: str, title: str, *, leading_blank: bool = False) -> None:
@@ -138,7 +179,9 @@ def _manual_frame_print_end(ansi_color: str) -> None:
 def _ascii_safe_manual_frame_text(text: str) -> str:
     return (
         text.replace("╭", "+")
+        .replace("╮", "+")
         .replace("╰", "+")
+        .replace("╯", "+")
         .replace("│", "|")
         .replace("─", "-")
         .replace("✓", "OK")
@@ -259,23 +302,8 @@ class GuardedStatus:
 
 
 def _draw_menu_lines(options: list[tuple[str, str, bool]], highlighted_idx: int) -> None:
-    import unicodedata
-
-    def visual_len(text: str) -> int:
-        return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
-
     def truncate_visual(text: str, max_width: int) -> str:
-        if visual_len(text) <= max_width:
-            return text
-        w = 0
-        res = ""
-        for c in text:
-            cw = 2 if unicodedata.east_asian_width(c) in "WF" else 1
-            if w + cw > max_width - 3:
-                return res + "..."
-            res += c
-            w += cw
-        return res + "..."
+        return _truncate_visual(text, max_width)
 
     term_width = shutil.get_terminal_size(fallback=(80, 24)).columns
     for i, (label, desc, ready) in enumerate(options):
