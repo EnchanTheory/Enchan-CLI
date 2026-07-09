@@ -75,7 +75,8 @@ class RichStreamRenderer:
         if self.thinking_text:
             header_text = Text()
             if self.status == "thinking":
-                header_text.append("🧠 Thinking...\n", style=f"bold {self.border_style}")
+                # Ensure user knows they can press Esc to cancel during active thinking phase
+                header_text.append("🧠 Thinking... (esc to cancel)\n", style=f"bold {self.border_style}")
             else:
                 header_text.append("🧠 Thought Process (Completed):\n", style="bold dim")
             
@@ -98,8 +99,8 @@ class RichStreamRenderer:
             md = Markdown(sanitized, code_theme=DEFAULT_CODE_THEME)
             content_parts.append(md)
         elif self.status == "thinking" and not self.thinking_text:
-            # Match the spinner style and color with the existing get_spinner_status implementation
-            spinner_text = Text("Thinking...", style=f"italic {MUTED_BORDER}")
+            # Fixes missing italic styling and missing '(esc to cancel)' UX guidance on the spinner text
+            spinner_text = Text("Thinking... (esc to cancel)", style=f"italic {MUTED_BORDER}")
             content_parts.append(Spinner("dots", text=spinner_text, style=MUTED_BORDER))
 
         # Combine all parts directly into a Group without any surrounding Panel or border.
