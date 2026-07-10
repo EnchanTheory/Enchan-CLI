@@ -1,0 +1,17 @@
+{
+  "name": "skill_creator",
+  "description": "Guide for creating and registering a new reusable Enchan CLI Skill when no installed skill provides the needed capability.",
+  "runtime": {
+    "command": "python skills/skill_creator/handler.py"
+  },
+  "methods": {
+    "read_guide": {
+      "description": "Return the short step-by-step guide and minimal files required to create a new Enchan CLI Skill.",
+      "input": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  },
+  "host_capabilities": []
+}
