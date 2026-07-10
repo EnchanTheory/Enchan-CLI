@@ -1,6 +1,3 @@
-from urllib.parse import urlparse
-
-
 AD_URL_MARKERS = (
     "bing.com/aclick",
     "bing.com/fd/ls/",
@@ -49,7 +46,7 @@ def _is_ad_result(res: dict) -> bool:
 def _format_search_result(res: dict) -> dict:
     return {
         "title": res.get("title"),
-        "url": res.get("href"),
+        "url": _search_result_url(res),
         "snippet": res.get("body"),
     }
 
