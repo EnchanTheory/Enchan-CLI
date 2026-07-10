@@ -1,5 +1,6 @@
 import sys
 import re
+import time
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.text import Text
@@ -8,6 +9,7 @@ from rich.spinner import Spinner
 # Import ALL unified console, theme specifications, and color palette from theme module
 from backend.ui.theme import console, DEFAULT_BORDER, MUTED_BORDER, DEFAULT_BODY, DEFAULT_BG, DEFAULT_CODE_THEME, ENCHAN_MARKDOWN_THEME
 
+
 class RichStreamRenderer:
     """
     Windows/Mac/Linux multi-platform compatible
@@ -15,23 +17,29 @@ class RichStreamRenderer:
     Renders raw, beautifully styled Markdown and thought logs directly as text,
     without any bulky panel borders or double title headers for a natural chat experience.
     """
+
+    RENDER_FPS = 12
+
     def __init__(self, title="Enchan AI", border_style=DEFAULT_BORDER, thinking_style=None):
         # Share the exact same console instance defined in panels.py to avoid terminal buffer drift.
         self.console = console
         self.title = title
         self.border_style = border_style
-        
+
         # Inject the elegant gold theme directly into the shared console dynamically
         self.console.push_theme(ENCHAN_MARKDOWN_THEME)
-        
+
         # Use existing theme colors for consistency
         self.thinking_style = thinking_style or f"italic {MUTED_BORDER}"
-        
+
         # Internal state
         self.thinking_text = ""
         self.content_text = ""
         self.live = None
         self.status = "thinking"  # "thinking" or "responding" or "finished"
+        self._render_interval = 1.0 / self.RENDER_FPS
+        self._last_render_time = 0.0
+        self._dirty = False
 
     def _sanitize_markdown(self, text: str) -> str:
         """
@@ -79,20 +87,20 @@ class RichStreamRenderer:
                 header_text.append("🧠 Thinking... (esc to cancel)\n", style=f"bold {self.border_style}")
             else:
                 header_text.append("🧠 Thought Process (Completed):\n", style="bold dim")
-            
+
             # Show thought process using the identical MUTED_BORDER gray
             header_text.append(self.thinking_text, style=self.thinking_style)
-            
+
             # Add a separator if the main content is also starting
             if self.content_text:
                 header_text.append("\n\n---\n\n")
-            
+
             content_parts.append(header_text)
 
         # 2. Render main content (Markdown response body)
         if self.content_text:
             sanitized = self._sanitize_markdown(self.content_text)
-            
+
             # We explicitly enforce the centralized default code theme to eliminate the default light/white background.
             # The theme replaces raw, neon colors with beautifully muted, dusty earth tones that perfectly blend
             # into the Enchan aesthetic, while keeping a soft, dark-gold background plate.
@@ -107,6 +115,22 @@ class RichStreamRenderer:
         from rich.console import Group
         return Group(*content_parts) if content_parts else Text()
 
+    def _refresh_if_due(self, force: bool = False):
+        """Rebuild Markdown at most RENDER_FPS times per second."""
+        if not self.live or not self._dirty:
+            return
+
+        now = time.perf_counter()
+        if not force and now - self._last_render_time < self._render_interval:
+            return
+
+        # Building Markdown is the expensive operation. Throttle the build itself,
+        # not only Rich's terminal refresh, so fast token streams do not compete
+        # with llama.cpp for CPU and memory bandwidth.
+        self.live.update(self._build_renderable(), refresh=force)
+        self._last_render_time = now
+        self._dirty = False
+
     def start(self):
         """
         Starts the real-time streaming display.
@@ -114,28 +138,29 @@ class RichStreamRenderer:
         self.live = Live(
             self._build_renderable(),
             console=self.console,
-            refresh_per_second=12,
+            refresh_per_second=self.RENDER_FPS,
             transient=False
         )
         self.live.start()
+        self._last_render_time = time.perf_counter()
 
     def update_thinking(self, token: str):
         """
-        Appends a thinking token and updates the screen.
+        Appends a thinking token and updates the screen at a human-readable frame rate.
         """
         self.status = "thinking"
         self.thinking_text += token
-        if self.live:
-            self.live.update(self._build_renderable())
+        self._dirty = True
+        self._refresh_if_due()
 
     def update_content(self, token: str):
         """
-        Appends a content token and updates the screen.
+        Appends a content token and updates the screen at a human-readable frame rate.
         """
         self.status = "responding"
         self.content_text += token
-        if self.live:
-            self.live.update(self._build_renderable())
+        self._dirty = True
+        self._refresh_if_due()
 
     def finish(self):
         """
@@ -143,13 +168,18 @@ class RichStreamRenderer:
         """
         self.status = "finished"
         if self.live:
-            self.live.update(self._build_renderable())
+            # Always flush the final buffered tokens, even when the last update arrived
+            # inside the throttle interval.
+            self._dirty = True
+            self._refresh_if_due(force=True)
             self.live.stop()
             self.live = None
-            
+
             # Safely pop the theme after finishing to clean up console state
             try:
                 self.console.pop_theme()
             except Exception:
                 pass
+
+
 export_stream_renderer = RichStreamRenderer
