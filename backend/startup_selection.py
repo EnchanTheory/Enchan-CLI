@@ -38,6 +38,19 @@ def select_startup_backend(default_backend: str) -> str:
     return default_backend
 
 
+def select_startup_interface(default_interface: str = "cui") -> str:
+    """Let interactive users continue in the terminal or open the local Web UI."""
+    choices = [
+        ("cui", "Continue in this terminal", True),
+        ("web", "Open the local Web UI", True),
+    ]
+    default_idx = 1 if default_interface == "web" else 0
+    selected_idx = interactive_menu("Interface Selection", choices, default_idx=default_idx)
+    if selected_idx >= 0:
+        return choices[selected_idx][0]
+    return "cui"
+
+
 def select_startup_model(host: str, title: str = "Select Model", filter_gguf: bool = False) -> Optional[str]:
     """Let the user pick an installed model or download the default one.      
 

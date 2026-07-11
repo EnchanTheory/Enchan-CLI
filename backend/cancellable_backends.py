@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Callable, Optional
 
 from backend.agent_tools_schema import get_agent_tools_schema
 from backend.generation_cancel import GenerationInputGuard, esc_pressed
@@ -35,6 +36,7 @@ def generate_enchan_llama_response(
     host: str = enchan_base.DEFAULT_ENCHAN_LLAMA_HOST,
     stream_output: bool = True,
     show_metrics: bool = True,
+    chunk_callback: Optional[Callable[[str], None]] = None,
 ) -> dict | None:
     """Stream from the Enchan llama.cpp server with Esc cancellation on all OSes."""
 
@@ -216,6 +218,8 @@ def generate_enchan_llama_response(
                             content_parts.append(content)
                             if stream_output and renderer is not None:
                                 renderer.update_content(content)
+                            if chunk_callback is not None:
+                                chunk_callback(content)
                     except Exception:
                         pass
 

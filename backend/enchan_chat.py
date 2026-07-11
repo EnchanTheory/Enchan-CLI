@@ -36,11 +36,10 @@ from backend.ollama_registry import (
 )
 from backend.startup_selection import (
     select_startup_backend,
+    select_startup_interface,
     select_startup_model,
 )
 from backend.cli_args import parse_args
-
-MODEL_ID = "google/gemma-4-e2b-it"
 
 from backend.context_compression import COSMIC_AVAILABLE
 from backend.ollama_backend import ensure_ollama_running
@@ -69,6 +68,9 @@ def main():
     args = parse_args()
 
     backend_explicit = any(arg == "--backend" or arg.startswith("--backend=") for arg in sys.argv[1:])
+    ollama_model_explicit = any(
+        arg == "--ollama-model" or arg.startswith("--ollama-model=") for arg in sys.argv[1:]
+    )
     single_turn_requested = bool(args.ask or args.ask_file)
     interactive_startup = (not single_turn_requested) and sys.stdin.isatty()
     if not backend_explicit and interactive_startup:
@@ -96,7 +98,7 @@ def main():
             pass
 
     plain_output = bool(args.plain and single_turn_requested)
-    backend_mode = "ollama" if single_turn_requested and args.backend == "hf" else args.backend
+    backend_mode = args.backend
 
     agent_mode = bool(args.agent)
 
@@ -111,8 +113,8 @@ def main():
     if backend_mode == "enchan":
         import atexit
         import signal
-        from backend.enchan_llama_backend import shutdown_enchan_llama
-        atexit.register(shutdown_enchan_llama)
+        from backend.enchan_llama_backend import request_enchan_llama_shutdown
+        atexit.register(request_enchan_llama_shutdown)
 
         shutting_down = False
 
@@ -121,7 +123,7 @@ def main():
             if shutting_down:
                 return
             shutting_down = True
-            shutdown_enchan_llama()
+            request_enchan_llama_shutdown()
             sys.exit(0)
 
         for sig in (
@@ -175,26 +177,33 @@ def main():
                 print("[Error] Ollama API is not available.")
             return
 
-        if interactive_startup:
+        if interactive_startup and not ollama_model_explicit:
             installed = list_installed_ollama_models(args.ollama_host)
-            if args.ollama_model not in installed:
-                chosen = select_startup_model(args.ollama_host, "Select Ollama Model")
-                if not chosen:
-                    print("[System] Model selection cancelled.")
-                    return
-                if chosen not in installed and not standalone_ollama_pull(chosen):
-                    print("[Error] Failed to download the selected model.")
-                    return
-                args.ollama_model = chosen
-                local_cfg["ollama_model"] = chosen
-                save_local_config(local_cfg)
+            chosen = select_startup_model(args.ollama_host, "Select Ollama Model")
+            if not chosen:
+                print("[System] Model selection cancelled.")
+                return
+            if chosen not in installed and not standalone_ollama_pull(chosen):
+                print("[Error] Failed to download the selected model.")
+                return
+            args.ollama_model = chosen
+            local_cfg["ollama_model"] = chosen
+            save_local_config(local_cfg)
+
+    interface_mode = args.ui
+    if interface_mode is None and interactive_startup:
+        interface_mode = select_startup_interface(local_cfg.get("interface", "cui"))
+    interface_mode = interface_mode or "cui"
+    if local_cfg.get("interface") != interface_mode:
+        local_cfg["interface"] = interface_mode
+        save_local_config(local_cfg)
 
     if not plain_output:
         update_notice_path = CLI_DIR / ".enchan-update-available"
         if update_notice_path.exists():
             update_notice_path.unlink(missing_ok=True)
             print(f"  {ANSI_GOLD}[Info] Update available. Run: enchan update{ANSI_RESET}")
-        active_model_disp = MODEL_ID if backend_mode == 'hf' else (args.gguf_model if (backend_mode == 'enchan' and args.gguf_model) else args.ollama_model)
+        active_model_disp = args.gguf_model if (backend_mode == 'enchan' and args.gguf_model) else args.ollama_model
         print(f"  * Selected Model: {active_model_disp}")
         print("  * Type 'exit' to close.")
         print("  * Type '/help' to show CLI commands.")
@@ -210,7 +219,7 @@ def main():
         {
             "type": "session_start",
             "session_id": session_id,
-            "model": MODEL_ID if backend_mode == "hf" else args.ollama_model,
+            "model": args.gguf_model if backend_mode == "enchan" and getattr(args, "gguf_model", None) else args.ollama_model,
             "backend": backend_mode,
             "log_path": str(session_log_path),
             "agent_mode": agent_mode,
@@ -262,7 +271,7 @@ def main():
         single_turn_prompt = args.ask
 
     session = None
-    if single_turn_prompt is None:
+    if single_turn_prompt is None and interface_mode == "cui":
         session = create_interactive_session(tuple(sorted(KNOWN_SLASH_COMMANDS)))
 
     generation_config = {
@@ -277,7 +286,7 @@ def main():
         "yarn_factor": float(getattr(args, "yarn_factor", 1.0)),
         "view_think": bool(args.view_think),
         "do_sample": True,
-        "model_id": MODEL_ID if backend_mode == "hf" else (f"enchan:{args.gguf_model}" if backend_mode == "enchan" else f"ollama:{args.ollama_model}"),
+        "model_id": f"enchan:{args.gguf_model}" if backend_mode == "enchan" and getattr(args, "gguf_model", None) else (f"enchan:local" if backend_mode == "enchan" else f"ollama:{args.ollama_model}"),
         "ollama_model": args.ollama_model if backend_mode == "ollama" else None,
         "ollama_host": args.ollama_host if backend_mode == "ollama" else None,
         "backend": backend_mode,
@@ -320,6 +329,19 @@ def main():
         generation_config["temperature"] = 0.1
         generation_config["top_p"] = 1.0
         generation_config["do_sample"] = False
+
+    if interface_mode == "web" and single_turn_prompt is None:
+        from backend.webui_server import run_webui
+
+        run_webui(
+            backend_mode=backend_mode,
+            args=args,
+            session_log_path=session_log_path,
+            generation_config=generation_config,
+            tokenizer=tokenizer,
+            agent_mode=agent_mode,
+        )
+        return
 
     if single_turn_prompt is not None:
         from backend.one_shot import execute_single_turn

@@ -10,6 +10,73 @@ import signal
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 
 
+def assign_kill_on_close_job(p):
+    """Put the llama child in a wrapper-owned Job Object on Windows."""
+    if sys.platform != "win32":
+        return None
+    try:
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class IO_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("ReadOperationCount", ctypes.c_uint64),
+                ("WriteOperationCount", ctypes.c_uint64),
+                ("OtherOperationCount", ctypes.c_uint64),
+                ("ReadTransferCount", ctypes.c_uint64),
+                ("WriteTransferCount", ctypes.c_uint64),
+                ("OtherTransferCount", ctypes.c_uint64),
+            ]
+
+        class BASIC_LIMITS(ctypes.Structure):
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_int64),
+                ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD),
+                ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t),
+                ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t),
+                ("PriorityClass", wintypes.DWORD),
+                ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class EXTENDED_LIMITS(ctypes.Structure):
+            _fields_ = [
+                ("BasicLimitInformation", BASIC_LIMITS),
+                ("IoInfo", IO_COUNTERS),
+                ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        job = kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        limits = EXTENDED_LIMITS()
+        limits.BasicLimitInformation.LimitFlags = 0x2000
+        if not kernel32.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            kernel32.CloseHandle(job)
+            return None
+        if not kernel32.AssignProcessToJobObject(job, wintypes.HANDLE(int(p._handle))):
+            kernel32.CloseHandle(job)
+            return None
+        return job
+    except Exception:
+        return None
+
+
+def close_job(job):
+    if job and sys.platform == "win32":
+        try:
+            ctypes.windll.kernel32.CloseHandle(job)
+        except Exception:
+            pass
+
+
 def terminate_child(p):
     if p is None or p.poll() is not None:
         return
@@ -39,6 +106,10 @@ def terminate_child(p):
                 p.kill()
             except Exception:
                 pass
+        try:
+            p.wait(timeout=10)
+        except Exception:
+            pass
 
 
 def listen_for_shutdown(port, p):
@@ -77,6 +148,7 @@ def main():
     if sys.platform == "win32":
         popen_kwargs["creationflags"] = CREATE_NEW_PROCESS_GROUP
     p = subprocess.Popen(cmd, **popen_kwargs)
+    job = assign_kill_on_close_job(p)
 
     shutting_down = False
 
@@ -88,7 +160,12 @@ def main():
         terminate_child(p)
         sys.exit(0)
 
-    for sig in (signal.SIGTERM, signal.SIGINT, getattr(signal, "SIGHUP", None)):
+    for sig in (
+        signal.SIGTERM,
+        signal.SIGINT,
+        getattr(signal, "SIGHUP", None),
+        getattr(signal, "SIGBREAK", None),
+    ):
         if sig is not None:
             try:
                 signal.signal(sig, handle_signal)
@@ -104,6 +181,7 @@ def main():
         sys.exit(p.returncode)
     finally:
         terminate_child(p)
+        close_job(job)
 
 
 if __name__ == '__main__':

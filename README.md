@@ -68,6 +68,19 @@ Start the interactive CLI:
 enchan
 ```
 
+After selecting a backend and model, choose **CUI** to continue in the terminal
+or **Web UI** to use the local browser interface.
+
+The Web UI listens on `127.0.0.1:8765` by default. Use the settings button to
+register and edit a mascot name, description, personality, and spritesheet.
+Mascot sheets follow the Codex Pets v4 contact-sheet contract: `1536x1872`
+pixels, an `8x9` grid, and `192x208` pixels per frame. Mascot data remains
+local under `data/mascots/` and is not tracked by Git.
+
+The bundled TIKTA mascot, its manifest, and its reproducible generation prompt
+live under `backend/webui/mascots/tikta/`. No mascot assets are read from or
+written to `.codex` at runtime.
+
 Select a backend at startup:
 
 ```bash

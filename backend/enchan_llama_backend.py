@@ -13,6 +13,7 @@ import shutil
 import socket
 import re
 import threading
+import functools
 from pathlib import Path
 from typing import Optional
 
@@ -44,10 +45,20 @@ _current_context_size: int = 0
 _current_server_fingerprint: tuple[str, ...] = ()
 _ram_guard_stop: Optional[threading.Event] = None
 _wrapper_port: Optional[int] = None
+_lifecycle_lock = threading.RLock()
+_lifecycle_closed = False
 
 GIB = 1024 ** 3
 
 _ctrl_handler_ref = None
+
+
+def _serialized_lifecycle(func):
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        with _lifecycle_lock:
+            return func(*args, **kwargs)
+    return wrapped
 
 def _register_ctrl_handler():
     global _ctrl_handler_ref
@@ -62,7 +73,7 @@ def _register_ctrl_handler():
                 if _server_process is not None:
                     # This print won't be seen if terminal is closed, but helps debugging
                     print("\n[System] Terminal closure detected. Gracefully shutting down Enchan Llama...", flush=True)
-                    shutdown_enchan_llama()
+                    request_enchan_llama_shutdown()
                 return True
             return False
         _ctrl_handler_ref = handler
@@ -319,9 +330,10 @@ def _listening_pids_on_port(port: int) -> set[int]:
     return pids
 
 
+@_serialized_lifecycle
 def shutdown_enchan_llama() -> None:
     """Safely terminates the running custom llama-server background process."""
-    global _server_process, _current_loaded_model, _current_server_port, _current_context_size, _current_server_fingerprint, _ram_guard_stop
+    global _server_process, _current_loaded_model, _current_server_port, _current_context_size, _current_server_fingerprint, _ram_guard_stop, _wrapper_port
     shutdown_port = _current_server_port
     shutdown_ok = True
 
@@ -403,8 +415,18 @@ def shutdown_enchan_llama() -> None:
     _current_loaded_model = None
     _current_server_port = DEFAULT_ENCHAN_LLAMA_PORT
     _current_context_size = 0
+    _current_server_fingerprint = ()
+    _wrapper_port = None
     if not shutdown_ok:
         print("[Warning] Engine shutdown requested, but a llama-server process or port is still releasing.")
+
+
+@_serialized_lifecycle
+def request_enchan_llama_shutdown() -> None:
+    """Permanently close this process lifecycle, then stop any Enchan worker."""
+    global _lifecycle_closed
+    _lifecycle_closed = True
+    shutdown_enchan_llama()
 
 
 def get_enchan_llama_context_size() -> int:
@@ -663,6 +685,7 @@ def _spawn_server_process(cmd: list[str], env: dict[str, str], creationflags: in
         )
 
 
+@_serialized_lifecycle
 def start_enchan_llama_server(
     model_path: str,
     port: int = DEFAULT_ENCHAN_LLAMA_PORT,
@@ -694,6 +717,8 @@ def start_enchan_llama_server(
     statically linking with our secure enchan_screening library.
     """
     global _server_process, _current_loaded_model, _current_server_port, _current_context_size, _current_server_fingerprint, _ram_guard_stop
+    if _lifecycle_closed:
+        return False
     host = f"http://localhost:{port}"
     llama_extra_args = normalize_llama_extra_args(llama_extra_args)
     managed_extra = find_managed_llama_flags(llama_extra_args)
@@ -1036,6 +1061,7 @@ def generate_enchan_llama_response(
     host: str = DEFAULT_ENCHAN_LLAMA_HOST,
     stream_output: bool = True,
     show_metrics: bool = True,
+    chunk_callback: Optional[Callable[[str], None]] = None,
 ) -> dict | None:
     """Streams the response from our secure C++ engine using OpenAI-compatible SSE."""
     from backend.ui_theme import get_spinner_status
@@ -1231,6 +1257,8 @@ def generate_enchan_llama_response(
                         content_parts.append(content)
                         if stream_output and renderer is not None:
                             renderer.update_content(content)
+                        if chunk_callback is not None:
+                            chunk_callback(content)
                 except Exception:
                     pass
 
@@ -1418,6 +1446,4 @@ def run_enchan_llama_agent_turn(
         tokenizer=tokenizer,
         print_before_action_newline=True,
     )
-
-
 

@@ -7,7 +7,7 @@ import urllib.request
 import shutil
 from pathlib import Path
 from backend.thinking import strip_thought_blocks
-from typing import Optional
+from typing import Optional, Callable
 
 from backend.ui_theme import print_agent_action, print_agent_observation, get_spinner_status
 
@@ -136,6 +136,7 @@ def generate_ollama_response(
     view_think: bool = False,
     stream_output: bool = True,
     show_metrics: bool = True,
+    chunk_callback: Optional[Callable[[str], None]] = None,
 ) -> dict | None:
     api_url = ollama_host.rstrip("/") + "/api/chat"
     messages = []
@@ -239,6 +240,8 @@ def generate_ollama_response(
                     content_parts.append(content)
                     if stream_output and renderer is not None:
                         renderer.update_content(content)
+                    if chunk_callback is not None:
+                        chunk_callback(content)
 
                 if "tool_calls" in message:
                     for i, tc in enumerate(message["tool_calls"]):

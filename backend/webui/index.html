@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Enchan</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header>
+    <div class="brand"><div><strong>Enchan</strong><small id="runtime">Local</small></div></div>
+    <nav>
+      <button class="header-command" id="newChat" title="New chat" aria-label="New chat" data-i18n-title="newChat"><img src="/icons/edit_square.svg" alt=""><span data-i18n="newChat">New chat</span></button>
+      <button class="icon-button" id="settings" title="Mascot settings" aria-label="Mascot settings" data-i18n-title="mascotSettings"><img src="/icons/settings.svg" alt=""></button>
+      <span class="online"><i></i>Local</span>
+    </nav>
+  </header>
+  <main>
+    <section id="messages" aria-live="polite">
+      <div class="welcome" id="welcome"><h1 data-i18n="welcomeTitle">What can I help with?</h1><p data-i18n="welcomeBody">Ask your local Enchan a question or give it a task.</p></div>
+    </section>
+  </main>
+  <div class="composer-wrap">
+    <div class="composer-row">
+      <div class="mascot-track" id="mascotStage" hidden>
+        <aside class="mascot-stage">
+          <canvas id="mascotSprite" class="mascot-sprite" width="192" height="208" role="img" aria-label="TIKTA"></canvas>
+        </aside>
+      </div>
+      <form id="composer" class="composer">
+        <textarea id="prompt" rows="1" placeholder="Message Enchan" aria-label="Message" data-i18n-placeholder="messagePlaceholder"></textarea>
+        <button id="send" class="send" type="submit" title="Send" aria-label="Send" data-i18n-title="send"><img src="/icons/arrow_upward.svg" alt=""></button>
+      </form>
+    </div>
+    <small data-i18n="toolNotice">Enchan may run local tools according to your settings.</small>
+  </div>
+  <dialog id="mascotDialog">
+    <form method="dialog" class="dialog-head"><div><h2 data-i18n="mascotTitle">Mascot</h2><p data-i18n="mascotSubtitle">Codex Pets compatible contact sheet</p></div><button class="icon-button" value="cancel" aria-label="Close" data-i18n-title="close"><img src="/icons/close.svg" alt=""></button></form>
+    <div class="settings-grid">
+      <section><div id="mascotList" class="mascot-list"></div><button id="addMascot" class="secondary" type="button" data-i18n="addMascot">＋ Add mascot</button></section>
+      <form id="mascotForm" class="mascot-form">
+        <label>ID<input id="mascotId" required pattern="[a-z0-9][a-z0-9_-]{0,47}"></label>
+        <label><span data-i18n="name">Name</span><input id="mascotEditName" required maxlength="80"></label>
+        <label><span data-i18n="description">Description</span><input id="mascotDescription" maxlength="240"></label>
+        <label><span data-i18n="personality">Personality</span><textarea id="mascotPersonality" rows="5" maxlength="12000" placeholder="Behavior, voice, and values" data-i18n-placeholder="personalityPlaceholder"></textarea></label>
+        <label><span data-i18n="contactSheet">Contact sheet</span><input id="mascotImage" type="file" accept="image/png,image/webp"><small data-i18n="sheetRequirement">Required: 1536×1872 px, 8 columns × 9 rows, 192×208 px per frame</small></label>
+        <div id="sheetPreview" class="mascot-preview">
+          <div class="mascot-preview-head">
+            <span data-i18n="animationPreview">Animation Preview</span>
+            <select id="previewAnimSelect" hidden>
+              <option value="idle" data-i18n="idle">Idle</option>
+              <option value="running-right" data-i18n="runningRight">Move right</option>
+              <option value="running-left" data-i18n="runningLeft">Move left</option>
+              <option value="waving" data-i18n="waving">Wave</option>
+              <option value="jumping" data-i18n="jumping">Jump</option>
+              <option value="failed" data-i18n="failed">Failed</option>
+              <option value="waiting" data-i18n="waiting">Thinking</option>
+              <option value="running" data-i18n="running">Working</option>
+              <option value="review" data-i18n="review">Review</option>
+            </select>
+          </div>
+          <div class="mascot-preview-viewport">
+            <canvas id="livePreviewCanvas" width="192" height="208" hidden></canvas>
+            <span id="sheetPreviewText" data-i18n="previewEmpty">Register an image to preview it.</span>
+          </div>
+        </div>
+        <div id="sheetError" class="sheet-error" role="alert"></div>
+        <button class="primary" type="submit" data-i18n="saveAndSelect">Save and select</button>
+      </form>
+    </div>
+  </dialog>
+  <script src="/app.js"></script>
+</body>
+</html>
