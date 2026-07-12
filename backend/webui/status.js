@@ -4,7 +4,7 @@
   if(!status||!label)return;
 
   const connectedLabel="Local";
-  const disconnectedLabel="Disconnected";
+  const disconnectedLabel="Offline";
   const checkingLabel="Checking";
   let timer=null;
   let lastConnected=false;
@@ -18,7 +18,7 @@
       lastConnected=true;
     }else if(name==="disconnected"){
       label.textContent=disconnectedLabel;
-      status.title="Local backend disconnected";
+      status.title="Local backend offline";
       lastConnected=false;
     }else{
       label.textContent=checkingLabel;
