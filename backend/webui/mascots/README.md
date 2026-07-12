@@ -1,22 +1,25 @@
 # Enchan Mascot Creation Guide
 
-Enchan WebUI allows you to display, drag, and interact with desktop mascots (compatible with Codex Pets). These mascots change their active animations based on the AI's current state (e.g., thinking, working, greeting).
+Enchan WebUI allows you to display, drag, and interact with desktop mascots. It supports sprite sheets compatible with the format currently used by Codex Pets, so creators can reuse assets they have made for that format. Mascots change their active animations based on the AI's current state (for example, thinking, working, or greeting).
 
-This directory is the storage path for default, built-in system mascots (such as the bundled `tikta`). Below is a comprehensive guide on how to design, configure, and register your own custom mascots for the Enchan WebUI.
+> **Independent implementation:** Enchan CLI is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI. “Codex” and “Codex Pets” are used only to describe file-format compatibility. OpenAI assets are not included with Enchan CLI.
+
+This directory is the storage path for default, built-in Enchan mascots (such as the bundled `tikta`). Below is a comprehensive guide on how to design, configure, and register your own custom mascots for the Enchan WebUI.
 
 ---
 
-## 1. Spritesheet (Contact Sheet) Specifications
+## 1. Compatible Spritesheet (Contact Sheet) Specifications
 
-Mascot images must follow the **Codex Pets v4 contact-sheet contract** as a single transparent PNG or WebP image.
+Mascot images use a contact-sheet layout compatible with the sprite-sheet format currently used by Codex Pets. Enchan validates and renders this format through its own WebUI implementation.
 
 - **Overall Image Dimensions**: `1536 x 1872` pixels
 - **Grid Layout**: `8 columns × 9 rows` (72 frames total)
 - **Single Frame Size**: `192 x 208` pixels per frame
 - **Transparent Border Rule**: To prevent rendering clips, sprite overflows, and registration errors, **keep at least 6 transparent pixels (completely transparent border padding) inside the outer edges of every 192x208 cell**.
-  - Spritesheets failing to meet this margin requirement will be rejected by the WebUI registration validator (`validatePetSheet`).
+  - Spritesheets failing to meet this margin requirement will be rejected by the Enchan WebUI registration validator (`validatePetSheet`).
 
-### 🎨 Animation Rows & System Triggers
+### 🎨 Animation Rows & Enchan Triggers
+
 Each of the 9 rows (Row 0 to 8) represents a specific animation state. Frame indexes run sequentially from left to right within each row.
 
 | Row Index (0-8) | Animation Name | Trigger Timing / Purpose |
