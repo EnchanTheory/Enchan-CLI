@@ -58,6 +58,7 @@ html[data-theme="monochrome"]{
   --danger:rgb(210,190,190);
 }
 
+.appearance-trigger span{font-family:Georgia,"Times New Roman",serif;font-size:13px;font-weight:700;line-height:1;color:var(--text);opacity:.86}
 .appearance-dialog{width:min(680px,calc(100% - 24px))}
 .appearance-body{padding:18px 20px 22px}
 .appearance-intro{margin:0 0 14px;color:var(--muted);font-size:12px;line-height:1.55}
@@ -65,7 +66,7 @@ html[data-theme="monochrome"]{
 .theme-card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;width:100%;padding:12px;border:1px solid var(--line);border-radius:7px;background:var(--panel-raised);color:var(--text);text-align:left;cursor:pointer;transition:border-color .16s ease,background-color .16s ease,transform .16s ease}
 .theme-card:hover{border-color:var(--line-strong);background:var(--panel-soft)}
 .theme-card:active{transform:scale(.985)}
-.theme-card.active{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}
+.theme-card.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(165,145,100,.12)}
 .theme-swatches{display:flex;gap:3px;padding:3px;border:1px solid var(--line);border-radius:999px;background:rgba(0,0,0,.14)}
 .theme-swatches i{display:block;width:16px;height:16px;border-radius:50%}
 .theme-copy{min-width:0}.theme-copy strong,.theme-copy small{display:block}.theme-copy strong{font-size:13px}.theme-copy small{margin-top:3px;color:var(--muted);font-size:11px;line-height:1.4}
