@@ -39,11 +39,25 @@
     <small data-i18n="toolNotice">Enchan may run local tools according to your settings.</small>
   </div>
   <dialog id="appearanceDialog" class="appearance-dialog">
-    <form method="dialog" class="dialog-head"><div><h2>Appearance</h2><p>Choose a local Web UI theme</p></div><button class="icon-button" value="cancel" aria-label="Close" data-i18n-title="close"><img src="/icons/close.svg" alt=""></button></form>
+    <form method="dialog" class="dialog-head"><div><h2>Appearance</h2><p>Theme and local background</p></div><button class="icon-button" value="cancel" aria-label="Close" data-i18n-title="close"><img src="/icons/close.svg" alt=""></button></form>
     <div class="appearance-body">
-      <p class="appearance-intro">Themes change the interface colors only. Background sources remain separate so local images, folder rotation, and optional online wallpapers can be added without changing the theme system.</p>
-      <div id="themeGrid" class="theme-grid" role="group" aria-label="Web UI themes"></div>
-      <p class="appearance-note">The selected theme is stored locally in this browser and works fully offline.</p>
+      <section class="appearance-section">
+        <h3>Theme</h3>
+        <p class="appearance-intro">Choose the interface colors independently from the background image.</p>
+        <div id="themeGrid" class="theme-grid" role="group" aria-label="Web UI themes"></div>
+      </section>
+      <section class="appearance-section background-settings">
+        <div class="appearance-section-head"><div><h3>Background image</h3><p>Stored only in this browser and available offline.</p></div><button id="removeBackground" class="secondary compact" type="button" disabled>Remove</button></div>
+        <label class="background-picker"><span>Choose local image</span><input id="backgroundImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <div id="backgroundPreview" class="background-preview" aria-live="polite"><span id="backgroundPreviewText">No background image selected.</span></div>
+        <div class="background-controls">
+          <label><span>Darkness <output id="backgroundDarknessValue">55%</output></span><input id="backgroundDarkness" type="range" min="30" max="85" step="5" value="55" disabled></label>
+          <label><span>Blur <output id="backgroundBlurValue">2px</output></span><input id="backgroundBlur" type="range" min="0" max="12" step="1" value="2" disabled></label>
+          <label><span>Position</span><select id="backgroundPosition" disabled><option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option></select></label>
+        </div>
+        <p id="backgroundError" class="background-error" role="alert"></p>
+      </section>
+      <p class="appearance-note">Theme and background settings stay local to this browser. No network access is used.</p>
     </div>
   </dialog>
   <dialog id="mascotDialog">
