@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Enchan</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/status.css">
 </head>
 <body>
   <header>
@@ -12,7 +13,7 @@
     <nav>
       <button class="header-command" id="newChat" title="New chat" aria-label="New chat" data-i18n-title="newChat"><img src="/icons/edit_square.svg" alt=""><span data-i18n="newChat">New chat</span></button>
       <button class="icon-button" id="settings" title="Mascot settings" aria-label="Mascot settings" data-i18n-title="mascotSettings"><img src="/icons/settings.svg" alt=""></button>
-      <span class="online"><i></i>Local</span>
+      <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite" title="Checking local backend connection"><i aria-hidden="true"></i><span id="backendStatusText">Checking</span></span>
     </nav>
   </header>
   <main>
@@ -71,5 +72,6 @@
   </dialog>
   <script src="/app.js"></script>
   <script src="/favicon.js"></script>
+  <script src="/status.js"></script>
 </body>
 </html>
