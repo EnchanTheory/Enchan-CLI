@@ -80,28 +80,14 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "web_search",
-            "description": "Finds candidate web pages only. Keep this because web research is a unique capability, not a duplicate of local code tools. Prefer web_browse when readable page text is needed.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The search query"}
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "web_browse",
-            "description": "Browses the web by opening a URL or by finding and opening pages for a query. Keep this because web reading is a unique capability, not a duplicate of local code tools.",
+            "description": "Primary web research tool. For a query, it discovers relevant pages, opens the actual sites, filters weak or duplicate results, and returns readable page content. Use it for current facts, documentation, products, news, comparisons, and any question requiring web evidence. Search-result titles and snippets are discovery hints only; base the answer on opened page contents.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "url": {"type": "string", "description": "HTTP(S) URL to open directly (optional if query is provided)"},
-                    "query": {"type": "string", "description": "Query to find and open relevant pages (optional if url is provided)"},
-                    "max_pages": {"type": "integer", "description": "Maximum pages to open for a query (optional, default 3)"},
+                    "query": {"type": "string", "description": "Research query. The tool will search and open relevant sites automatically (optional if url is provided)"},
+                    "max_pages": {"type": "integer", "description": "Maximum readable pages to return for a query (optional, default 3)"},
                     "max_chars_per_page": {"type": "integer", "description": "Maximum readable text characters per opened page (optional, default 12000)"}
                 },
                 "required": []
