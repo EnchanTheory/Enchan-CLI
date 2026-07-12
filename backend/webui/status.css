@@ -1,0 +1,54 @@
+.backend-status{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  margin-left:4px;
+  color:var(--muted);
+  font-size:12px;
+  transition:color .2s ease,opacity .2s ease;
+}
+.backend-status i{
+  position:relative;
+  width:8px;
+  height:8px;
+  flex:0 0 8px;
+  border-radius:50%;
+  background:rgb(77,82,80);
+  box-shadow:0 0 0 1px rgba(255,255,255,.05);
+  transition:background-color .2s ease,box-shadow .2s ease,opacity .2s ease;
+}
+.backend-status.is-connected{
+  color:rgb(151,176,162);
+}
+.backend-status.is-connected i{
+  background:rgb(105,171,134);
+  box-shadow:0 0 0 3px rgba(105,171,134,.10),0 0 10px rgba(105,171,134,.55);
+  animation:backend-status-glow 2.1s ease-in-out infinite;
+}
+.backend-status.is-disconnected{
+  color:rgb(118,121,120);
+}
+.backend-status.is-disconnected i{
+  background:rgb(70,73,72);
+  box-shadow:none;
+  opacity:.55;
+  animation:none;
+}
+.backend-status.is-checking{
+  color:rgb(132,134,133);
+}
+.backend-status.is-checking i{
+  background:rgb(118,113,96);
+  box-shadow:0 0 0 3px rgba(165,145,100,.07);
+  animation:backend-status-checking 1.2s ease-in-out infinite;
+}
+@keyframes backend-status-glow{
+  0%,100%{transform:scale(.92);box-shadow:0 0 0 3px rgba(105,171,134,.08),0 0 7px rgba(105,171,134,.38)}
+  50%{transform:scale(1.08);box-shadow:0 0 0 5px rgba(105,171,134,.12),0 0 14px rgba(105,171,134,.72)}
+}
+@keyframes backend-status-checking{
+  0%,100%{opacity:.45}
+  50%{opacity:1}
+}
+@media(max-width:700px){.backend-status{display:none}}
+@media(prefers-reduced-motion:reduce){.backend-status i{animation:none!important}}
