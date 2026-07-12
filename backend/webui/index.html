@@ -4,7 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Enchan</title>
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("enchan.webui.theme")||"enchan-dark"}catch(_){document.documentElement.dataset.theme="enchan-dark"}</script>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/themes.css">
   <link rel="stylesheet" href="/status.css">
 </head>
 <body>
@@ -12,6 +14,7 @@
     <div class="brand"><div><strong>Enchan</strong><small id="runtime">Local</small></div></div>
     <nav>
       <button class="header-command" id="newChat" title="New chat" aria-label="New chat" data-i18n-title="newChat"><img src="/icons/edit_square.svg" alt=""><span data-i18n="newChat">New chat</span></button>
+      <button class="icon-button appearance-trigger" id="appearanceSettings" title="Appearance" aria-label="Appearance"><span aria-hidden="true">Aa</span></button>
       <button class="icon-button" id="settings" title="Mascot settings" aria-label="Mascot settings" data-i18n-title="mascotSettings"><img src="/icons/settings.svg" alt=""></button>
       <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite" title="Checking local backend connection"><i aria-hidden="true"></i><span id="backendStatusText">Checking</span></span>
     </nav>
@@ -35,6 +38,14 @@
     </div>
     <small data-i18n="toolNotice">Enchan may run local tools according to your settings.</small>
   </div>
+  <dialog id="appearanceDialog" class="appearance-dialog">
+    <form method="dialog" class="dialog-head"><div><h2>Appearance</h2><p>Choose a local Web UI theme</p></div><button class="icon-button" value="cancel" aria-label="Close" data-i18n-title="close"><img src="/icons/close.svg" alt=""></button></form>
+    <div class="appearance-body">
+      <p class="appearance-intro">Themes change the interface colors only. Background sources remain separate so local images, folder rotation, and optional online wallpapers can be added without changing the theme system.</p>
+      <div id="themeGrid" class="theme-grid" role="group" aria-label="Web UI themes"></div>
+      <p class="appearance-note">The selected theme is stored locally in this browser and works fully offline.</p>
+    </div>
+  </dialog>
   <dialog id="mascotDialog">
     <form method="dialog" class="dialog-head"><div><h2 data-i18n="mascotTitle">Mascot</h2><p>Compatible mascot contact sheet</p></div><button class="icon-button" value="cancel" aria-label="Close" data-i18n-title="close"><img src="/icons/close.svg" alt=""></button></form>
     <div class="settings-grid">
@@ -71,6 +82,7 @@
     </div>
   </dialog>
   <script src="/app.js"></script>
+  <script src="/appearance.js"></script>
   <script src="/favicon.js"></script>
   <script src="/status.js"></script>
 </body>
