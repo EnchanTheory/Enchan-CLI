@@ -58,6 +58,21 @@ html[data-theme="monochrome"]{
   --danger:rgb(210,190,190);
 }
 
+html[data-theme="rose"]{
+  --bg:rgb(36,28,34);
+  --panel:rgb(47,36,44);
+  --panel-raised:rgb(56,43,53);
+  --panel-soft:rgb(65,50,61);
+  --line:rgba(190,143,166,.24);
+  --line-strong:rgb(189,130,159);
+  --text:rgb(224,207,216);
+  --muted:rgb(164,139,152);
+  --accent:rgb(189,130,159);
+  --accent-hover:rgb(213,156,184);
+  --status:rgb(111,166,134);
+  --danger:rgb(222,185,197);
+}
+
 .appearance-trigger span{font-family:Georgia,"Times New Roman",serif;font-size:13px;font-weight:700;line-height:1;color:var(--text);opacity:.86}
 .appearance-dialog{width:min(680px,calc(100% - 24px))}
 .appearance-body{padding:18px 20px 22px}
