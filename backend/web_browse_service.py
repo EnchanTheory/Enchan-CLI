@@ -8,10 +8,20 @@ from html.parser import HTMLParser
 
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_MAX_CHARS = 12000
+MIN_READABLE_CHARS = 500
+MAX_RESULTS_PER_DOMAIN = 2
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/126.0 Safari/537.36 EnchanCLI/1.0"
+)
+
+SEARCH_HOST_MARKERS = (
+    "bing.com",
+    "duckduckgo.com",
+    "google.com",
+    "search.yahoo.com",
+    "search.yahoo.co.jp",
 )
 
 
@@ -82,6 +92,22 @@ def _decode_response(raw: bytes, content_type: str) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
+def _normalized_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    cleaned = parsed._replace(fragment="")
+    return urllib.parse.urlunparse(cleaned)
+
+
+def _is_search_result_page(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.netloc.lower().split(":", 1)[0]
+    if not any(host == marker or host.endswith("." + marker) for marker in SEARCH_HOST_MARKERS):
+        return False
+    path = parsed.path.lower()
+    query = parsed.query.lower()
+    return path in {"", "/", "/search", "/html", "/lite"} or "q=" in query or "query=" in query
+
+
 def fetch_url(url: str, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, max_chars: int = DEFAULT_MAX_CHARS) -> dict:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -131,22 +157,41 @@ def fetch_url(url: str, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, max_c
 def browse_query(query: str, *, max_pages: int = 3, max_chars_per_page: int = DEFAULT_MAX_CHARS) -> list[dict]:
     from backend.web_search_service import perform_web_search
 
-    search_results = perform_web_search(query, max_results=max(3, max_pages * 2))
+    candidate_limit = max(8, max_pages * 4)
+    search_results = perform_web_search(query, max_results=candidate_limit)
     pages: list[dict] = []
-    ok_count = 0
+    seen_urls: set[str] = set()
+    domain_counts: dict[str, int] = {}
+
     for result in search_results:
         url = result.get("url") if isinstance(result, dict) else None
-        if not url:
+        if not isinstance(url, str) or not url.strip():
             continue
+        url = _normalized_url(url.strip())
+        if url in seen_urls or _is_search_result_page(url):
+            continue
+        seen_urls.add(url)
+
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme not in {"http", "https"}:
             continue
+        host = parsed.netloc.lower().split(":", 1)[0]
+        if domain_counts.get(host, 0) >= MAX_RESULTS_PER_DOMAIN:
+            continue
+
         page = fetch_url(url, max_chars=max_chars_per_page)
+        if not page.get("ok"):
+            continue
+        text = str(page.get("text") or "").strip()
+        if len(text) < MIN_READABLE_CHARS:
+            continue
+
         page["search_title"] = result.get("title")
         page["search_snippet"] = result.get("snippet")
+        page["source_domain"] = host
         pages.append(page)
-        if page.get("ok"):
-            ok_count += 1
-        if ok_count >= max_pages:
+        domain_counts[host] = domain_counts.get(host, 0) + 1
+        if len(pages) >= max_pages:
             break
+
     return pages
