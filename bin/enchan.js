@@ -161,6 +161,10 @@ if (args[0] === 'update' || args[0] === 'self-update') {
     process.exit(0);
 }
 
+// Discard any notice left by a previous online session before starting the
+// best-effort background check. Offline startup must stay silent.
+clearUpdateNotice();
+
 // Keep normal startup responsive. The update check may perform network I/O, so it must
 // never block the Python chat backend from starting.
 notifyUpdateAvailableAsync();
