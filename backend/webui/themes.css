@@ -79,12 +79,12 @@ html[data-theme="rose"]{
   --background-blur:2px;
   --background-position:center;
 }
-html.has-custom-background body{background:var(--bg)}
+html.has-custom-background body{position:relative;background:var(--bg);isolation:isolate}
 html.has-custom-background body::before{
   content:"";
   position:fixed;
   inset:calc(var(--background-blur) * -2);
-  z-index:-2;
+  z-index:0;
   pointer-events:none;
   background-image:linear-gradient(rgba(12,14,15,var(--background-darkness)),rgba(12,14,15,var(--background-darkness))),var(--background-image);
   background-size:cover;
@@ -97,10 +97,11 @@ html.has-custom-background body::after{
   content:"";
   position:fixed;
   inset:0;
-  z-index:-1;
+  z-index:0;
   pointer-events:none;
   background:linear-gradient(to bottom,rgba(15,17,18,.18),transparent 24%,transparent 72%,rgba(15,17,18,.28));
 }
+html.has-custom-background main{position:relative;z-index:1}
 html.has-custom-background header{background:color-mix(in srgb,var(--panel) 90%,transparent);backdrop-filter:blur(14px)}
 html.has-custom-background .composer-wrap{background:linear-gradient(to top,color-mix(in srgb,var(--bg) 96%,transparent),color-mix(in srgb,var(--bg) 76%,transparent),transparent)}
 html.has-custom-background .composer{background:color-mix(in srgb,var(--panel-raised) 92%,transparent);backdrop-filter:blur(14px)}
