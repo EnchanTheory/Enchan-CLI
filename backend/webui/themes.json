@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "default": "enchan-dark",
+  "themes": [
+    {
+      "id": "enchan-dark",
+      "name": "Enchan Dark",
+      "description": "Original charcoal and antique gold theme.",
+      "swatches": ["#1d2021", "#2a2b2b", "#a59164"]
+    },
+    {
+      "id": "forest",
+      "name": "Forest",
+      "description": "Deep green panels with a soft moss accent.",
+      "swatches": ["#18201c", "#243029", "#7e9d76"]
+    },
+    {
+      "id": "midnight",
+      "name": "Midnight",
+      "description": "Blue-black surfaces with a muted moonlight accent.",
+      "swatches": ["#171b24", "#252b38", "#8294b8"]
+    },
+    {
+      "id": "sepia",
+      "name": "Sepia",
+      "description": "Warm brown tones inspired by old books and paper.",
+      "swatches": ["#241f1a", "#332b24", "#b18d62"]
+    },
+    {
+      "id": "monochrome",
+      "name": "Monochrome",
+      "description": "Neutral grayscale with restrained contrast.",
+      "swatches": ["#1c1c1c", "#2b2b2b", "#a6a6a6"]
+    }
+  ]
+}
