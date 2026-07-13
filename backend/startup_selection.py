@@ -1,5 +1,6 @@
 import sys
 import shutil
+from pathlib import Path
 from typing import Optional
 
 try:
@@ -7,12 +8,22 @@ try:
 except ImportError:
     msvcrt = None
 
-from backend.ui_theme import interactive_menu
+from backend.ui_theme import ANSI_GOLD, ANSI_RESET, interactive_menu
 from backend.ollama_registry import (
     list_installed_ollama_models,
     ENCHAN_DEFAULT_DOWNLOAD_MODEL,
     ENCHAN_DEFAULT_DOWNLOAD_SIZE,
 )
+
+
+def _show_update_notice_before_model_selection() -> None:
+    """Consume and show the cached update notice before the model menu opens."""
+    update_notice_path = Path(__file__).resolve().parent.parent / ".enchan-update-available"
+    if not update_notice_path.exists():
+        return
+    update_notice_path.unlink(missing_ok=True)
+    print(f"\n  {ANSI_GOLD}[Info] Update available. Run: enchan update{ANSI_RESET}")
+
 
 def select_startup_backend(default_backend: str) -> str:
     """Interactively prompts the user to select the active execution backend (Enchan or Ollama)."""
@@ -52,11 +63,13 @@ def select_startup_interface(default_interface: str = "cui") -> str:
 
 
 def select_startup_model(host: str, title: str = "Select Model", filter_gguf: bool = False) -> Optional[str]:
-    """Let the user pick an installed model or download the default one.      
+    """Let the user pick an installed model or download the default one.
 
     Returns the chosen model tag (which may still need downloading), or None if cancelled.
     When no models are installed, the only option is to download the default model.
     """
+    _show_update_notice_before_model_selection()
+
     installed = list_installed_ollama_models(host)
     if filter_gguf:
         try:
