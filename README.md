@@ -10,7 +10,7 @@ This repository contains the CLI source and installer scripts. Native runtime bi
 
 <p align="center">
   <a href="https://github.com/EnchanTheory/Enchan-CLI/blob/main/backend/webui/mascots/tikta/spritesheet.png">
-    <img src="docs/images/tikta-idle-small.gif" alt="Animated TIKTA mascot" width="128">
+    <img src="docs/images/tikta-running-right.gif" alt="TIKTA running mascot" width="192">
   </a>
 </p>
 
