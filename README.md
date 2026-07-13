@@ -17,8 +17,6 @@ Required commands:
 - **Python**: `python` on Windows or `python3` on macOS/Linux
 - **macOS**: `curl`, `unzip`, and Xcode Command Line Tools for runtime library inspection
 
-> **Note**: If multiple Python versions are installed and you need to force a specific executable, set the `ENCHAN_PYTHON` environment variable (see [Environment Variables](#environment-variables)).
-
 ### Quick Install (Recommended)
 
 #### Windows PowerShell
@@ -221,26 +219,6 @@ git pull --ff-only
 cd ~/.enchan
 git pull --ff-only
 ./install.sh
-```
-
-### Environment Variables
-
-| Variable | Description |
-| --- | --- |
-| `ENCHAN_PYTHON` | Force the Python executable used by the Node.js launcher. The launcher defaults to `python` on Windows and `python3` on macOS/Linux when this is unset. |
-
-**Windows PowerShell:**
-
-```powershell
-$env:ENCHAN_PYTHON = "C:\path\to\python.exe"
-enchan
-```
-
-**macOS / Linux:**
-
-```bash
-export ENCHAN_PYTHON=/opt/homebrew/bin/python3
-enchan
 ```
 
 ### Runtime Assets
