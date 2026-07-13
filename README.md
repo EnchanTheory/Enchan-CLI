@@ -5,14 +5,34 @@ Enchan CLI is a local terminal chat interface for Enchan-backed and Ollama-backe
 This repository contains the CLI source and installer scripts. Native runtime binaries are distributed from this repository's GitHub Release and installed into `backend/bin/<platform>/`.
 
 <p align="center">
-  <img src="docs/images/enchan-webui-preview.png" alt="Enchan Web UI with TIKTA" width="720">
+  <strong>English and Japanese UI · Custom mascots · Animated KAWAII interface</strong>
 </p>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/enchan-webui-preview.png" alt="Enchan local LLM Web UI" width="100%">
+      <br>
+      <sub>Local LLM Web UI</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/mascot-settings.jpg" alt="Custom mascot registration screen" width="100%">
+      <br>
+      <sub>Register custom mascots, personalities, and spritesheets</sub>
+    </td>
+  </tr>
+</table>
 
 <p align="center">
   <a href="https://github.com/EnchanTheory/Enchan-CLI/blob/main/backend/webui/mascots/tikta/spritesheet.png">
-    <img src="docs/images/tikta-running-right.gif" alt="TIKTA running mascot" width="192">
+    <img src="docs/images/tikta-idle.gif" alt="TIKTA idle animation" width="128">
+    <img src="docs/images/tikta-running-right.gif" alt="TIKTA running right" width="128">
+    <img src="docs/images/tikta-running-left.gif" alt="TIKTA running left" width="128">
+    <img src="docs/images/tikta-showcase.gif" alt="TIKTA animation showcase" width="128">
   </a>
 </p>
+
+The Web UI supports English and Japanese, animated custom mascots, configurable personalities, and local background images.
 
 ---
 
