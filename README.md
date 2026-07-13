@@ -88,7 +88,7 @@ The installer downloads the Enchan CLI runtime from this repository's release `l
 
 ## Usage
 
-### Basic Usage
+### Interactive Mode
 
 Start Enchan and select a backend, model, and interface:
 
@@ -96,29 +96,13 @@ Start Enchan and select a backend, model, and interface:
 enchan
 ```
 
-### CUI
+#### CUI
 
-Choose **CUI** to work entirely in the terminal. The CUI supports interactive chat, file and shell tools, session resume, model switching, runtime settings, and slash commands without opening a browser.
+Choose **CUI** to work entirely in the terminal. It provides interactive chat, file and shell tools, session resume, model switching, runtime settings, and slash commands without opening a browser.
 
-For a single non-interactive request, use one-shot mode:
+##### Slash Commands Reference
 
-```bash
-enchan --ask "Summarize this repository" --plain
-```
-
-### Web UI
-
-Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:8765` by default and supports both English and Japanese.
-
-The Web UI includes animated mascots, local background images, new-chat controls, and the same local model and agent capabilities as the CUI. From the settings screen, you can register or edit a mascot's name, description, personality, and spritesheet.
-
-Mascot sheets use a `1536x1872` contact sheet with an `8x9` grid and `192x208` pixels per frame. User-created mascot data is stored locally under `data/mascots/` and is not tracked by Git.
-
-TIKTA is included as the default mascot. Its spritesheet, manifest, personality, and reproducible generation prompt are stored under `backend/webui/mascots/tikta/`.
-
-### Slash Commands Reference
-
-Inside the interactive CLI, type `/` to see the following commands:
+Inside the CUI, type `/` to see the following commands:
 
 | Command | Description |
 | --- | --- |
@@ -133,9 +117,9 @@ Inside the interactive CLI, type `/` to see the following commands:
 | `/help` | Show help menu and available commands |
 | `/license` | Show repository license terms |
 
-#### `/set` — Managed Settings
+##### `/set` — Managed Settings
 
-Configure Enchan-managed runtime settings inside the interactive CLI:
+Configure Enchan-managed runtime settings inside the CUI:
 
 ```text
 /set screen_strength 0.4
@@ -147,7 +131,7 @@ Configure Enchan-managed runtime settings inside the interactive CLI:
 - `/set kv_cache_type <q4_0|q8_0|f16>` — controls llama.cpp KV cache quantization. The default is `q4_0` (smallest footprint). Use `q8_0` or `f16` for higher precision.
 - `/set reset` — reset all Enchan-managed generation/runtime parameters to defaults.
 
-#### `/llama_set` — Unmanaged Raw Flags
+##### `/llama_set` — Unmanaged Raw Flags
 
 For raw llama.cpp options that Enchan does not manage, use `/llama_set`. Those values are saved as `llama_extra_args` and appended to the llama-server command after Enchan's managed flags. Enchan rejects managed flags in `/llama_set` so model path, host/port, context size, KV cache type, projector binding, reasoning, and Enchan defaults stay controlled by their dedicated settings.
 
@@ -162,6 +146,24 @@ For raw llama.cpp options that Enchan does not manage, use `/llama_set`. Those v
 You can also pass unmanaged raw flags at startup by repeating `--llama-arg`, and llama.cpp `LLAMA_ARG_*` environment variables remain available for flags supported by llama-server.
 
 For Enchan runtime settings that affect the running llama-server process, Enchan restarts the engine on the next request so the new setting is applied cleanly.
+
+#### Web UI
+
+Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:8765` by default and supports both English and Japanese.
+
+The Web UI includes animated mascots, local background images, new-chat controls, and the same local model and agent capabilities as the interactive runtime. From the settings screen, you can register or edit a mascot's name, description, personality, and spritesheet.
+
+Mascot sheets use a `1536x1872` contact sheet with an `8x9` grid and `192x208` pixels per frame. User-created mascot data is stored locally under `data/mascots/` and is not tracked by Git.
+
+TIKTA is included as the default mascot. Its spritesheet, manifest, personality, and reproducible generation prompt are stored under `backend/webui/mascots/tikta/`.
+
+### One-shot Mode
+
+Run a single request without starting the interactive CUI or Web UI:
+
+```bash
+enchan --ask "Summarize this repository" --plain
+```
 
 ---
 
