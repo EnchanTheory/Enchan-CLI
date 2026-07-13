@@ -14,7 +14,7 @@ Required commands:
 
 - **Git**: `git`
 - **Node.js/npm**: `node`, `npm`
-- **Python**: `python` on Windows or `python3` on macOS/Linux
+- **Python**: `python` on Windows or `python3` on macOS
 - **macOS**: `curl`, `unzip`, and Xcode Command Line Tools for runtime library inspection
 
 ### Quick Install (Recommended)
