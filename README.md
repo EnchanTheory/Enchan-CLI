@@ -4,6 +4,12 @@ Enchan CLI is a local terminal chat interface for Enchan-backed and Ollama-backe
 
 This repository contains the CLI source and installer scripts. Native runtime binaries are distributed from this repository's GitHub Release and installed into `backend/bin/<platform>/`.
 
+<p align="center">
+  <a href="https://github.com/EnchanTheory/Enchan-CLI/blob/main/backend/webui/mascots/tikta/spritesheet.png">
+    <img src="docs/images/enchan-webui-preview.svg" alt="Enchan Web UI with the animated TIKTA mascot" width="960">
+  </a>
+</p>
+
 ---
 
 ## Installation
