@@ -90,36 +90,31 @@ The installer downloads the Enchan CLI runtime from this repository's release `l
 
 ### Basic Usage
 
-Start the interactive CLI:
+Start Enchan and select a backend, model, and interface:
 
 ```bash
 enchan
 ```
 
-After selecting a backend and model, choose **CUI** to continue in the terminal
-or **Web UI** to use the local browser interface.
+### CUI
 
-The Web UI listens on `127.0.0.1:8765` by default. Use the settings button to
-register and edit a mascot name, description, personality, and spritesheet.
-Mascot sheets follow the Codex Pets v4 contact-sheet contract: `1536x1872`
-pixels, an `8x9` grid, and `192x208` pixels per frame. Mascot data remains
-local under `data/mascots/` and is not tracked by Git.
+Choose **CUI** to work entirely in the terminal. The CUI supports interactive chat, file and shell tools, session resume, model switching, runtime settings, and slash commands without opening a browser.
 
-The bundled TIKTA mascot, its manifest, and its reproducible generation prompt
-live under `backend/webui/mascots/tikta/`. No mascot assets are read from or
-written to `.codex` at runtime.
-
-Select a backend at startup:
-
-```bash
-enchan
-```
-
-One-shot mode:
+For a single non-interactive request, use one-shot mode:
 
 ```bash
 enchan --ask "Summarize this repository" --plain
 ```
+
+### Web UI
+
+Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:8765` by default and supports both English and Japanese.
+
+The Web UI includes animated mascots, local background images, new-chat controls, and the same local model and agent capabilities as the CUI. From the settings screen, you can register or edit a mascot's name, description, personality, and spritesheet.
+
+Mascot sheets use a `1536x1872` contact sheet with an `8x9` grid and `192x208` pixels per frame. User-created mascot data is stored locally under `data/mascots/` and is not tracked by Git.
+
+TIKTA is included as the default mascot. Its spritesheet, manifest, personality, and reproducible generation prompt are stored under `backend/webui/mascots/tikta/`.
 
 ### Slash Commands Reference
 
