@@ -21,8 +21,6 @@
   "appearance.language.title": "言語",
   "appearance.language.description": "Web UIで使用する言語を選択します。",
   "appearance.language.label": "表示言語",
-  "appearance.language.english": "English",
-  "appearance.language.japanese": "日本語",
   "appearance.theme.title": "テーマ",
   "appearance.theme.description": "背景画像とは別に、インターフェースの配色を選択します。",
   "appearance.theme.groupLabel": "Web UIテーマ",

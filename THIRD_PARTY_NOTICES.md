@@ -33,6 +33,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+Web Awesome Free
+----------------
+Source: https://github.com/shoelace-style/webawesome
+Version: 3.2.1
+Usage: Locally bundled Select and Option Web Components for the Web UI
+License: Web Awesome Free License
+
+The complete license text is distributed with the Web UI at
+`backend/webui/vendor/webawesome/LICENSE.md`.
+
 Ollama compatibility/build components
 -------------------------------------
 Source: https://github.com/ollama/ollama

@@ -21,8 +21,6 @@
   "appearance.language.title": "Language",
   "appearance.language.description": "Choose the language used by the Web UI.",
   "appearance.language.label": "Interface language",
-  "appearance.language.english": "English",
-  "appearance.language.japanese": "Japanese",
   "appearance.theme.title": "Theme",
   "appearance.theme.description": "Choose the interface colors independently from the background image.",
   "appearance.theme.groupLabel": "Web UI themes",

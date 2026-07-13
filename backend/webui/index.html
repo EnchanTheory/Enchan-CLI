@@ -1,21 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="wa-dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Enchan</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem("enchan.webui.theme")||"enchan-dark"}catch(_){document.documentElement.dataset.theme="enchan-dark"}</script>
-  <link rel="stylesheet" href="/styles.css">
-  <link rel="stylesheet" href="/themes.css">
-  <link rel="stylesheet" href="/status.css">
+  <link rel="stylesheet" href="/vendor/webawesome/select.css">
+  <link rel="stylesheet" href="/assets/css/styles.css">
+  <link rel="stylesheet" href="/assets/css/themes.css">
+  <link rel="stylesheet" href="/assets/css/status.css">
 </head>
 <body>
   <header>
     <div class="brand"><div><strong>Enchan</strong><small id="runtime">Local</small></div></div>
     <nav>
-      <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
+      <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/assets/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
       <button class="icon-button appearance-trigger" id="appearanceSettings" data-i18n-title="header.appearance"><span aria-hidden="true">Aa</span></button>
-      <button class="icon-button" id="settings" data-i18n-title="header.mascotSettings"><img src="/icons/settings.svg" alt=""></button>
+      <button class="icon-button" id="settings" data-i18n-title="header.mascotSettings"><img src="/assets/icons/settings.svg" alt=""></button>
       <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="backendStatusText"></span></span>
     </nav>
   </header>
@@ -33,18 +34,20 @@
       </div>
       <form id="composer" class="composer">
         <textarea id="prompt" rows="1" data-i18n-placeholder="composer.placeholder" data-i18n-aria-label="composer.messageLabel"></textarea>
-        <button id="send" class="send" type="submit" data-i18n-title="composer.send"><img src="/icons/arrow_upward.svg" alt=""></button>
+        <button id="send" class="send" type="submit" data-i18n-title="composer.send"><img src="/assets/icons/arrow_upward.svg" alt=""></button>
       </form>
     </div>
     <small data-i18n="composer.toolNotice"></small>
   </div>
   <dialog id="appearanceDialog" class="appearance-dialog">
-    <form method="dialog" class="dialog-head"><div><h2 data-i18n="appearance.title"></h2><p data-i18n="appearance.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/icons/close.svg" alt=""></button></form>
+    <form method="dialog" class="dialog-head"><div><h2 data-i18n="appearance.title"></h2><p data-i18n="appearance.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/assets/icons/close.svg" alt=""></button></form>
     <div class="appearance-body">
       <section class="appearance-section">
         <h3 data-i18n="appearance.language.title"></h3>
         <p class="appearance-intro" data-i18n="appearance.language.description"></p>
-        <label><span data-i18n="appearance.language.label"></span><select id="languageSelect"><option value="en" data-i18n="appearance.language.english"></option><option value="ja" data-i18n="appearance.language.japanese"></option></select></label>
+        <wa-select id="languageSelect" class="enchan-select" size="small">
+          <span slot="label" data-i18n="appearance.language.label"></span>
+        </wa-select>
       </section>
       <section class="appearance-section">
         <h3 data-i18n="appearance.theme.title"></h3>
@@ -58,7 +61,14 @@
         <div class="background-controls">
           <label><span><span data-i18n="appearance.background.darkness"></span> <output id="backgroundDarknessValue">55%</output></span><input id="backgroundDarkness" type="range" min="30" max="85" step="5" value="55" disabled></label>
           <label><span><span data-i18n="appearance.background.blur"></span> <output id="backgroundBlurValue">2px</output></span><input id="backgroundBlur" type="range" min="0" max="12" step="1" value="2" disabled></label>
-          <label><span data-i18n="appearance.background.position"></span><select id="backgroundPosition" disabled><option value="center" data-i18n="appearance.background.position.center"></option><option value="top" data-i18n="appearance.background.position.top"></option><option value="bottom" data-i18n="appearance.background.position.bottom"></option><option value="left" data-i18n="appearance.background.position.left"></option><option value="right" data-i18n="appearance.background.position.right"></option></select></label>
+          <wa-select id="backgroundPosition" class="enchan-select background-position-select" size="small" disabled>
+            <span slot="label" data-i18n="appearance.background.position"></span>
+            <wa-option value="center" data-i18n="appearance.background.position.center"></wa-option>
+            <wa-option value="top" data-i18n="appearance.background.position.top"></wa-option>
+            <wa-option value="bottom" data-i18n="appearance.background.position.bottom"></wa-option>
+            <wa-option value="left" data-i18n="appearance.background.position.left"></wa-option>
+            <wa-option value="right" data-i18n="appearance.background.position.right"></wa-option>
+          </wa-select>
         </div>
         <p id="backgroundError" class="background-error" role="alert"></p>
       </section>
@@ -66,7 +76,7 @@
     </div>
   </dialog>
   <dialog id="mascotDialog">
-    <form method="dialog" class="dialog-head"><div><h2 data-i18n="mascot.title"></h2><p data-i18n="mascot.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/icons/close.svg" alt=""></button></form>
+    <form method="dialog" class="dialog-head"><div><h2 data-i18n="mascot.title"></h2><p data-i18n="mascot.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/assets/icons/close.svg" alt=""></button></form>
     <div class="settings-grid">
       <section><div id="mascotList" class="mascot-list"></div><button id="addMascot" class="secondary" type="button" data-i18n="mascot.add"></button></section>
       <form id="mascotForm" class="mascot-form">
@@ -100,11 +110,11 @@
       </form>
     </div>
   </dialog>
-  <script src="/initial-scroll.js"></script>
-  <script src="/i18n.js"></script>
-  <script src="/app.js"></script>
-  <script src="/appearance.js"></script>
-  <script src="/favicon.js"></script>
-  <script src="/status.js"></script>
+  <script src="/assets/js/initial-scroll.js"></script>
+  <script src="/assets/js/i18n.js"></script>
+  <script src="/assets/js/app.js"></script>
+  <script src="/assets/js/appearance.js"></script>
+  <script src="/assets/js/favicon.js"></script>
+  <script src="/assets/js/status.js"></script>
 </body>
 </html>

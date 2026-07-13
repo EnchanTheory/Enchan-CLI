@@ -57,7 +57,7 @@ window.EnchanI18n.ready.then(()=>{
     applyTheme(selected);
   }
   async function loadManifest(){
-    try{const response=await fetch(`/themes.json?v=${Date.now()}`,{cache:"no-store"});if(!response.ok)throw new Error(`HTTP ${response.status}`);const data=await response.json();if(!Array.isArray(data.themes)||!data.themes.length)throw new Error(t("appearance.error.noThemes"));manifest=data}
+    try{const response=await fetch(`/data/themes.json?v=${Date.now()}`,{cache:"no-store"});if(!response.ok)throw new Error(`HTTP ${response.status}`);const data=await response.json();if(!Array.isArray(data.themes)||!data.themes.length)throw new Error(t("appearance.error.noThemes"));manifest=data}
     catch(_){manifest={default:FALLBACK_THEME,themes:[{id:FALLBACK_THEME,name:"Enchan Dark",description:"",swatches:["#1d2021","#2a2b2b","#a59164"]}]}}
     renderThemes();
   }

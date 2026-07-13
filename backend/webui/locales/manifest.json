@@ -1,0 +1,71 @@
+{
+  "default": "en",
+  "locales": [
+    {
+      "code": "en",
+      "label": "English",
+      "file": "en.json"
+    },
+    {
+      "code": "ja",
+      "label": "日本語",
+      "file": "ja.json"
+    },
+    {
+      "code": "es",
+      "label": "Español",
+      "file": "es.json"
+    },
+    {
+      "code": "fr",
+      "label": "Français",
+      "file": "fr.json"
+    },
+    {
+      "code": "zh-CN",
+      "label": "简体中文",
+      "file": "zh-CN.json"
+    },
+    {
+      "code": "zh-TW",
+      "label": "繁體中文",
+      "file": "zh-TW.json"
+    },
+    {
+      "code": "ko",
+      "label": "한국어",
+      "file": "ko.json"
+    },
+    {
+      "code": "hi",
+      "label": "हिन्दी",
+      "file": "hi.json"
+    },
+    {
+      "code": "pt-BR",
+      "label": "Português (Brasil)",
+      "file": "pt-BR.json"
+    },
+    {
+      "code": "de",
+      "label": "Deutsch",
+      "file": "de.json"
+    },
+    {
+      "code": "ar",
+      "label": "العربية",
+      "file": "ar.json",
+      "dir": "rtl"
+    },
+    {
+      "code": "id",
+      "label": "Bahasa Indonesia",
+      "file": "id.json"
+    },
+    {
+      "code": "vi",
+      "label": "Tiếng Việt",
+      "file": "vi.json"
+    }
+  ]
+}
