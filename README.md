@@ -96,7 +96,7 @@ Start Enchan and select a backend, model, and interface:
 enchan
 ```
 
-#### CUI
+### CUI
 
 Choose **CUI** to work entirely in the terminal. It provides interactive chat, file and shell tools, session resume, model switching, runtime settings, and slash commands without opening a browser.
 
@@ -147,7 +147,7 @@ You can also pass unmanaged raw flags at startup by repeating `--llama-arg`, and
 
 For Enchan runtime settings that affect the running llama-server process, Enchan restarts the engine on the next request so the new setting is applied cleanly.
 
-#### Web UI
+### Web UI
 
 Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:8765` by default and supports both English and Japanese.
 
