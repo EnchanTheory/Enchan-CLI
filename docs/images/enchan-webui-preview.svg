@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17191c"/>
+      <stop offset="1" stop-color="#242029"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="45%" r="65%">
+      <stop offset="0" stop-color="#6c526c" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#17191c" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="spriteFrame">
+      <rect x="0" y="0" width="192" height="208" rx="10"/>
+    </clipPath>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000" flood-opacity=".45"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" rx="24" fill="url(#bg)"/>
+  <rect x="18" y="18" width="1244" height="684" rx="18" fill="none" stroke="#4d4652"/>
+
+  <rect x="36" y="36" width="1208" height="62" rx="12" fill="#202226" stroke="#3b3e44"/>
+  <text x="60" y="68" fill="#f0e7dc" font-family="Georgia, serif" font-size="24" font-weight="700">Enchan</text>
+  <text x="60" y="88" fill="#9b949b" font-family="Arial, sans-serif" font-size="12">local LLM · Enchan Engine · Ollama compatible</text>
+  <rect x="1010" y="51" width="118" height="34" rx="9" fill="#292b30" stroke="#4b4d52"/>
+  <text x="1032" y="73" fill="#e8e3e8" font-family="Arial, sans-serif" font-size="13">New chat</text>
+  <circle cx="1174" cy="68" r="5" fill="#b3a36d"/>
+  <text x="1185" y="73" fill="#bdb8bd" font-family="Arial, sans-serif" font-size="12">Local</text>
+
+  <rect x="36" y="116" width="1208" height="520" rx="14" fill="#191c1f"/>
+  <rect x="36" y="116" width="1208" height="520" rx="14" fill="url(#glow)"/>
+
+  <g opacity=".25" stroke="#8a778a" fill="none">
+    <path d="M70 160h160v250H70zM250 160h160v250H250zM430 160h160v250H430zM610 160h160v250H610zM790 160h160v250H790zM970 160h220v250H970z"/>
+    <path d="M96 190h108M96 220h108M96 250h108M276 190h108M276 220h108M276 250h108M456 190h108M456 220h108M456 250h108"/>
+  </g>
+
+  <text x="640" y="285" text-anchor="middle" fill="#f1e9e2" font-family="Georgia, 'Yu Mincho', serif" font-size="36">今日は何をしましょうか？</text>
+  <text x="640" y="322" text-anchor="middle" fill="#aaa4aa" font-family="Arial, 'Yu Gothic', sans-serif" font-size="15">ローカルのEnchanに質問や作業を依頼できます。</text>
+
+  <g transform="translate(82 430) scale(.62)" clip-path="url(#spriteFrame)" filter="url(#shadow)">
+    <image href="https://raw.githubusercontent.com/EnchanTheory/Enchan-CLI/main/backend/webui/mascots/tikta/spritesheet.png" width="1536" height="1872"/>
+  </g>
+
+  <rect x="92" y="548" width="1096" height="62" rx="18" fill="#252229" stroke="#9e8a56" stroke-width="1.4"/>
+  <text x="118" y="584" fill="#9b959d" font-family="Arial, 'Yu Gothic', sans-serif" font-size="15">Enchanにメッセージ</text>
+  <circle cx="1152" cy="579" r="20" fill="#777054"/>
+  <path d="M1145 580l7-7 7 7M1152 573v14" stroke="#282722" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="36" y="652" width="1208" height="32" rx="10" fill="#202226"/>
+  <text x="640" y="673" text-anchor="middle" fill="#918b91" font-family="Arial, sans-serif" font-size="12">Custom mascots · KAWAII Web UI · Windows &amp; Apple Silicon macOS</text>
+</svg>
