@@ -144,7 +144,7 @@ $("composer").addEventListener("submit",async e=>{e.preventDefault();const text=
   play(state.config?.agentMode?"running":"waiting",{loop:true});const reader=response.body.getReader();const decoder=new TextDecoder("utf-8");let fullText="";let buffer="";
   let isDone=false;while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop();for(const line of lines){if(line.startsWith("data: ")){const dataStr=line.slice(6).trim();if(dataStr==="[DONE]"){isDone=true;break;}try{const data=JSON.parse(dataStr);if(data.chunk){fullText+=data.chunk;textNode.innerHTML=renderMarkdown(fullText)||"&nbsp;";window.scrollTo({top:document.body.scrollHeight,behavior:"auto"})}}catch(err){}}}if(isDone)break;}
   if(!fullText)textNode.innerHTML="(empty response)";play("waving")}catch(error){textNode.textContent=error.message;row.classList.add("error");play("failed")}finally{state.busy=false;resize();prompt.focus()}});
-prompt.addEventListener("input",resize);prompt.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("composer").requestSubmit()}});
+prompt.addEventListener("input",resize);prompt.addEventListener("keydown",e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("composer").requestSubmit()}});
 $("newChat").onclick=async()=>{await api("/api/new",{});[...messages.querySelectorAll(".message")].forEach(x=>x.remove());welcome.hidden=false;play("jumping")};
 $("settings").onclick=()=>{
   $("mascotDialog").showModal();
