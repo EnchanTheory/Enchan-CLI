@@ -50,5 +50,14 @@
   0%,100%{opacity:.45}
   50%{opacity:1}
 }
+
+/* Keep the hidden textarea measurement node inside the viewport's scroll bounds.
+   Safari otherwise uses its static body position for scrollable overflow. */
+body > div[style*="word-break: break-all"]{
+  position:fixed!important;
+  inset:0 auto auto 0!important;
+  pointer-events:none!important;
+}
+
 @media(max-width:700px){.backend-status{display:none}}
 @media(prefers-reduced-motion:reduce){.backend-status i{animation:none!important}}
