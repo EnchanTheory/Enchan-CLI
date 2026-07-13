@@ -56,7 +56,7 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - README.md is the project blueprint. If you take actions in any directory, read README.md first to understand the context.
 - {CLI_DIR}/memory/guidelines/ and {CLI_DIR}/memory/knowledge/ are the guidelines and knowledge storage.
 - read_file with mode="compress" is the summary extractor. If you read large files to understand the summary, use mode="compress".
-- datetime.now() and log timestamps are the chronologic alignment anchors. Today is {datetime.now().strftime('%Y-%m-%d %A %H:%M local time')}.
+- datetime.now() and log timestamps are the chronologic alignment anchors.
 - run_command with python is the script execution primitive.
 - Verify -> Execute -> Verify is the code change policy.
 """
@@ -68,7 +68,8 @@ def get_agent_system_prompt() -> str:
         skill_catalog = render_skill_catalog_for_prompt()
     except Exception as e:
         skill_catalog = f"Skill catalog unavailable: {e}"
-    return f"{AGENT_SYSTEM_PROMPT}\n\n## Skill Capability Registry (Auto-Loaded)\n{skill_catalog}\n"
+    current_datetime = datetime.now().astimezone().strftime("%Y-%m-%d %A %H:%M:%S %Z")
+    return f"{AGENT_SYSTEM_PROMPT}\n- Current local datetime: {current_datetime}.\n\n## Skill Capability Registry (Auto-Loaded)\n{skill_catalog}\n"
 
 
 NORMAL_MODE_TOOL_GUIDANCE = """This chat can use Enchan CLI host runtime automatically. run_command is the primary open-ended local execution surface; typed helpers exist for safer inspection, editing, web, skills, and delegation.
