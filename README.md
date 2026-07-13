@@ -115,7 +115,6 @@ Inside the CUI, type `/` to see the following commands:
 | --- | --- |
 | `/resume` | List resumable sessions or resume a specific session |
 | `/compress` | Optimize older conversation turns |
-| `/rag` | Register, index, and search local RAG collections |
 | `/model` | Switch the active model |
 | `/status` | Show model, history, context, and generation settings |
 | `/set` | Configure generation and early exit parameters |
@@ -124,20 +123,6 @@ Inside the CUI, type `/` to see the following commands:
 | `/exit` | Exit the CLI |
 | `/help` | Show help menu and available commands |
 | `/license` | Show repository license terms |
-
-##### `/rag` — Local Retrieval
-
-Build persistent, private indexes for local text and Markdown collections. The built-in `sessions` collection searches useful user/assistant turns across Enchan session logs without replacing `/resume`.
-
-```text
-/rag status
-/rag sources
-/rag add "D:\path\to\documents"
-/rag rebuild sessions
-/rag search sessions previous discussion about local model memory
-```
-
-RAG source documents are read-only. Generated chunks and lexical indexes are stored under `~/.enchan/rag/`; retrieval uses a Japanese-compatible character n-gram index and local Enchan Cosmic v2 selection when available, with deterministic relevance compatibility selection otherwise. Each directory is an independent collection, so multiple directories can be registered without mixing their indexes. Index updates are manual: `/rag status`, `/rag sources`, and search results report changed sources, while `/rag rebuild <collection>` applies the update.
 
 ##### `/set` — Managed Settings
 

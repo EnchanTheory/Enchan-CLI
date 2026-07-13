@@ -6,6 +6,5 @@ import backend.commands.session
 import backend.commands.model
 import backend.commands.agent
 import backend.commands.llama
-import backend.commands.rag
 
 __all__ = ["registry"]

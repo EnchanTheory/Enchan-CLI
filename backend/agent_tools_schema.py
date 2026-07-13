@@ -80,22 +80,6 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "search_rag",
-            "description": "Search registered local RAG collections and return focused chunks with source metadata. Use the sessions collection for earlier conversations, prior decisions, and 'do you remember?' requests instead of guessing.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Natural-language retrieval query"},
-                    "collection": {"type": "string", "description": "Collection ID or name (optional, default: sessions)"},
-                    "limit": {"type": "integer", "description": "Maximum selected chunks (optional, default 6, max 20)"}
-                },
-                "required": ["query"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "web_browse",
             "description": "Primary web research tool. For a query, it discovers relevant pages, opens the actual sites, filters weak or duplicate results, and returns readable page content. Use it for current facts, documentation, products, news, comparisons, and any question requiring web evidence. Search-result titles and snippets are discovery hints only; base the answer on opened page contents.",
             "parameters": {

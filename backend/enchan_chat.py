@@ -42,7 +42,6 @@ from backend.startup_selection import (
 from backend.cli_args import parse_args
 
 from backend.context_compression import COSMIC_AVAILABLE
-from backend.enchan_cosmic import initialize_engine_session
 from backend.ollama_backend import ensure_ollama_running
 from backend.memory_store import (
     ensure_memory_dirs,
@@ -63,11 +62,6 @@ if not COSMIC_AVAILABLE:
 
 
 def main():
-    if COSMIC_AVAILABLE:
-        try:
-            initialize_engine_session()
-        except RuntimeError as exc:
-            print(f"[Warning] Enchan Engine initialization failed: {exc}")
     local_cfg = load_local_config()
 
     # 1. Parse Arguments via modern modular CLI Args parser
