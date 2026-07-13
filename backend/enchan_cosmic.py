@@ -1,4 +1,5 @@
 import ctypes
+import json
 import platform
 import sys
 from pathlib import Path
@@ -9,6 +10,10 @@ BACKEND_DIR = Path(__file__).resolve().parent
 MODE_STORY_ORDER = 1
 ENCHAN_OK = 0
 ENCHAN_ERROR_BUFFER_TOO_SMALL = -2
+ENGINE_CLIENT_CONFIG = json.dumps(
+    {"client": "EnchanTheory/Enchan-CLI", "protocol": 1},
+    separators=(",", ":"),
+).encode("utf-8")
 
 
 def get_engine_lib_path() -> Path:
@@ -69,7 +74,7 @@ def get_engine_dll() -> ctypes.CDLL:
     ]
     dll.enchan_compression_select_utf8.restype = ctypes.c_int
 
-    status = dll.enchan_engine_init(b"enchan-cli", b"{}")
+    status = dll.enchan_engine_init(b"enchan-cli", ENGINE_CLIENT_CONFIG)
     if status != ENCHAN_OK:
         raise RuntimeError(f"Enchan Engine init failed: {status}")
     if not dll.enchan_engine_has_capability(b"compression.enchan"):
@@ -78,6 +83,11 @@ def get_engine_dll() -> ctypes.CDLL:
     _ENGINE_DLL = dll
     return dll
 
+
+def initialize_engine_session() -> bool:
+    """Initialize the Enchan CLI client protocol and report RAG capability."""
+    dll = get_engine_dll()
+    return bool(dll.enchan_engine_has_capability(b"rag.enchan"))
 
 def select_text_indices(
     query: str,

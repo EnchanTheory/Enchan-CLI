@@ -1,6 +1,13 @@
 MAIN_SLASH_COMMANDS = (
     ("/resume", "List resumable sessions or resume a specific session", None),
     ("/compress", "Optimize older conversation turns", None),
+    ("/rag", "Manage and search local RAG collections", {
+        "status": ("Show local RAG status", None),
+        "sources": ("List registered RAG collections", None),
+        "add": ("Register a local directory", None),
+        "rebuild": ("Rebuild a collection index", None),
+        "search": ("Search a registered collection", None),
+    }),
     ("/model", "Switch the active model", None),
     ("/status", "Show model, history, context, and generation settings", None),
     ("/set", "Configure generation and early exit parameters", {
