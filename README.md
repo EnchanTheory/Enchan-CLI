@@ -1,8 +1,8 @@
 # Enchan CLI
 
-Enchan CLI is a local terminal chat interface for Enchan-backed and Ollama-backed GGUF runtimes.
+Enchan CLI is a local AI runtime and agent interface for Windows and Apple Silicon macOS. It runs GGUF models through the Enchan Engine or Ollama, with CUI and Web UI modes, file and shell tools, resumable sessions, bilingual UI, and animated custom mascots.
 
-This repository contains the CLI source and installer scripts. Native runtime binaries are distributed from this repository's GitHub Release and installed into `backend/bin/<platform>/`.
+This repository includes the CLI, Web UI, installers, and agent runtime. Platform-specific Enchan and llama.cpp binaries are distributed through GitHub Releases.
 
 <p align="center">
   <strong>English and Japanese UI · Custom mascots · Animated KAWAII interface</strong>
