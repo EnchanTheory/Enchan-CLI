@@ -13,10 +13,12 @@ applyLocale();
 
 const clientId=crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
 function heartbeat(){return fetch("/api/client/heartbeat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientId}),keepalive:true}).catch(()=>{})}
+function closeClient(){clearInterval(heartbeatTimer);const body=new Blob([JSON.stringify({clientId})],{type:"text/plain;charset=UTF-8"});navigator.sendBeacon("/api/client/close",body)}
 heartbeat();
 const heartbeatTimer=setInterval(heartbeat,3000);
 window.addEventListener("pageshow",heartbeat);
-window.addEventListener("pagehide",()=>{clearInterval(heartbeatTimer);const body=new Blob([JSON.stringify({clientId})],{type:"application/json"});navigator.sendBeacon("/api/client/close",body)});
+window.addEventListener("pagehide",closeClient);
+window.addEventListener("beforeunload",closeClient);
 
 async function api(path,body){
   const response=await fetch(path,{method:body?"POST":"GET",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined});
