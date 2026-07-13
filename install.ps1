@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $RuntimeRepo = "EnchanTheory/Enchan-CLI"
-$RuntimeTag = "llamacpp-b9888-enchan-20260707"
+$RuntimeTag = "llamacpp-b9888-enchan-20260713"
 $RuntimeAsset = "enchan-cli-runtime-win-x64.zip"
 $RuntimeAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$RuntimeTag/$RuntimeAsset"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path

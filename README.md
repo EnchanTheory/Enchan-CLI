@@ -89,7 +89,7 @@ chmod +x ./install.sh
 ./install.sh
 ```
 
-The installer downloads the Enchan CLI runtime from this repository's release `llamacpp-b9888-enchan-20260707`, extracts it into `backend/bin/<platform>/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
+The installer downloads the Enchan CLI runtime from this repository's release `llamacpp-b9888-enchan-20260713`, extracts it into `backend/bin/<platform>/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
 
 ---
 
