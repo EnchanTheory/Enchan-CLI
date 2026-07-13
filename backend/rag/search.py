@@ -156,3 +156,4 @@ def select_candidates(
         return [candidates[candidate_index] for candidate_index in valid[:limit]], "enchan_cosmic_v2"
     except Exception:
         return candidates[:limit], "relevance_fallback"
+
