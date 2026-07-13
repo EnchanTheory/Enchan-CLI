@@ -13,15 +13,15 @@
   <header>
     <div class="brand"><div><strong>Enchan</strong><small id="runtime">Local</small></div></div>
     <nav>
-      <button class="header-command" id="newChat" title="New chat" aria-label="New chat" data-i18n-title="newChat"><img src="/icons/edit_square.svg" alt=""><span data-i18n="newChat">New chat</span></button>
-      <button class="icon-button appearance-trigger" id="appearanceSettings" title="Appearance" aria-label="Appearance"><span aria-hidden="true">Aa</span></button>
-      <button class="icon-button" id="settings" title="Mascot settings" aria-label="Mascot settings" data-i18n-title="mascotSettings"><img src="/icons/settings.svg" alt=""></button>
-      <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite" title="Checking local backend connection"><i aria-hidden="true"></i><span id="backendStatusText">Checking</span></span>
+      <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
+      <button class="icon-button appearance-trigger" id="appearanceSettings" data-i18n-title="header.appearance"><span aria-hidden="true">Aa</span></button>
+      <button class="icon-button" id="settings" data-i18n-title="header.mascotSettings"><img src="/icons/settings.svg" alt=""></button>
+      <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="backendStatusText"></span></span>
     </nav>
   </header>
   <main>
     <section id="messages" aria-live="polite">
-      <div class="welcome" id="welcome"><h1 data-i18n="welcomeTitle">What can I help with?</h1><p data-i18n="welcomeBody">Ask your local Enchan a question or give it a task.</p></div>
+      <div class="welcome" id="welcome"><h1 data-i18n="welcome.title"></h1><p data-i18n="welcome.body"></p></div>
     </section>
   </main>
   <div class="composer-wrap">
@@ -32,70 +32,76 @@
         </aside>
       </div>
       <form id="composer" class="composer">
-        <textarea id="prompt" rows="1" placeholder="Message Enchan" aria-label="Message" data-i18n-placeholder="messagePlaceholder"></textarea>
-        <button id="send" class="send" type="submit" title="Send" aria-label="Send" data-i18n-title="send"><img src="/icons/arrow_upward.svg" alt=""></button>
+        <textarea id="prompt" rows="1" data-i18n-placeholder="composer.placeholder" data-i18n-aria-label="composer.messageLabel"></textarea>
+        <button id="send" class="send" type="submit" data-i18n-title="composer.send"><img src="/icons/arrow_upward.svg" alt=""></button>
       </form>
     </div>
-    <small data-i18n="toolNotice">Enchan may run local tools according to your settings.</small>
+    <small data-i18n="composer.toolNotice"></small>
   </div>
   <dialog id="appearanceDialog" class="appearance-dialog">
-    <form method="dialog" class="dialog-head"><div><h2>Appearance</h2><p>Theme and local background</p></div><button class="icon-button" value="cancel" aria-label="Close" data-i18n-title="close"><img src="/icons/close.svg" alt=""></button></form>
+    <form method="dialog" class="dialog-head"><div><h2 data-i18n="appearance.title"></h2><p data-i18n="appearance.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/icons/close.svg" alt=""></button></form>
     <div class="appearance-body">
       <section class="appearance-section">
-        <h3>Theme</h3>
-        <p class="appearance-intro">Choose the interface colors independently from the background image.</p>
-        <div id="themeGrid" class="theme-grid" role="group" aria-label="Web UI themes"></div>
+        <h3 data-i18n="appearance.language.title"></h3>
+        <p class="appearance-intro" data-i18n="appearance.language.description"></p>
+        <label><span data-i18n="appearance.language.label"></span><select id="languageSelect"><option value="en" data-i18n="appearance.language.english"></option><option value="ja" data-i18n="appearance.language.japanese"></option></select></label>
+      </section>
+      <section class="appearance-section">
+        <h3 data-i18n="appearance.theme.title"></h3>
+        <p class="appearance-intro" data-i18n="appearance.theme.description"></p>
+        <div id="themeGrid" class="theme-grid" role="group" data-i18n-aria-label="appearance.theme.groupLabel"></div>
       </section>
       <section class="appearance-section background-settings">
-        <div class="appearance-section-head"><div><h3>Background image</h3><p>Stored only in this browser and available offline.</p></div><button id="removeBackground" class="secondary compact" type="button" disabled>Remove</button></div>
-        <label class="background-picker"><span>Choose local image</span><input id="backgroundImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
-        <div id="backgroundPreview" class="background-preview" aria-live="polite"><span id="backgroundPreviewText">No background image selected.</span></div>
+        <div class="appearance-section-head"><div><h3 data-i18n="appearance.background.title"></h3><p data-i18n="appearance.background.storage"></p></div><button id="removeBackground" class="secondary compact" type="button" disabled data-i18n="common.remove"></button></div>
+        <label class="background-picker"><span data-i18n="appearance.background.choose"></span><input id="backgroundImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <div id="backgroundPreview" class="background-preview" aria-live="polite"><span id="backgroundPreviewText" data-i18n="appearance.background.none"></span></div>
         <div class="background-controls">
-          <label><span>Darkness <output id="backgroundDarknessValue">55%</output></span><input id="backgroundDarkness" type="range" min="30" max="85" step="5" value="55" disabled></label>
-          <label><span>Blur <output id="backgroundBlurValue">2px</output></span><input id="backgroundBlur" type="range" min="0" max="12" step="1" value="2" disabled></label>
-          <label><span>Position</span><select id="backgroundPosition" disabled><option value="center">Center</option><option value="top">Top</option><option value="bottom">Bottom</option><option value="left">Left</option><option value="right">Right</option></select></label>
+          <label><span><span data-i18n="appearance.background.darkness"></span> <output id="backgroundDarknessValue">55%</output></span><input id="backgroundDarkness" type="range" min="30" max="85" step="5" value="55" disabled></label>
+          <label><span><span data-i18n="appearance.background.blur"></span> <output id="backgroundBlurValue">2px</output></span><input id="backgroundBlur" type="range" min="0" max="12" step="1" value="2" disabled></label>
+          <label><span data-i18n="appearance.background.position"></span><select id="backgroundPosition" disabled><option value="center" data-i18n="appearance.background.position.center"></option><option value="top" data-i18n="appearance.background.position.top"></option><option value="bottom" data-i18n="appearance.background.position.bottom"></option><option value="left" data-i18n="appearance.background.position.left"></option><option value="right" data-i18n="appearance.background.position.right"></option></select></label>
         </div>
         <p id="backgroundError" class="background-error" role="alert"></p>
       </section>
-      <p class="appearance-note">Theme and background settings stay local to this browser. No network access is used.</p>
+      <p class="appearance-note" data-i18n="appearance.note"></p>
     </div>
   </dialog>
   <dialog id="mascotDialog">
-    <form method="dialog" class="dialog-head"><div><h2 data-i18n="mascotTitle">Mascot</h2><p>Compatible mascot contact sheet</p></div><button class="icon-button" value="cancel" aria-label="Close" data-i18n-title="close"><img src="/icons/close.svg" alt=""></button></form>
+    <form method="dialog" class="dialog-head"><div><h2 data-i18n="mascot.title"></h2><p data-i18n="mascot.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/icons/close.svg" alt=""></button></form>
     <div class="settings-grid">
-      <section><div id="mascotList" class="mascot-list"></div><button id="addMascot" class="secondary" type="button" data-i18n="addMascot">＋ Add mascot</button></section>
+      <section><div id="mascotList" class="mascot-list"></div><button id="addMascot" class="secondary" type="button" data-i18n="mascot.add"></button></section>
       <form id="mascotForm" class="mascot-form">
-        <label>ID<input id="mascotId" required pattern="[a-z0-9][a-z0-9_-]{0,47}"></label>
-        <label><span data-i18n="name">Name</span><input id="mascotEditName" required maxlength="80"></label>
-        <label><span data-i18n="description">Description</span><input id="mascotDescription" maxlength="240"></label>
-        <label><span data-i18n="personality">Personality</span><textarea id="mascotPersonality" rows="5" maxlength="12000" placeholder="Behavior, voice, and values" data-i18n-placeholder="personalityPlaceholder"></textarea></label>
-        <label><span data-i18n="contactSheet">Contact sheet</span><input id="mascotImage" type="file" accept="image/png,image/webp"><small data-i18n="sheetRequirement">Required: 1536×1872 px, 8 columns × 9 rows, 192×208 px per frame</small></label>
+        <label><span data-i18n="mascot.id"></span><input id="mascotId" required pattern="[a-z0-9][a-z0-9_-]{0,47}"></label>
+        <label><span data-i18n="mascot.name"></span><input id="mascotEditName" required maxlength="80"></label>
+        <label><span data-i18n="mascot.description"></span><input id="mascotDescription" maxlength="240"></label>
+        <label><span data-i18n="mascot.personality"></span><textarea id="mascotPersonality" rows="5" maxlength="12000" data-i18n-placeholder="mascot.personalityPlaceholder"></textarea></label>
+        <label><span data-i18n="mascot.contactSheet"></span><input id="mascotImage" type="file" accept="image/png,image/webp"><small data-i18n="mascot.sheetRequirement"></small></label>
         <div id="sheetPreview" class="mascot-preview">
           <div class="mascot-preview-head">
-            <span data-i18n="animationPreview">Animation Preview</span>
+            <span data-i18n="mascot.animationPreview"></span>
             <select id="previewAnimSelect" hidden>
-              <option value="idle" data-i18n="idle">Idle</option>
-              <option value="running-right" data-i18n="runningRight">Move right</option>
-              <option value="running-left" data-i18n="runningLeft">Move left</option>
-              <option value="waving" data-i18n="waving">Wave</option>
-              <option value="jumping" data-i18n="jumping">Jump</option>
-              <option value="failed" data-i18n="failed">Failed</option>
-              <option value="waiting" data-i18n="waiting">Thinking</option>
-              <option value="running" data-i18n="running">Working</option>
-              <option value="review" data-i18n="review">Review</option>
+              <option value="idle" data-i18n="mascot.animation.idle"></option>
+              <option value="running-right" data-i18n="mascot.animation.runningRight"></option>
+              <option value="running-left" data-i18n="mascot.animation.runningLeft"></option>
+              <option value="waving" data-i18n="mascot.animation.waving"></option>
+              <option value="jumping" data-i18n="mascot.animation.jumping"></option>
+              <option value="failed" data-i18n="mascot.animation.failed"></option>
+              <option value="waiting" data-i18n="mascot.animation.waiting"></option>
+              <option value="running" data-i18n="mascot.animation.running"></option>
+              <option value="review" data-i18n="mascot.animation.review"></option>
             </select>
           </div>
           <div class="mascot-preview-viewport">
             <canvas id="livePreviewCanvas" width="192" height="208" hidden></canvas>
-            <span id="sheetPreviewText" data-i18n="previewEmpty">Register an image to preview it.</span>
+            <span id="sheetPreviewText" data-i18n="mascot.previewEmpty"></span>
           </div>
         </div>
         <div id="sheetError" class="sheet-error" role="alert"></div>
-        <button class="primary" type="submit" data-i18n="saveAndSelect">Save and select</button>
+        <button class="primary" type="submit" data-i18n="mascot.saveAndSelect"></button>
       </form>
     </div>
   </dialog>
   <script src="/initial-scroll.js"></script>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
   <script src="/appearance.js"></script>
   <script src="/favicon.js"></script>
