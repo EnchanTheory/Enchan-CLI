@@ -1,8 +1,15 @@
 # Enchan CLI
 
-Enchan CLI is a local AI runtime and agent interface for Windows and Apple Silicon macOS. It runs GGUF models through the Enchan Engine or Ollama, with CUI and Web UI modes, file and shell tools, resumable sessions, bilingual UI, and animated custom mascots.
+Enchan CLI is a privacy-first local AI runtime and agent interface, designed around compact 2B models and responsive CPU use on Windows and Apple Silicon macOS. It helps small models remain stable during long, tool-assisted sessions while keeping model inference, conversations, and local agent data on your machine.
 
 This repository includes the CLI, Web UI, installers, and agent runtime. Platform-specific Enchan and llama.cpp binaries are distributed through GitHub Releases.
+
+## Why Enchan
+
+- **Optimized for compact models:** The default model is `gemma4:e2b-it-qat` (2B, 4 GB). Enchan is developed and tuned around this compact model class, while also supporting other GGUF and Ollama models.
+- **Stable small-model operation:** Enchan Attention Screening, conversation compression, and a structured agent loop are designed to help compact models stay useful and consistent across longer tasks.
+- **Comfortable on CPU:** GPU acceleration is optional. The local llama.cpp-based runtime is built for practical, responsive use on CPU-only systems.
+- **Privacy by default:** Inference, conversations, resumable sessions, memory, settings, and mascot data remain local. Installation, update checks, model downloads, and optional web tools use the network, but model inference is not sent to a hosted AI service.
 
 <p align="center">
   <strong>English and Japanese UI · Custom mascots · Animated KAWAII interface</strong>
