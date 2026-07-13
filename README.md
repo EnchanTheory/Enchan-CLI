@@ -23,14 +23,14 @@ This repository contains the CLI source and installer scripts. Native runtime bi
   </tr>
 </table>
 
-<p align="center">
-  <a href="https://github.com/EnchanTheory/Enchan-CLI/blob/main/backend/webui/mascots/tikta/spritesheet.png">
-    <img src="docs/images/tikta-idle.gif" alt="TIKTA idle animation" width="128">
-    <img src="docs/images/tikta-running-right.gif" alt="TIKTA running right" width="128">
-    <img src="docs/images/tikta-running-left.gif" alt="TIKTA running left" width="128">
-    <img src="docs/images/tikta-showcase.gif" alt="TIKTA animation showcase" width="128">
-  </a>
-</p>
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/images/tikta-idle.gif" alt="TIKTA idle animation" width="96"><br><sub>Idle</sub></td>
+    <td align="center"><img src="docs/images/tikta-running-right.gif" alt="TIKTA running right" width="96"><br><sub>Run</sub></td>
+    <td align="center"><img src="docs/images/tikta-running-left.gif" alt="TIKTA running left" width="96"><br><sub>Turn</sub></td>
+    <td align="center"><img src="docs/images/tikta-showcase.gif" alt="TIKTA animation showcase" width="96"><br><sub>Showcase</sub></td>
+  </tr>
+</table>
 
 The Web UI supports English and Japanese, animated custom mascots, configurable personalities, and local background images.
 
