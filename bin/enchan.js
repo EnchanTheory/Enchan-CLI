@@ -70,8 +70,25 @@ function runUpdate(updateArgs = []) {
 
     const repair = updateArgs.includes('--repair');
     const before = gitOutput(['rev-parse', 'HEAD']);
+    const upstream = upstreamRef();
+    const remote = upstreamRemote(upstream);
     console.log('[Enchan CLI] Updating source...');
-    runChecked('git', ['pull', '--ff-only'], { cwd: cliRoot });
+
+    if (!upstream || !remote) {
+        console.error('[Enchan CLI] Cannot update: no upstream branch is configured.');
+        process.exit(1);
+    }
+
+    runChecked('git', ['fetch', '--quiet', remote], { cwd: cliRoot });
+
+    const ffCheck = gitResult(['merge-base', '--is-ancestor', 'HEAD', upstream]);
+    if (ffCheck.status === 0) {
+        runChecked('git', ['merge', '--ff-only', upstream], { cwd: cliRoot });
+    } else {
+        console.log('[Enchan CLI] Repairing managed checkout...');
+        runChecked('git', ['reset', '--hard', upstream], { cwd: cliRoot });
+    }
+
     const after = gitOutput(['rev-parse', 'HEAD']);
     clearUpdateNotice();
 
@@ -128,6 +145,20 @@ function isFastForwardUpdateAvailable(upstream) {
     return result.status === 0;
 }
 
+function refreshCachedUpdateNotice() {
+    if (!fs.existsSync(path.join(cliRoot, '.git')) || !commandExists('git')) {
+        clearUpdateNotice();
+        return;
+    }
+
+    const upstream = upstreamRef();
+    if (upstream && isFastForwardUpdateAvailable(upstream)) {
+        writeUpdateNotice();
+    } else {
+        clearUpdateNotice();
+    }
+}
+
 function refreshUpdateNotice({ timeoutMs } = {}) {
     if (!fs.existsSync(path.join(cliRoot, '.git')) || !commandExists('git')) {
         return;
@@ -161,12 +192,11 @@ if (args[0] === 'update' || args[0] === 'self-update') {
     process.exit(0);
 }
 
-// Discard any notice left by a previous online session before starting the
-// best-effort background check. Offline startup must stay silent.
-clearUpdateNotice();
+// Use the remote-tracking ref refreshed by the previous background check so
+// Python can consume the notice during this startup without waiting on network I/O.
+refreshCachedUpdateNotice();
 
-// Keep normal startup responsive. The update check may perform network I/O, so it must
-// never block the Python chat backend from starting.
+// Refresh the remote-tracking ref in the background for the next startup.
 notifyUpdateAvailableAsync();
 
 const pythonPath = resolvePython();
@@ -176,6 +206,7 @@ const child = spawn(pythonPath, backendArgs, {
     stdio: 'inherit',
     env: {
         ...process.env,
+        LC_TIME: 'C',
         PYTHONPATH: [cliRoot, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)
     }
 });
