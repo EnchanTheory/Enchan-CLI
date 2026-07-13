@@ -151,7 +151,11 @@ For Enchan runtime settings that affect the running llama-server process, Enchan
 
 Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:8765` by default and supports both English and Japanese.
 
-The Web UI includes animated mascots, local background images, new-chat controls, and the same local model and agent capabilities as the interactive runtime. From the settings screen, you can register or edit a mascot's name, description, personality, and spritesheet.
+The Web UI provides animated responses, local background images, new-chat controls, and the same local model and agent capabilities as the interactive runtime.
+
+#### Mascots
+
+The Web UI supports animated custom mascots. From the settings screen, you can register or edit a mascot's name, description, personality, and spritesheet.
 
 Mascot sheets use a `1536x1872` contact sheet with an `8x9` grid and `192x208` pixels per frame. User-created mascot data is stored locally under `data/mascots/` and is not tracked by Git.
 
