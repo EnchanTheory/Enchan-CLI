@@ -51,6 +51,7 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - edit_file(path, patch, old, new, content, overwrite, apply) is the single editing surface for patch, exact replace, and write operations.
 - run_command(command, cwd, shell, timeout_seconds) executes terminal commands with the OS-native default shell ({DEFAULT_HOST_SHELL_DESCRIPTION}).
 - web_browse, web_search, use_skill, and delegate_agent are unique capabilities and remain reachable.
+- search_rag retrieves focused local evidence from all registered RAG collections. Use it when the request may depend on indexed documents or earlier conversations. Base the answer on the returned evidence and cite each source as [collection/source:lines].
 
 ## Workspace & Workflow Rules
 - README.md is the project blueprint. If you take actions in any directory, read README.md first to understand the context.
@@ -385,6 +386,42 @@ def tool_run_command(args: dict) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+def tool_search_rag(args: dict) -> dict:
+    query = args.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return {"ok": False, "error": "search_rag requires query."}
+    collection = str(args.get("collection") or "all").strip()
+    limit = max(1, min(int(args.get("limit", 6) or 6), 20))
+    try:
+        from backend.rag.service import get_default_service
+        result = get_default_service().search(collection, query.strip(), selection_count=limit)
+    except (OSError, KeyError, RuntimeError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+    lines = [
+        f"RAG collection: {result['collection']['name']} ({result['collection']['id']})",
+        f"Candidates: {result['candidate_count']}; selected: {result['selected_count']}; method: {result['selection_method']}; elapsed: {result['elapsed_seconds']:.3f}s",
+    ]
+
+    if result.get("update_available"):
+        lines.append(
+            f"Index update available: source files changed. Run /rag rebuild {result['collection']['id']} to refresh."
+        )
+    elif result.get("source_missing"):
+        lines.append("Warning: source directory is missing; using the last saved index.")
+    for index, item in enumerate(result["results"], 1):
+        metadata = item.get("metadata", {})
+        source = metadata.get("source_path", "unknown")
+        collection_name = metadata.get("collection_name")
+        if collection_name:
+            source = f"{collection_name}/{source}"
+        line = metadata.get("line_start")
+        timestamp = metadata.get("timestamp")
+        line_end = metadata.get("line_end")
+        location = f"lines {line}-{line_end}" if line else (timestamp or "")
+        lines.append(f"\n[{index}] {source}{f' ({location})' if location else ''} score={item.get('score', 0):.4f}\n{item.get('text', '')}")
+    return {"ok": True, "content": truncate_observation("\n".join(lines), max_chars=20000), "observation_max_chars": 20000}
+
+
 def tool_web_search(args: dict) -> dict:
     from backend.web_search_service import perform_web_search
     query = args.get("query", "")
@@ -513,6 +550,7 @@ TOOL_REGISTRY = {
     "edit_file": tool_edit_file,
     "run_command": tool_run_command,
     "web_search": tool_web_search,
+    "search_rag": tool_search_rag,
     "web_browse": tool_web_browse,
     "use_skill": tool_use_skill,
     "delegate_agent": tool_delegate_agent,
