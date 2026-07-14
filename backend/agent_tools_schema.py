@@ -6,17 +6,17 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "search_code",
-            "description": "Search local code and return paths, line numbers, and compact context. Use mode='compress' for large results.",
+            "description": "Primary local code search. Prefer rg when available. Returns paths, line numbers, and compact context. Supports mode='compress' to summarize/group large search results.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Text or regex to search"},
-                    "regex": {"type": "boolean", "description": "Interpret query as regex; false uses fixed text"},
-                    "path": {"type": "string", "description": "Search root; default workspace"},
-                    "context_lines": {"type": "integer", "description": "Lines around matches; default 2, max 5"},
-                    "max_results": {"type": "integer", "description": "Result limit; default 80, max 200"},
-                    "mode": {"type": "string", "description": "Use 'compress' to group/summarize results"},
-                    "compress_query": {"type": "string", "description": "Extraction query for compress mode"}
+                    "query": {"type": "string", "description": "Search query or regex pattern"},
+                    "regex": {"type": "boolean", "description": "Treat query as regex; false uses fixed-string search where possible"},
+                    "path": {"type": "string", "description": "File or directory to search; default workspace"},
+                    "context_lines": {"type": "integer", "description": "Context lines around each match; default 2, max 5"},
+                    "max_results": {"type": "integer", "description": "Maximum results; default 80, max 200"},
+                    "mode": {"type": "string", "description": "Use 'compress' to summarize/group large results"},
+                    "compress_query": {"type": "string", "description": "Specific extraction query for compress mode"}
                 },
                 "required": ["query"]
             }
@@ -26,14 +26,14 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Read a local file. Use line ranges for precision or mode='compress' for large documents.",
+            "description": "Primary file reader. Use line ranges for precise code work; use mode='compress' for large documents or structured extraction.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "File path"},
-                    "lines": {"type": "string", "description": "Line range, e.g. '1-50'"},
-                    "mode": {"type": "string", "description": "Use 'compress' for summary/extraction"},
-                    "query": {"type": "string", "description": "Extraction query for compress mode"}
+                    "path": {"type": "string", "description": "The path to the file"},
+                    "lines": {"type": "string", "description": "Specific lines to read (e.g. '1-50', '50-100') (optional)"},
+                    "mode": {"type": "string", "description": "Set to 'compress' for summarization/extraction mode (optional)"},
+                    "query": {"type": "string", "description": "Specific query to extract when using 'compress' mode (optional)"}
                 },
                 "required": ["path"]
             }
@@ -43,17 +43,17 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Edit one local file by patch, exact replacement, or full write. Set apply=false for a dry run.",
+            "description": "Single local file editing tool. Supports unified diff patches, exact old/new replacement, and explicit write/create. Use apply=false for dry runs.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Target file path"},
+                    "path": {"type": "string", "description": "Target file path for replace/write operations"},
                     "patch": {"type": "string", "description": "Unified diff patch"},
-                    "old": {"type": "string", "description": "Exact text to replace once"},
-                    "new": {"type": "string", "description": "Replacement text"},
-                    "content": {"type": "string", "description": "Full content for create/write"},
-                    "overwrite": {"type": "boolean", "description": "Allow overwrite in write mode"},
-                    "apply": {"type": "boolean", "description": "False=dry run; default true"}
+                    "old": {"type": "string", "description": "Exact existing text; must match once"},
+                    "new": {"type": "string", "description": "Replacement text for exact replace"},
+                    "content": {"type": "string", "description": "Complete content for create/write mode"},
+                    "overwrite": {"type": "boolean", "description": "Allow replacing an existing file in write mode"},
+                    "apply": {"type": "boolean", "description": "False for dry run; true/default applies the edit"}
                 },
                 "required": []
             }
@@ -63,15 +63,15 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "run_command",
-            "description": "Run terminal commands for git, tests, builds, diagnostics, scripts, and fallback actions.",
+            "description": "General terminal command execution surface. Use for git, directory listing, tests, builds, diagnostics, scripts, and fallback actions.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "Exact command"},
-                    "cwd": {"type": "string", "description": "Working directory"},
-                    "shell": {"type": "string", "description": "powershell, cmd, sh, or bash"},
-                    "timeout_seconds": {"type": "integer", "description": "Timeout; default 30 seconds"},
-                    "max_output_chars": {"type": "integer", "description": "Output character limit"}
+                    "command": {"type": "string", "description": "The exact command to execute"},
+                    "cwd": {"type": "string", "description": "Working directory for the command (optional)"},
+                    "shell": {"type": "string", "description": "Shell to use: powershell, cmd, sh, or bash (optional)"},
+                    "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (optional, default 30)"},
+                    "max_output_chars": {"type": "integer", "description": "Maximum characters to capture from output (optional)"}
                 },
                 "required": ["command"]
             }
@@ -81,14 +81,14 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "web_browse",
-            "description": "Search and open web pages for current evidence. Base answers on opened page content, not result snippets.",
+            "description": "Searches for relevant pages, opens the actual sites, filters weak or duplicate results, and returns readable content. Use opened page content as evidence; titles and snippets are discovery hints only.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "url": {"type": "string", "description": "HTTP(S) URL; optional when query is set"},
-                    "query": {"type": "string", "description": "Query to search and open relevant pages"},
-                    "max_pages": {"type": "integer", "description": "Page limit; default 3"},
-                    "max_chars_per_page": {"type": "integer", "description": "Characters per page; default 12000"}
+                    "url": {"type": "string", "description": "HTTP(S) URL to open directly (optional if query is provided)"},
+                    "query": {"type": "string", "description": "Research query. The tool will search and open relevant sites automatically (optional if url is provided)"},
+                    "max_pages": {"type": "integer", "description": "Maximum readable pages to return for a query (optional, default 3)"},
+                    "max_chars_per_page": {"type": "integer", "description": "Maximum readable text characters per opened page (optional, default 12000)"}
                 },
                 "required": []
             }
@@ -98,7 +98,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "list_skills",
-            "description": "List registered skills and method schemas.",
+            "description": "Lists the full registered skill catalog, including method schemas.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -110,14 +110,14 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "use_skill",
-            "description": "Run an installed skill. Runtime injects current skill names and summaries.",
+            "description": "Runs an installed skill as a first-class capability. Installed skill names and summaries are injected dynamically at runtime; when a task matches one, call this before generic tools.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "skill_name": {"type": "string", "description": "Installed skill name"},
-                    "argument": {"type": "string", "description": "Legacy one-shot argument"},
-                    "method": {"type": "string", "description": "Method to invoke"},
-                    "params": {"type": "object", "description": "Typed method arguments"}
+                    "skill_name": {"type": "string", "description": "Name of the skill to run"},
+                    "argument": {"type": "string", "description": "Legacy one-shot argument string (optional)"},
+                    "method": {"type": "string", "description": "Specific method to invoke (optional)"},
+                    "params": {"type": "object", "description": "Arguments for the typed method (optional)"}
                 },
                 "required": ["skill_name"]
             }
@@ -127,12 +127,12 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "delegate_agent",
-            "description": "Delegate a complex prompt or task to an external agent model.",
+            "description": "Delegates a complex prompt or task to an external agent model (e.g. codex, gemini, claude).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "agent": {"type": "string", "description": "codex, gemini, or claude"},
-                    "prompt": {"type": "string", "description": "Prompt or task context"}
+                    "agent": {"type": "string", "description": "Target agent name ('codex', 'gemini', or 'claude')"},
+                    "prompt": {"type": "string", "description": "The prompt or task context to delegate"}
                 },
                 "required": ["agent", "prompt"]
             }
