@@ -1,0 +1,57 @@
+name: Patch obsolete list_skills references in agent_tools
+
+on:
+  push:
+    branches:
+      - agent/trim-tool-schema
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/trim-tool-schema
+          fetch-depth: 0
+      - name: Remove obsolete list_skills path from agent_tools.py
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/agent_tools.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = {
+              '- web_browse, web_search, list_skills, use_skill, and delegate_agent are unique capabilities and remain reachable.':
+              '- web_browse, web_search, use_skill, and delegate_agent are unique capabilities and remain reachable.',
+              '''\n\ndef tool_list_skills(args: dict) -> dict:\n    from backend.skills_loader import list_registered_skills\n    return {"ok": True, "content": list_registered_skills()}\n''': '',
+              '    "list_skills": tool_list_skills,\n': '',
+          }
+
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one match, found {count}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+
+          if 'list_skills' in text or 'tool_list_skills' in text or 'list_registered_skills' in text:
+              raise SystemExit('Obsolete list_skills reference remains in backend/agent_tools.py')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Validate Python syntax
+        run: python -m py_compile backend/agent_tools.py
+      - name: Commit patched file and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/patch-list-skills-agent-tools.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/agent_tools.py .github/workflows/patch-list-skills-agent-tools.yml
+          git commit -m "Remove obsolete list_skills runtime path"
+          git push origin HEAD:agent/trim-tool-schema
