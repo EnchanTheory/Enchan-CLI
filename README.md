@@ -115,6 +115,7 @@ Inside the CUI, type `/` to see the following commands:
 | --- | --- |
 | `/resume` | List resumable sessions or resume a specific session |
 | `/compress` | Optimize older conversation turns |
+| `/rag` | Register, index, and search local RAG collections |
 | `/model` | Switch the active model |
 | `/status` | Show model, history, context, and generation settings |
 | `/set` | Configure generation and early exit parameters |
@@ -123,6 +124,22 @@ Inside the CUI, type `/` to see the following commands:
 | `/exit` | Exit the CLI |
 | `/help` | Show help menu and available commands |
 | `/license` | Show repository license terms |
+
+##### `/rag` — Local Retrieval
+
+Build persistent, private indexes for local text and Markdown collections. The built-in `sessions` collection searches useful user/assistant turns across Enchan session logs without replacing `/resume`.
+
+```text
+/rag status
+/rag sources
+/rag add "D:\path\to\documents"
+/rag rebuild sessions
+/rag rebuild all
+/rag search all previous discussion about local model memory
+```
+
+RAG source documents are read-only. Generated structures, chunks, graphs, and indexes are stored under `~/.enchan/rag/`. During indexing, the active local model extracts entities, concepts, claims, events, texture, and relations from 12,000-character parent units. Directory search uses 1,500-character chunks with a 500-character stride that inherit their parent structure; session logs preserve each user/assistant turn. Retrieval combines this structure with Unicode words, word pairs, and character n-grams across writing systems. Local Enchan Cosmic v2 then uses MaxCut to select a diverse evidence set when available, with deterministic relevance selection otherwise. Each directory is an independent collection, and a newly registered directory is indexed immediately with visible progress. Searches can target one collection or `all` registered sources. Later index updates are manual: `/rag status`, `/rag sources`, and search results report changed sources, while `/rag rebuild <collection>` or `/rag rebuild all` applies pending updates with visible progress.
+
 
 ##### `/set` — Managed Settings
 

@@ -80,6 +80,22 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "search_rag",
+            "description": "Search all registered local RAG collections and return MaxCut-selected evidence with source metadata. Use it whenever the request may depend on indexed documents or earlier conversations, and cite the returned sources.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Natural-language retrieval query"},
+                    "collection": {"type": "string", "description": "Collection ID or name (optional, default: all registered sources)"},
+                    "limit": {"type": "integer", "description": "Maximum selected chunks (optional, default 6, max 20)"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_browse",
             "description": "Searches for relevant pages or opens a URL, then returns readable page content. Use opened page content as evidence; titles and snippets are discovery hints only.",
             "parameters": {
