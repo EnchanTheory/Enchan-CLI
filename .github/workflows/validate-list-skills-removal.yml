@@ -1,0 +1,56 @@
+name: Validate complete list_skills removal
+
+on:
+  push:
+    branches:
+      - agent/trim-tool-schema
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/trim-tool-schema
+          fetch-depth: 0
+      - name: Check obsolete references are gone
+        shell: bash
+        run: |
+          if grep -RInE 'list_skills|list_registered_skills|tool_list_skills' . \
+            --exclude-dir=.git \
+            --exclude='validate-list-skills-removal.yml'; then
+            echo 'Obsolete list_skills reference remains.' >&2
+            exit 1
+          fi
+      - name: Validate changed Python modules
+        run: python -m py_compile backend/agent_tools.py backend/agent_tools_schema.py backend/skills_loader.py
+      - name: Validate schema and registry shape
+        shell: bash
+        run: |
+          python - <<'PY'
+          from backend.agent_tools import TOOL_REGISTRY
+          from backend.agent_tools_schema import AGENT_TOOLS_SCHEMA, get_agent_tools_schema
+
+          schema_names = [item['function']['name'] for item in AGENT_TOOLS_SCHEMA]
+          live_names = [item['function']['name'] for item in get_agent_tools_schema()]
+
+          assert len(schema_names) == 7, schema_names
+          assert len(schema_names) == len(set(schema_names)), schema_names
+          assert schema_names == live_names, (schema_names, live_names)
+          assert 'list_skills' not in TOOL_REGISTRY
+          assert 'use_skill' in TOOL_REGISTRY
+          assert 'use_skill' in schema_names
+          PY
+      - name: Remove temporary workflow after successful validation
+        shell: bash
+        run: |
+          rm .github/workflows/validate-list-skills-removal.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/validate-list-skills-removal.yml
+          git commit -m "Complete list_skills removal validation"
+          git push origin HEAD:agent/trim-tool-schema
