@@ -108,8 +108,8 @@ for line in sys.stdin:
 
 ## Execution Flow
 
-1. The agent calls `list_skills()` to inspect skill contracts and method schemas.
-2. The agent calls `use_skill(skill_name, argument)` for legacy-compatible one-shot use, or `use_skill(skill_name, method=<method>, params=<object>)` for typed methods.
+1. The live skill catalog is loaded into the agent context automatically, including skill names, descriptions, methods, and compact input schemas.
+2. When a task matches a registered skill, the agent calls `use_skill(skill_name, argument)` for legacy-compatible one-shot use, or `use_skill(skill_name, method=<method>, params=<object>)` for typed methods.
 3. The host starts or reuses the skill process and sends a JSON-RPC request over stdin.
 4. The skill returns a JSON-RPC result, sends notifications, or calls permitted host capabilities.
 5. Legacy `skill_config.json` skills are auto-wrapped as `invoke(argument)` so existing skills keep working.
