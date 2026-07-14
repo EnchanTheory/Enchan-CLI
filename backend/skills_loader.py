@@ -328,7 +328,7 @@ def _manifest_for_skill(skill_name: str) -> tuple[Path, dict[str, Any]]:
         raise SkillManifestError(f"Skills directory does not exist at {SKILLS_DIR}")
     skill_dir = SKILLS_DIR / skill_name
     if not skill_dir.exists() or not skill_dir.is_dir():
-        raise SkillManifestError(f"Skill '{skill_name}' not found. Please run list_skills to verify names.")
+        raise SkillManifestError(f"Skill '{skill_name}' not found in the auto-loaded skill catalog.")
     manifest, error = _load_skill_manifest(skill_dir)
     if error or manifest is None:
         raise SkillManifestError(f"Skill '{skill_name}' is not loadable: {error}")
@@ -374,35 +374,6 @@ def render_skill_tool_hint(max_chars: int = 1200) -> str:
         return text
     return text[: max_chars - 3].rstrip() + "..."
 
-
-def list_registered_skills() -> str:
-    """List skill contracts discovered under skills/."""
-    if not SKILLS_DIR.exists():
-        return "No skills directory found."
-
-    skills: list[str] = []
-    for item in sorted(SKILLS_DIR.iterdir(), key=lambda p: p.name.lower()):
-        if not item.is_dir():
-            continue
-        manifest, error = _load_skill_manifest(item)
-        if error:
-            skills.append(f"- **{item.name}** ({error})")
-            continue
-        name = manifest.get("name", item.name)
-        desc = manifest.get("description", "No description provided.")
-        suffix = " [legacy auto-wrapped]" if manifest.get("legacy") else ""
-        lines = [f"- **{name}**: {desc}{suffix}"]
-        methods = manifest.get("methods") if isinstance(manifest.get("methods"), dict) else {}
-        for method_name, method_spec in methods.items():
-            method_desc = method_spec.get("description", "No description provided.") if isinstance(method_spec, dict) else "No description provided."
-            input_schema = method_spec.get("input") if isinstance(method_spec, dict) else None
-            schema_text = f" input={json.dumps(input_schema, ensure_ascii=False)}" if input_schema else ""
-            lines.append(f"  - method `{method_name}`: {method_desc}{schema_text}")
-        skills.append("\n".join(lines))
-
-    if not skills:
-        return "No valid skills registered in the skills/ directory."
-    return "Available Enchan CLI Skills:\n" + "\n".join(skills)
 
 
 def _compact_schema_text(schema: Any, *, max_chars: int = 360) -> str:
@@ -454,14 +425,13 @@ def render_skill_catalog_for_prompt(max_chars: int = 5000) -> str:
 
     header = (
         "Auto-loaded skill capability registry. These skills are installed now from skills/. "
-        "Treat each entry as a named capability available through use_skill; do not call list_skills merely to discover skill names. "
-        "When a user task matches a skill description, call use_skill with that skill name and method before falling back to generic tools. "
-        "Call list_skills only when you need expanded schemas or troubleshooting detail.\n"
+        "Treat each entry as a named capability available through use_skill. "
+        "When a user task matches a skill description, call use_skill with that skill name and method before falling back to generic tools.\n"
     )
     content = header + "\n".join(entries)
     if len(content) <= max_chars:
         return content
-    return content[: max_chars - 80].rstrip() + "\n...\n[Skill catalog truncated; call list_skills for full details.]"
+    return content[: max_chars - 48].rstrip() + "\n...\n[Skill catalog truncated.]"
 
 
 def _format_skill_response_error(skill_name: str, error: Any) -> str:

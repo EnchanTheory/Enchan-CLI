@@ -50,7 +50,7 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - read_file(path, lines, mode, query) is the primary file reader. Use mode="compress" for large documents or structured extraction.
 - edit_file(path, patch, old, new, content, overwrite, apply) is the single editing surface for patch, exact replace, and write operations.
 - run_command(command, cwd, shell, timeout_seconds) executes terminal commands with the OS-native default shell ({DEFAULT_HOST_SHELL_DESCRIPTION}).
-- web_browse, web_search, list_skills, use_skill, and delegate_agent are unique capabilities and remain reachable.
+- web_browse, web_search, use_skill, and delegate_agent are unique capabilities and remain reachable.
 
 ## Workspace & Workflow Rules
 - README.md is the project blueprint. If you take actions in any directory, read README.md first to understand the context.
@@ -428,11 +428,6 @@ def tool_web_browse(args: dict) -> dict:
     return {"ok": False, "error": "web_browse requires either 'url' or 'query'."}
 
 
-def tool_list_skills(args: dict) -> dict:
-    from backend.skills_loader import list_registered_skills
-    return {"ok": True, "content": list_registered_skills()}
-
-
 def tool_use_skill(args: dict) -> dict:
     skill_name = args.get("skill_name") or args.get("name")
     argument = args.get("argument") or args.get("value") or ""
@@ -519,7 +514,6 @@ TOOL_REGISTRY = {
     "run_command": tool_run_command,
     "web_search": tool_web_search,
     "web_browse": tool_web_browse,
-    "list_skills": tool_list_skills,
     "use_skill": tool_use_skill,
     "delegate_agent": tool_delegate_agent,
 }

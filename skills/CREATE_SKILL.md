@@ -11,7 +11,7 @@ Create a Skill when the capability will be reused, needs a clear typed interface
 1. Create a new folder under `skills/<skill_name>/`.
 2. Add `skill.json` describing the runtime command, methods, input schemas, and minimum host capabilities.
 3. Add a handler process that reads one JSON-RPC request per line from stdin and writes one JSON-RPC response per line to stdout.
-4. Run `list_skills` and confirm the new Skill and its methods are loadable.
+4. Restart or begin a new agent turn so the live Skill catalog is loaded again, then confirm the new Skill and its methods appear in the auto-loaded context.
 5. Test it with `use_skill` before relying on it in a user task.
 
 ## Minimal layout
@@ -67,7 +67,6 @@ for line in sys.stdin:
 Test with:
 
 ```text
-list_skills
 use_skill(skill_name="hello", method="greet", params={"name":"Enchan"})
 ```
 
