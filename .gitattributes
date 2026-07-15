@@ -6,4 +6,4 @@
 *.exe binary
 *.dylib binary
 *.so binary
-backend/webui/vendor/webawesome/select.js -whitespace
+backend/webui/vendor/webawesome/components.js -whitespace

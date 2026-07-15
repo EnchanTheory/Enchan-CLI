@@ -7,6 +7,8 @@ import json
 import mimetypes
 import re
 import struct
+import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -22,6 +24,8 @@ from backend.context_compression import count_text_tokens
 from backend.memory_store import build_memory_prompt_section, load_memory_context
 from backend.approval import ApprovalDecision, ApprovalRequest, approval_scope
 from backend.session_log import append_session_event
+from backend.rag.jobs import RAGIndexJobManager
+from backend.rag.service import RAGService
 from backend.tokenizer_bridge import estimate_text_tokens_rough
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -32,6 +36,20 @@ MASCOT_DIR = CLI_DIR / "data" / "mascots"
 MASCOT_CONFIG = MASCOT_DIR / "mascots.json"
 MAX_BODY_BYTES = 20 * 1024 * 1024
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
+WEB_UI_CONTENT_SECURITY_POLICY = "; ".join((
+    "default-src 'self'",
+    "base-uri 'none'",
+    "connect-src 'self' data:",
+    "font-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "img-src 'self' data: blob:",
+    "media-src 'self' data: blob:",
+    "object-src 'none'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "worker-src 'none'",
+))
 
 # Codex Pets v4 contact-sheet contract: 192x208 frames in an 8x9 grid.
 CODEX_FRAME = {"width": 192, "height": 208, "columns": 8, "rows": 9}
@@ -46,6 +64,38 @@ CODEX_ANIMATIONS = {
     "running": {"row": 7, "count": 6, "frameDuration": 120, "finalDuration": 220, "repeats": 3},
     "review": {"row": 8, "count": 6, "frameDuration": 150, "finalDuration": 280, "repeats": 3},
 }
+
+
+def _select_directory_dialog() -> str | None:
+    """Open the host OS directory picker and return an absolute local path."""
+    if sys.platform == "darwin":
+        script = 'POSIX path of (choose folder with prompt "Select a RAG source directory")'
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip() or None
+        if "User canceled" in result.stderr:
+            return None
+        raise RuntimeError(result.stderr.strip() or "Could not open the directory picker")
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as exc:
+        raise RuntimeError("The local Python runtime does not provide a directory picker") from exc
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        selected = filedialog.askdirectory(parent=root, mustexist=True, title="Select a RAG source directory")
+        return str(Path(selected).resolve()) if selected else None
+    finally:
+        root.destroy()
 
 
 def _default_store() -> dict[str, Any]:
@@ -178,8 +228,14 @@ class WebChatState:
     def __post_init__(self) -> None:
         self.chat_history: list[dict[str, Any]] = []
         self.lock = threading.Lock()
+        self._activity_lock = threading.Lock()
+        self._directory_dialog_lock = threading.Lock()
+        self._chat_active = False
         timeout = float(self.generation_config.get("approval_timeout_seconds", 120))
         self.approvals = WebApprovalBroker(timeout)
+        self.rag_service = RAGService()
+        self.session_collection = self.rag_service.ensure_session_collection(CLI_DIR / "logs" / "sessions")
+        self.rag_jobs = RAGIndexJobManager(self.rag_service, self.generation_config)
 
     def public_config(self) -> dict[str, Any]:
         store = _load_store()
@@ -198,15 +254,98 @@ class WebChatState:
         with self.lock:
             self.chat_history.clear()
 
-    def chat_stream(self, prompt: str, client_id: str) -> Any:
-        prompt = prompt.strip()
-        client_id = client_id.strip()
-        if not prompt:
+    @staticmethod
+    def _validate_chat_request(prompt: str, client_id: str) -> None:
+        if not prompt.strip():
             raise ValueError("Message is empty")
-        if not client_id:
+        if not client_id.strip():
             raise ValueError("Browser client ID is required")
         if len(prompt) > 1_000_000:
             raise ValueError("Message is too large")
+
+    def reserve_chat(self, prompt: str, client_id: str) -> None:
+        self._validate_chat_request(prompt, client_id)
+        with self._activity_lock:
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("RAG indexing is running. Chat is available again after completion or interruption.")
+            if self._chat_active:
+                raise RuntimeError("Another chat response is already running")
+            self._chat_active = True
+
+    def rag_status(self) -> dict[str, Any]:
+        collections = []
+        for collection in self.rag_service.list_collection_statuses():
+            item = dict(collection)
+            item["required"] = item.get("source_type") == "sessions"
+            item["job"] = self.rag_jobs.collection_job(item["id"])
+            collections.append(item)
+        return {"job": self.rag_jobs.status(), "collections": collections}
+
+    def select_rag_directory(self) -> str | None:
+        if not self._directory_dialog_lock.acquire(blocking=False):
+            raise RuntimeError("A directory picker is already open")
+        try:
+            return _select_directory_dialog()
+        finally:
+            self._directory_dialog_lock.release()
+
+    @staticmethod
+    def _validate_rag_metadata(title: str, description: str) -> tuple[str, str]:
+        title = title.strip()
+        description = description.strip()
+        if not title:
+            raise ValueError("RAG title is required")
+        if not description:
+            raise ValueError("RAG description is required")
+        if len(title) > 120:
+            raise ValueError("RAG title must be 120 characters or fewer")
+        if len(description) > 500:
+            raise ValueError("RAG description must be 500 characters or fewer")
+        return title, description
+
+    def register_rag_directory(self, source_path: str, title: str, description: str) -> dict[str, Any]:
+        if not source_path.strip():
+            raise ValueError("RAG source directory is required")
+        title, description = self._validate_rag_metadata(title, description)
+        with self._activity_lock:
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("Wait for the current RAG indexing job to stop")
+            collection = self.rag_service.register_directory(
+                source_path,
+                name=title,
+                description=description,
+            )
+        return collection
+
+    def update_rag_metadata(self, reference: str, title: str, description: str) -> dict[str, Any]:
+        title, description = self._validate_rag_metadata(title, description)
+        with self._activity_lock:
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("Wait for the current RAG indexing job to stop")
+            return self.rag_service.update_collection_metadata(reference, title, description)
+
+    def delete_rag_collection(self, reference: str) -> None:
+        with self._activity_lock:
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("Wait for the current RAG indexing job to stop")
+            self.rag_service.delete_collection(reference)
+
+    def start_rag_indexing(self, reference: str) -> dict[str, Any]:
+        with self._activity_lock:
+            if self._chat_active:
+                raise RuntimeError("Wait for the current chat response to finish")
+            if self.backend_mode == "enchan":
+                from backend.enchan_llama_backend import ensure_enchan_llama_for_request
+                if not ensure_enchan_llama_for_request(self.generation_config, self.args):
+                    raise RuntimeError("Failed to start the Enchan engine")
+            return self.rag_jobs.start(reference)
+
+    def chat_stream(self, prompt: str, client_id: str, *, reserved: bool = False) -> Any:
+        prompt = prompt.strip()
+        client_id = client_id.strip()
+        self._validate_chat_request(prompt, client_id)
+        if not reserved:
+            self.reserve_chat(prompt, client_id)
 
         import queue
         q = queue.Queue()
@@ -221,7 +360,11 @@ class WebChatState:
                     store = _load_store()
                     selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
                     personality = (selected or {}).get("personality", "").strip()
-                    system_context = get_agent_system_prompt() + build_memory_prompt_section(load_memory_context())
+                    system_context = (
+                        get_agent_system_prompt()
+                        + build_memory_prompt_section(load_memory_context())
+                        + self.rag_service.build_prompt_section()
+                    )
                     if personality:
                         system_context += f"\n\nCharacter persona for this conversation:\n{personality}"
                     config = dict(self.generation_config)
@@ -259,6 +402,9 @@ class WebChatState:
                     if self.chat_history and self.chat_history[-1].get("role") == "user":
                         self.chat_history.pop()
                     q.put({"type": "error", "error": str(e)})
+                finally:
+                    with self._activity_lock:
+                        self._chat_active = False
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -346,6 +492,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"[Web UI] {self.address_string()} {fmt % args}")
 
+    def end_headers(self) -> None:
+        # The Web UI is local-only. Keep every browser-initiated resource and
+        # API connection on the Enchan server's own origin.
+        self.send_header("Content-Security-Policy", WEB_UI_CONTENT_SECURITY_POLICY)
+        super().end_headers()
+
     def _json(self, status: int, payload: Any) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -365,6 +517,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
         path = unquote(urlparse(self.path).path)
         if path == "/api/config":
             self._json(HTTPStatus.OK, self.state.public_config())
+            return
+        if path == "/api/rag/status":
+            self._json(HTTPStatus.OK, self.state.rag_status())
             return
         if path.startswith("/api/mascots/"):
             self._serve_mascot(path.removeprefix("/api/mascots/"))
@@ -418,6 +573,11 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, {"ok": True})
             elif path == "/api/chat_stream":
                 message = str(data.get("message", ""))
+                try:
+                    self.state.reserve_chat(message, client_id)
+                except RuntimeError as exc:
+                    self._json(HTTPStatus.CONFLICT, {"error": str(exc), "code": "rag_indexing"})
+                    return
                 self.server.mark_client(client_id)  # type: ignore[attr-defined]
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -425,7 +585,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 self.send_header("Connection", "close")
                 self.end_headers()
                 try:
-                    for event in self.state.chat_stream(message, client_id):
+                    for event in self.state.chat_stream(message, client_id, reserved=True):
                         payload = json.dumps(event, ensure_ascii=False)
                         self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
                         self.wfile.flush()
@@ -435,6 +595,33 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     self.state.approvals.cancel_client(client_id)
             elif path == "/api/new":
                 self.state.reset()
+                self._json(HTTPStatus.OK, {"ok": True})
+            elif path == "/api/rag/register":
+                collection = self.state.register_rag_directory(
+                    str(data.get("path", "")).strip(),
+                    str(data.get("title", "")).strip(),
+                    str(data.get("description", "")).strip(),
+                )
+                self._json(HTTPStatus.CREATED, {"collection": collection})
+            elif path == "/api/rag/update":
+                collection = self.state.update_rag_metadata(
+                    str(data.get("collectionId", "")).strip(),
+                    str(data.get("title", "")).strip(),
+                    str(data.get("description", "")).strip(),
+                )
+                self._json(HTTPStatus.OK, {"collection": collection})
+            elif path == "/api/rag/select-directory":
+                selected = self.state.select_rag_directory()
+                self._json(HTTPStatus.OK, {"path": selected, "cancelled": selected is None})
+            elif path == "/api/rag/start":
+                reference = str(data.get("collectionId", "sessions")).strip() or "sessions"
+                self._json(HTTPStatus.ACCEPTED, {"job": self.state.start_rag_indexing(reference)})
+            elif path == "/api/rag/cancel":
+                self._json(HTTPStatus.ACCEPTED, {"job": self.state.rag_jobs.cancel()})
+            elif path == "/api/rag/dismiss":
+                self._json(HTTPStatus.OK, {"job": self.state.rag_jobs.dismiss_completed()})
+            elif path == "/api/rag/delete":
+                self.state.delete_rag_collection(str(data.get("collectionId", "")).strip())
                 self._json(HTTPStatus.OK, {"ok": True})
             elif path == "/api/mascots/select":
                 self._select_mascot(str(data.get("id", "")))
@@ -448,6 +635,10 @@ class WebUIHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.FORBIDDEN, {"error": str(exc)})
         except LookupError as exc:
             self._json(HTTPStatus.GONE, {"error": str(exc)})
+        except FileNotFoundError as exc:
+            self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+        except RuntimeError as exc:
+            self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
         except Exception as exc:
@@ -539,7 +730,9 @@ class EnchanWebServer(ThreadingHTTPServer):
                     self._clients.pop(client_id, None)
                     self.state.approvals.cancel_client(client_id)
                 if self._ever_had_client and not self._clients:
-                    if self._empty_since is None:
+                    if self.state.rag_jobs.is_busy():
+                        self._empty_since = None
+                    elif self._empty_since is None:
                         self._empty_since = now
                     elif now - self._empty_since >= 5:
                         should_shutdown = True
@@ -552,6 +745,8 @@ class EnchanWebServer(ThreadingHTTPServer):
     def server_close(self) -> None:
         self._watchdog_stop.set()
         self.state.approvals.cancel_all("server_shutdown")
+        if self.state.rag_jobs.is_busy():
+            self.state.rag_jobs.cancel()
         super().server_close()
 
 

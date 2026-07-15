@@ -6,6 +6,7 @@
   <title>Enchan</title>
   <script>try{document.documentElement.dataset.theme=localStorage.getItem("enchan.webui.theme")||"enchan-dark"}catch(_){document.documentElement.dataset.theme="enchan-dark"}</script>
   <link rel="stylesheet" href="/vendor/webawesome/select.css">
+  <link rel="stylesheet" href="/vendor/webawesome/scroll-lock.css">
   <link rel="stylesheet" href="/assets/css/styles.css">
   <link rel="stylesheet" href="/assets/css/themes.css">
   <link rel="stylesheet" href="/assets/css/status.css">
@@ -15,6 +16,7 @@
     <div class="brand"><div><strong>Enchan</strong><small id="runtime">Local</small></div></div>
     <nav>
       <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/assets/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
+      <button class="header-command" id="ragToggle" type="button" aria-controls="ragPanel" aria-expanded="false" data-i18n-title="rag.open"><span>RAG</span></button>
       <button class="icon-button appearance-trigger" id="appearanceSettings" data-i18n-title="header.appearance"><span aria-hidden="true">Aa</span></button>
       <button class="icon-button" id="settings" data-i18n-title="header.mascotSettings"><img src="/assets/icons/settings.svg" alt=""></button>
       <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="backendStatusText"></span></span>
@@ -25,6 +27,28 @@
       <div class="welcome" id="welcome"><h1 data-i18n="welcome.title"></h1><p data-i18n="welcome.body"></p></div>
     </section>
   </main>
+  <aside id="ragPanel" class="rag-panel" aria-hidden="true">
+    <div class="rag-panel-head">
+      <div><h2>RAG</h2><p data-i18n="rag.subtitle"></p></div>
+      <button class="icon-button" id="ragClose" type="button" data-i18n-title="common.close"><img src="/assets/icons/close.svg" alt=""></button>
+    </div>
+    <div class="rag-panel-body">
+      <p class="rag-warning" data-i18n="rag.warning"></p>
+      <section id="ragJob" class="rag-job" hidden aria-live="polite">
+        <div class="rag-job-line"><div class="rag-job-heading"><strong id="ragJobCollection"></strong><span id="ragJobState"></span></div><div class="rag-job-tools"><span id="ragJobPercent"></span><button id="ragDismiss" class="icon-button rag-dismiss" type="button" hidden data-i18n-title="rag.dismissStatus"><img src="/assets/icons/close.svg" alt=""></button></div></div>
+        <progress id="ragProgress" max="100" value="0"></progress>
+        <p id="ragJobMessage"></p>
+        <dl><dt data-i18n="rag.elapsed"></dt><dd id="ragElapsed">—</dd><dt data-i18n="rag.eta"></dt><dd id="ragEta">—</dd></dl>
+        <button id="ragCancel" class="secondary rag-cancel" type="button" data-i18n="rag.cancel"></button>
+      </section>
+      <section class="rag-sources">
+        <div class="rag-section-head"><h3 data-i18n="rag.sources"></h3><button id="ragRefresh" type="button" class="rag-text-button" data-i18n="rag.refresh"></button></div>
+        <div id="ragCollections" class="rag-collections"></div>
+      </section>
+      <button id="ragAdd" class="secondary rag-add" type="button" data-i18n="rag.newRegistration"></button>
+      <p id="ragError" class="rag-error" role="alert"></p>
+    </div>
+  </aside>
   <div class="composer-wrap">
     <div class="composer-row">
       <div class="mascot-track" id="mascotStage" hidden>
@@ -39,9 +63,36 @@
     </div>
     <small data-i18n="composer.toolNotice"></small>
   </div>
-  <dialog id="appearanceDialog" class="appearance-dialog">
-    <form method="dialog" class="dialog-head"><div><h2 data-i18n="appearance.title"></h2><p data-i18n="appearance.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/assets/icons/close.svg" alt=""></button></form>
-    <div class="appearance-body">
+  <wa-dialog id="confirmationDialog" class="enchan-dialog confirmation-dialog" label="Enchan">
+    <div class="enchan-dialog-body confirmation-content">
+      <span id="confirmationBadge" class="approval-badge">Enchan</span>
+      <p id="confirmationTarget" class="confirmation-target"></p>
+      <p id="confirmationMessage" class="confirmation-message"></p>
+    </div>
+    <div slot="footer" class="enchan-dialog-actions confirmation-actions">
+      <button id="confirmationAccept" class="primary" type="button" autofocus></button>
+      <button id="confirmationCancel" class="secondary" type="button" data-i18n="rag.cancelRegistration"></button>
+    </div>
+  </wa-dialog>
+  <wa-dialog id="ragRegisterDialog" class="enchan-dialog rag-register-dialog">
+    <span slot="label" data-i18n="rag.dialogTitle"></span>
+    <div class="enchan-dialog-body">
+      <p class="dialog-description" data-i18n="rag.dialogSubtitle"></p>
+      <form id="ragRegisterForm" class="rag-register-form">
+        <input id="ragCollectionId" type="hidden">
+        <label><span data-i18n="rag.titleLabel"></span><input id="ragTitle" required maxlength="120" autofocus data-i18n-placeholder="rag.titlePlaceholder"></label>
+        <label><span data-i18n="rag.descriptionLabel"></span><textarea id="ragDescription" required maxlength="500" rows="4" data-i18n-placeholder="rag.descriptionPlaceholder"></textarea></label>
+        <label><span data-i18n="rag.directoryLabel"></span></label>
+        <div class="rag-directory-row"><input id="ragDirectory" readonly required data-i18n-placeholder="rag.noDirectory"><button id="ragBrowse" class="secondary" type="button" data-i18n="rag.selectDirectory"></button></div>
+        <p id="ragRegisterError" class="rag-error" role="alert"></p>
+      </form>
+    </div>
+    <div slot="footer" class="enchan-dialog-actions"><button id="ragRegisterSubmit" class="primary" type="submit" form="ragRegisterForm" data-i18n="rag.register"></button><button class="secondary" type="button" data-dialog="close" data-i18n="rag.cancelRegistration"></button></div>
+  </wa-dialog>
+  <wa-dialog id="appearanceDialog" class="enchan-dialog appearance-dialog">
+    <span slot="label" data-i18n="appearance.title"></span>
+    <div class="enchan-dialog-body appearance-body">
+      <p class="dialog-description" data-i18n="appearance.subtitle"></p>
       <section class="appearance-section">
         <h3 data-i18n="appearance.language.title"></h3>
         <p class="appearance-intro" data-i18n="appearance.language.description"></p>
@@ -74,12 +125,14 @@
       </section>
       <p class="appearance-note" data-i18n="appearance.note"></p>
     </div>
-  </dialog>
-  <dialog id="mascotDialog">
-    <form method="dialog" class="dialog-head"><div><h2 data-i18n="mascot.title"></h2><p data-i18n="mascot.subtitle"></p></div><button class="icon-button" value="cancel" data-i18n-title="common.close"><img src="/assets/icons/close.svg" alt=""></button></form>
-    <div class="settings-grid">
-      <section><div id="mascotList" class="mascot-list"></div><button id="addMascot" class="secondary" type="button" data-i18n="mascot.add"></button></section>
-      <form id="mascotForm" class="mascot-form">
+  </wa-dialog>
+  <wa-dialog id="mascotDialog" class="enchan-dialog mascot-dialog">
+    <span slot="label" data-i18n="mascot.title"></span>
+    <div class="enchan-dialog-body mascot-dialog-body">
+      <p class="dialog-description" data-i18n="mascot.subtitle"></p>
+      <div class="settings-grid">
+        <section><div id="mascotList" class="mascot-list"></div><button id="addMascot" class="secondary" type="button" data-i18n="mascot.add"></button></section>
+        <form id="mascotForm" class="mascot-form">
         <label><span data-i18n="mascot.id"></span><input id="mascotId" required pattern="[a-z0-9][a-z0-9_-]{0,47}"></label>
         <label><span data-i18n="mascot.name"></span><input id="mascotEditName" required maxlength="80"></label>
         <label><span data-i18n="mascot.description"></span><input id="mascotDescription" maxlength="240"></label>
@@ -106,25 +159,24 @@
           </div>
         </div>
         <div id="sheetError" class="sheet-error" role="alert"></div>
-        <button class="primary" type="submit" data-i18n="mascot.saveAndSelect"></button>
-      </form>
+        </form>
+      </div>
     </div>
-  </dialog>
-  <dialog id="approvalDialog" class="approval-dialog" aria-labelledby="approvalTitle" aria-describedby="approvalDescription">
-    <div class="approval-head">
+    <div slot="footer" class="enchan-dialog-actions"><button class="primary" type="submit" form="mascotForm" data-i18n="mascot.saveAndSelect"></button></div>
+  </wa-dialog>
+  <wa-dialog id="approvalDialog" class="enchan-dialog approval-dialog" aria-describedby="approvalDescription">
+    <span slot="label" data-i18n="approval.title"></span>
+    <div class="enchan-dialog-body approval-body">
       <span class="approval-badge" data-i18n="approval.badge"></span>
-      <h2 id="approvalTitle" data-i18n="approval.title"></h2>
       <p id="approvalDescription" data-i18n="approval.description"></p>
-    </div>
-    <div class="approval-body">
       <p id="approvalSummary" class="approval-summary"></p>
       <dl id="approvalDetails" class="approval-details"></dl>
     </div>
-    <div class="approval-actions">
+    <div slot="footer" class="enchan-dialog-actions approval-actions">
       <button id="approvalAllow" class="primary approval-allow" type="button" data-i18n="approval.allow"></button>
       <button id="approvalDeny" class="secondary approval-deny" type="button" data-i18n="approval.deny"></button>
     </div>
-  </dialog>
+  </wa-dialog>
   <script src="/assets/js/initial-scroll.js"></script>
   <script src="/assets/js/i18n.js"></script>
   <script src="/assets/js/app.js"></script>

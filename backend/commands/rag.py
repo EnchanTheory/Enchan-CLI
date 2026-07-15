@@ -86,11 +86,8 @@ def handle_rag(user_input: str, file_context: str, **kwargs) -> tuple[bool, str,
             if len(parts) < 3:
                 raise ValueError("Usage: /rag add <directory>")
             collection = service.register_directory(" ".join(parts[2:]))
-            print(f"[RAG] Registered {collection['name']} ({collection['id']}). Indexing now.")
-            stats = _rebuild_with_progress(service, collection["id"], generation_config)
-            print(f"[RAG] Ready: {stats['file_count']} files, {stats['chunk_count']} chunks; {stats.get('analyzed_count', 0)} analyzed, {stats.get('reused_count', 0)} reused.")
-            for diagnostic in stats.get("diagnostics", [])[:10]:
-                print(f"  - {diagnostic}")
+            print(f"[RAG] Registered {collection['name']} ({collection['id']}).")
+            print(f"[RAG] Indexing is manual and may take a long time. Run /rag rebuild {collection['id']} when ready.")
         elif action == "rebuild":
             reference = parts[2] if len(parts) > 2 else "sessions"
             if reference.lower() in {"all", "*"}:

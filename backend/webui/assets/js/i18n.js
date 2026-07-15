@@ -88,9 +88,17 @@
 
   function onChange(listener){listeners.add(listener);return()=>listeners.delete(listener)}
 
+  function getDialog(target){
+    const dialog=typeof target==="string"?document.getElementById(target):target;
+    if(!dialog||dialog.localName!=="wa-dialog")throw new Error(`Unknown Enchan dialog: ${target}`);
+    return dialog;
+  }
+  function openDialog(target){const dialog=getDialog(target);dialog.open=true;return dialog}
+  function closeDialog(target){const dialog=getDialog(target);dialog.open=false;return dialog}
+
   const ready=(async()=>{
-    await import("/vendor/webawesome/select.js");
-    await Promise.all([customElements.whenDefined("wa-select"),customElements.whenDefined("wa-option")]);
+    await import("/vendor/webawesome/components.js");
+    await Promise.all([customElements.whenDefined("wa-select"),customElements.whenDefined("wa-option"),customElements.whenDefined("wa-dialog")]);
     manifest=await loadManifest();
     locale=manifest.default;
     fallback=await fetchJson(`/locales/${localeEntry(manifest.default).file}`);
@@ -107,4 +115,5 @@
   });
 
   window.EnchanI18n={ready,t,apply,setLocale,onChange,get locale(){return locale},get supported(){return manifest.locales.map(entry=>entry.code)}};
+  window.EnchanDialogs={open:openDialog,close:closeDialog};
 })();

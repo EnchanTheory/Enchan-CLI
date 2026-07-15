@@ -244,10 +244,9 @@ def run_chat_loop(
                 memory_context = load_memory_context()
                 agent_system_prompt = get_agent_system_prompt()
                 system_context = build_memory_prompt_section(memory_context)
-                if system_context:
-                     generation_config["system_context"] = f"{agent_system_prompt}{system_context}"
-                else:
-                     generation_config["system_context"] = agent_system_prompt
+                from backend.rag.service import get_default_service
+                rag_context = get_default_service().build_prompt_section()
+                generation_config["system_context"] = f"{agent_system_prompt}{system_context}{rag_context}"
 
             if backend_mode == "enchan":
                 input_length = count_text_tokens(tokenizer, current_prompt) if tokenizer is not None else estimate_text_tokens_rough(current_prompt)

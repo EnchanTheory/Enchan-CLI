@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +77,16 @@ class RAGStore:
     def load_collection(self, collection_id: str) -> dict[str, Any] | None:
         data = self.load_json(collection_id, "collection.json")
         return data if isinstance(data, dict) else None
+
+    def delete_collection(self, collection_id: str) -> None:
+        target = self.collection_dir(collection_id).resolve(strict=False)
+        root = self.collections_dir.resolve(strict=False)
+        if target.parent != root:
+            raise ValueError("Invalid RAG collection path")
+        if target.exists():
+            shutil.rmtree(target)
+        self._json_cache = {key: value for key, value in self._json_cache.items() if key[0] != collection_id}
+        self._chunks_cache.pop(collection_id, None)
 
     def list_collections(self) -> list[dict[str, Any]]:
         if not self.collections_dir.exists():

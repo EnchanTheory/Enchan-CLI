@@ -1,7 +1,8 @@
 window.EnchanI18n.ready.then(()=>{
 const $=id=>document.getElementById(id);
 const {t}=window.EnchanI18n;
-const state={config:null,mascot:null,timer:null,frame:0,busy:false,imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null};
+const dialogs=window.EnchanDialogs;
+const state={config:null,mascot:null,timer:null,frame:0,busy:false,ragBusy:false,ragStatus:null,imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null,pendingConfirmation:null};
 const messages=$("messages"),welcome=$("welcome"),prompt=$("prompt"),send=$("send");
 
 const clientId=crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -15,7 +16,9 @@ window.addEventListener("beforeunload",closeClient);
 
 async function api(path,body){
   const response=await fetch(path,{method:body?"POST":"GET",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined});
-  const data=await response.json();
+  const raw=await response.text();let data;
+  try{data=raw?JSON.parse(raw):{}}
+  catch(_){throw new Error(response.ok?"The local API returned an invalid response.":t("errors.backendOutOfDate",{status:response.status}))}
   if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
   return data;
 }
@@ -32,7 +35,7 @@ async function api(path,body){
       details.append(term,value);
     }
     $("approvalAllow").disabled=false;$("approvalDeny").disabled=false;
-    const dialog=$("approvalDialog");if(!dialog.open)dialog.showModal();
+    const dialog=$("approvalDialog");if(!dialog.open)dialogs.open(dialog);
     $("approvalDeny").focus();play("review",{loop:true});
   }
   async function resolveApproval(approved){
@@ -40,11 +43,11 @@ async function api(path,body){
     $("approvalAllow").disabled=true;$("approvalDeny").disabled=true;
     state.pendingApproval=null;
     try{await api(`/api/approvals/${encodeURIComponent(request.id)}`,{clientId,approved})}
-    finally{if($("approvalDialog").open)$("approvalDialog").close()}
+    finally{if($("approvalDialog").open)dialogs.close("approvalDialog")}
   }
   $("approvalAllow").onclick=()=>resolveApproval(true);
   $("approvalDeny").onclick=()=>resolveApproval(false);
-  $("approvalDialog").addEventListener("cancel",event=>{event.preventDefault();resolveApproval(false)});
+  $("approvalDialog").addEventListener("wa-after-hide",()=>{if(state.pendingApproval)resolveApproval(false)});
 const ghost=document.createElement("div");
 ghost.style.cssText="position:absolute;visibility:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:22px;padding:9px 2px 7px;border:0;box-sizing:border-box;word-break:break-all;";
 document.body.appendChild(ghost);
@@ -57,7 +60,9 @@ function resize(){
   const h=Math.min(Math.max(ghost.offsetHeight,40),180);
   prompt.style.height=h+"px";
   prompt.style.overflowY=ghost.offsetHeight>180?"auto":"hidden";
-  send.disabled=state.busy||!val.trim();
+  prompt.disabled=state.ragBusy;
+  prompt.placeholder=state.ragBusy?t("rag.chatDisabled"):t("composer.placeholder");
+  send.disabled=state.busy||state.ragBusy||!val.trim();
 }
 function renderMarkdown(text){
   if(!text)return"";let html=text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -95,6 +100,70 @@ function play(name,{loop=false,resume=true,restart=true}={}){
   state.frame=0;const tick=()=>{const index=frames[state.frame];drawFrame(index);const duration=durations[state.frame]||140;state.frame++;if(state.frame>=frames.length){if(loop||name==="idle"){state.frame=0}else{state.timer=setTimeout(()=>{if(token===state.animationToken&&resume)play(restingAnimation(),{loop:state.busy})},duration);return}}state.timer=setTimeout(()=>{if(token===state.animationToken)tick()},duration)};tick();
 }
 async function loadConfig(){state.config=await api("/api/config");$("runtime").textContent=`${state.config.model} · ${state.config.backend}`;applyMascot();renderMascotList()}
+function formatDuration(value){
+  if(value===null||value===undefined||!Number.isFinite(Number(value)))return t("rag.calculating");
+  const seconds=Math.max(0,Math.round(Number(value)));if(seconds<60)return t("rag.seconds",{count:seconds});
+  const minutes=Math.floor(seconds/60),rest=seconds%60;if(minutes<60)return t("rag.minutes",{minutes,seconds:rest});
+  return t("rag.hours",{hours:Math.floor(minutes/60),minutes:minutes%60});
+}
+function ragStateLabel(value){return t(`rag.jobState.${value}`,{},value||t("rag.jobState.idle"))}
+function ragCollectionLabel(value){return t(`rag.collectionStatus.${value}`,{},value||"registered")}
+function ragCollectionName(collection){return collection?.source_type==="sessions"?t("rag.sessionsName"):collection?.name}
+function setRagPanel(open){
+  $("ragPanel").classList.toggle("open",open);$("ragPanel").setAttribute("aria-hidden",String(!open));$("ragToggle").setAttribute("aria-expanded",String(open));document.body.classList.toggle("rag-open",open);localStorage.setItem("enchan.rag.open",open?"1":"0");
+}
+function renderRagStatus(data){
+  state.ragStatus=data;const job=data.job||{};state.ragBusy=["running","stopping"].includes(job.state);resize();
+  const jobBox=$("ragJob");jobBox.hidden=!job.collectionId;
+  if(job.collectionId){
+    const target=(data.collections||[]).find(collection=>collection.id===job.collectionId);$("ragJobCollection").textContent=ragCollectionName(target)||job.collectionName||job.collectionId;$("ragJobState").textContent=ragStateLabel(job.state);$("ragJobPercent").textContent=`${Math.round(job.percent||0)}%`;$("ragProgress").value=job.percent||0;$("ragJobMessage").textContent=job.message||"";$("ragElapsed").textContent=formatDuration(job.elapsedSeconds);$("ragEta").textContent=job.state==="completed"?t("rag.complete"):formatDuration(job.etaSeconds);$("ragCancel").hidden=!state.ragBusy;$("ragCancel").disabled=job.state==="stopping";$("ragDismiss").hidden=job.state!=="completed";
+  }
+  const list=$("ragCollections");list.replaceChildren();
+  for(const collection of data.collections||[]){
+    const card=document.createElement("article");card.className="rag-collection";
+    const name=ragCollectionName(collection);const head=document.createElement("div");head.className="rag-collection-head";const title=document.createElement("h4");title.textContent=name;head.append(title);if(collection.status==="ready"||collection.status==="stale"){const badge=document.createElement("span");badge.className="rag-badge";badge.textContent=ragCollectionLabel(collection.status);head.append(badge)}
+    const description=document.createElement("p");description.className="rag-description";description.textContent=collection.source_type==="sessions"?t("rag.sessionsDescription"):(collection.description||t("rag.noDescription"));
+    const path=document.createElement("p");path.className="rag-path";path.textContent=collection.source_path;
+    const status=document.createElement("p");status.className="rag-collection-status";status.textContent=`${ragCollectionLabel(collection.status)} · ${collection.chunk_count||0} ${t("rag.chunks")}`;
+    const actions=document.createElement("div");actions.className="rag-actions";
+    const start=document.createElement("button");start.type="button";start.className="primary";const resumable=!!collection.job?.canResume;start.textContent=resumable?t("rag.resume"):(collection.status==="ready"?t("rag.rebuild"):t("rag.start"));start.disabled=state.ragBusy||collection.source_missing;start.onclick=()=>startRag(collection.id,name,resumable);actions.append(start);
+    if(!collection.required){const edit=document.createElement("button");edit.type="button";edit.className="secondary";edit.textContent=t("rag.edit");edit.disabled=state.ragBusy;edit.onclick=()=>openRagRegistration(collection);actions.append(edit);const remove=document.createElement("button");remove.type="button";remove.className="secondary";remove.textContent=t("common.remove");remove.disabled=state.ragBusy;remove.onclick=()=>deleteRag(collection.id,name);actions.append(remove)}
+    card.append(head,description,path,status,actions);list.append(card);
+  }
+}
+let ragRequestActive=false;
+async function loadRagStatus({showError=false}={}){
+  if(ragRequestActive)return;ragRequestActive=true;
+  try{renderRagStatus(await api("/api/rag/status"));if(showError)$("ragError").textContent=""}catch(error){if(showError)$("ragError").textContent=t("errors.request",{message:error.message})}finally{ragRequestActive=false}
+}
+function confirmAction({label,message,target="",badge="Enchan",danger=false}){
+  if(state.pendingConfirmation)return Promise.resolve(false);
+  const dialog=$("confirmationDialog"),accept=$("confirmationAccept"),targetElement=$("confirmationTarget");
+  dialog.label=label;$("confirmationBadge").textContent=badge;targetElement.textContent=target;targetElement.hidden=!target;$("confirmationMessage").textContent=message;accept.textContent=label;accept.classList.toggle("danger",danger);
+  return new Promise(resolve=>{state.pendingConfirmation=resolve;dialogs.open(dialog)});
+}
+function resolveConfirmation(confirmed){
+  const resolve=state.pendingConfirmation;if(!resolve)return;
+  state.pendingConfirmation=null;dialogs.close("confirmationDialog");resolve(confirmed);
+}
+async function startRag(collectionId,name,resume){
+  if(!await confirmAction({label:t(resume?"rag.resume":"rag.start"),message:t(resume?"rag.confirmResume":"rag.confirmStart"),target:name,badge:"RAG"}))return;$("ragError").textContent="";
+  try{await api("/api/rag/start",{collectionId});await loadRagStatus({showError:true})}catch(error){$("ragError").textContent=t("errors.request",{message:error.message})}
+}
+async function deleteRag(collectionId,name){
+  if(!await confirmAction({label:t("common.remove"),message:t("rag.confirmDelete",{name}),target:name,badge:"RAG",danger:true}))return;
+  try{await api("/api/rag/delete",{collectionId});await loadRagStatus({showError:true})}catch(error){$("ragError").textContent=t("errors.request",{message:error.message})}
+}
+function openRagRegistration(collection=null){
+  const editing=!!collection;$("ragCollectionId").value=collection?.id||"";$("ragTitle").value=collection?.name||"";$("ragDescription").value=collection?.description||"";$("ragDirectory").value=collection?.source_path||"";$("ragBrowse").hidden=editing;$("ragRegisterSubmit").textContent=t(editing?"rag.save":"rag.register");$("ragRegisterError").textContent="";dialogs.open("ragRegisterDialog");
+}
+async function selectRagDirectory(){
+  const button=$("ragBrowse");button.disabled=true;$("ragRegisterError").textContent="";
+  try{
+    const result=await api("/api/rag/select-directory",{});
+    if(!result.cancelled&&result.path){$("ragDirectory").value=result.path;if(!$("ragTitle").value.trim())$("ragTitle").value=result.path.split(/[\\/]/).filter(Boolean).pop()||"RAG"}
+  }catch(error){$("ragRegisterError").textContent=t("errors.request",{message:error.message})}finally{button.disabled=false}
+}
 function renderMascotList(){
   const list=$("mascotList");list.replaceChildren();
   for(const mascot of state.config.mascots){
@@ -143,7 +212,7 @@ $("composer").addEventListener("submit",async event=>{
         if(data.type==="approval_resolved"){
           if(state.pendingApproval?.id===data.requestId){
             state.pendingApproval=null;
-            if($("approvalDialog").open)$("approvalDialog").close();
+            if($("approvalDialog").open)dialogs.close("approvalDialog");
             play(state.config?.agentMode?"running":"waiting",{loop:true});
           }
           continue;
@@ -175,18 +244,33 @@ $("composer").addEventListener("submit",async event=>{
 });
 prompt.addEventListener("input",resize);prompt.addEventListener("keydown",e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("composer").requestSubmit()}});
 $("newChat").onclick=async()=>{
+  if(!await confirmAction({label:t("header.newChat"),message:t("header.newChatConfirm")}))return;
   if(state.pendingApproval)await resolveApproval(false).catch(()=>{});
   await api("/api/new",{clientId});
   [...messages.querySelectorAll(".message")].forEach(element=>element.remove());
   welcome.hidden=false;
+  window.dispatchEvent(new CustomEvent("enchan:new-chat"));
   play("jumping");
 };
-$("settings").onclick=()=>{$("mascotDialog").showModal();editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};
+$("ragToggle").onclick=()=>setRagPanel(!$("ragPanel").classList.contains("open"));
+$("ragClose").onclick=()=>setRagPanel(false);
+$("ragRefresh").onclick=()=>loadRagStatus({showError:true});
+$("ragCancel").onclick=async()=>{try{await api("/api/rag/cancel",{});await loadRagStatus({showError:true})}catch(error){$("ragError").textContent=t("errors.request",{message:error.message})}};
+$("ragDismiss").onclick=async()=>{try{await api("/api/rag/dismiss",{});await loadRagStatus({showError:true})}catch(error){$("ragError").textContent=t("errors.request",{message:error.message})}};
+$("ragAdd").onclick=openRagRegistration;
+$("confirmationAccept").onclick=()=>resolveConfirmation(true);
+$("confirmationCancel").onclick=()=>resolveConfirmation(false);
+$("confirmationDialog").addEventListener("wa-after-hide",()=>resolveConfirmation(false));
+$("ragBrowse").onclick=selectRagDirectory;
+$("ragRegisterForm").onsubmit=async event=>{event.preventDefault();const collectionId=$("ragCollectionId").value.trim(),title=$("ragTitle").value.trim(),description=$("ragDescription").value.trim(),path=$("ragDirectory").value.trim();if(!title||!description||(!collectionId&&!path)){$("ragRegisterError").textContent=t("rag.registrationRequired");return}try{await api(collectionId?"/api/rag/update":"/api/rag/register",collectionId?{collectionId,title,description}:{title,description,path});dialogs.close("ragRegisterDialog");await loadRagStatus({showError:true})}catch(error){$("ragRegisterError").textContent=t("errors.request",{message:error.message})}};
+$("settings").onclick=()=>{dialogs.open("mascotDialog");editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};
 $("addMascot").onclick=()=>editMascot(null);
 $("mascotImage").onchange=async e=>{const file=e.target.files[0];if(!file)return;const url=URL.createObjectURL(file);previewImage=new Image();await new Promise((resolve,reject)=>{previewImage.onload=resolve;previewImage.onerror=reject;previewImage.src=url});URL.revokeObjectURL(url);const validationError=validatePetSheet(previewImage);$("sheetError").textContent=validationError;if(validationError){e.target.value="";state.imageData="";return}state.imageData=await new Promise(resolve=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(file)});$("sheetPreviewText").hidden=true;$("livePreviewCanvas").hidden=false;$("previewAnimSelect").hidden=false;clearTimeout(state.previewTimer);updatePreviewCanvas()};
-$("mascotForm").onsubmit=async e=>{e.preventDefault();try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();$("mascotDialog").close();play("waving")}catch(error){alert(t("errors.request",{message:error.message}))}};
-$("mascotDialog").addEventListener("close",()=>{clearTimeout(state.previewTimer);state.previewTimer=null});
-loadConfig().catch(error=>addMessage("assistant",t("errors.init",{message:error.message}),true));resize();prompt.focus();
+$("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textContent="";try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();dialogs.close("mascotDialog");play("waving")}catch(error){$("sheetError").textContent=t("errors.request",{message:error.message})}};
+$("mascotDialog").addEventListener("wa-after-hide",()=>{clearTimeout(state.previewTimer);state.previewTimer=null});
+setRagPanel(localStorage.getItem("enchan.rag.open")==="1");
+window.EnchanI18n.onChange(()=>{if(state.ragStatus)renderRagStatus(state.ragStatus)});
+loadConfig().then(()=>loadRagStatus({showError:true})).catch(error=>addMessage("assistant",t("errors.init",{message:error.message}),true));setInterval(()=>loadRagStatus(),1500);resize();prompt.focus();
 
 const mascotStage=document.querySelector(".mascot-stage");const mascotTrack=document.querySelector(".mascot-track");let mascotDragging=false,mascotGrabOffset=0,mascotLastPointerX=0;const mascotPositionKey="enchan.mascot.position";
 function clampMascotPosition(value){return Math.max(0,Math.min(value,Math.max(0,mascotTrack.clientWidth-mascotStage.offsetWidth)))}

@@ -1,6 +1,5 @@
 (()=>{
   const composer=document.getElementById("composer");
-  const newChat=document.getElementById("newChat");
   if(!composer)return;
 
   const originalScrollTo=window.scrollTo.bind(window);
@@ -19,5 +18,5 @@
     requestAnimationFrame(()=>requestAnimationFrame(()=>{suppressInitialScroll=false}));
   },true);
 
-  newChat?.addEventListener("click",()=>{isFirstMessage=true},true);
+  window.addEventListener("enchan:new-chat",()=>{isFirstMessage=true});
 })();

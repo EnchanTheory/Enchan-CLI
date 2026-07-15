@@ -76,6 +76,6 @@ window.EnchanI18n.ready.then(()=>{
   blur?.addEventListener("input",()=>{backgroundSettings.blur=clamp(Number(blur.value),0,12);saveBackgroundSettings();applyBackground()});
   position?.addEventListener("change",()=>{backgroundSettings.position=position.value;saveBackgroundSettings();applyBackground()});
 
-  const saved=localStorage.getItem(THEME_KEY);root.dataset.theme=saved||FALLBACK_THEME;openButton.addEventListener("click",()=>dialog.showModal());window.addEventListener("pagehide",()=>{if(backgroundUrl)URL.revokeObjectURL(backgroundUrl)});onChange(()=>{renderThemes();applyBackground()});loadManifest();loadBackground();
+  const saved=localStorage.getItem(THEME_KEY);root.dataset.theme=saved||FALLBACK_THEME;openButton.addEventListener("click",()=>window.EnchanDialogs.open(dialog));window.addEventListener("pagehide",()=>{if(backgroundUrl)URL.revokeObjectURL(backgroundUrl)});onChange(()=>{renderThemes();applyBackground()});loadManifest();loadBackground();
 })();
 });

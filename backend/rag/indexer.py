@@ -15,6 +15,10 @@ from backend.rag.structure import STRUCTURE_VERSION, build_semantic_graph
 ProgressCallback = Callable[[dict[str, Any]], None]
 
 
+class RAGIndexCancelled(RuntimeError):
+    """Raised after an in-progress structure checkpoint has been saved."""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -26,6 +30,7 @@ def _emit_progress(
     total: int,
     percent: float,
     message: str,
+    **details: Any,
 ) -> None:
     if callback is not None:
         callback({
@@ -34,6 +39,7 @@ def _emit_progress(
             "total": total,
             "percent": max(0.0, min(100.0, percent)),
             "message": message,
+            **details,
         })
 
 
@@ -61,6 +67,7 @@ def _make_chunk(document: dict[str, Any], text: str, line_start: int, line_end: 
 STRUCTURE_CHARS = 12_000
 SEARCH_CHARS = 1_500
 SEARCH_STRIDE = 500
+STRUCTURE_CACHE_CHECKPOINT_INTERVAL = 25
 
 
 def _offset_chunk(
@@ -169,6 +176,7 @@ class RAGIndexer:
         force: bool = False,
         progress: ProgressCallback | None = None,
         analyzer: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        should_cancel: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         collection_id = collection["id"]
         _emit_progress(progress, "scan", 0, 1, 0.0, "Scanning source files")
@@ -212,17 +220,53 @@ class RAGIndexer:
         cached = cached_payload.get("chunks", {}) if cached_payload.get("version") == STRUCTURE_VERSION else {}
         structures: dict[str, Any] = {}
         analyzed_count = 0
+        analysis_attempted_count = 0
+        analysis_failed_count = 0
         reused_count = 0
+        pending_cache_updates = 0
+        analysis_total = sum(
+            1 for unit in structure_units
+            if analyzer is not None and not (isinstance(cached.get(unit["id"]), dict) and cached.get(unit["id"]))
+        )
+
+        def save_structure_checkpoint() -> None:
+            self.store.save_json(
+                collection_id,
+                "structure_cache.json",
+                {"version": STRUCTURE_VERSION, "chunks": {**cached, **structures}},
+            )
+
+        def stop_if_requested(position: int) -> None:
+            if should_cancel is None or not should_cancel():
+                return
+            save_structure_checkpoint()
+            _emit_progress(
+                progress,
+                "interrupted",
+                position,
+                len(structure_units),
+                45.0 + (position / max(1, len(structure_units))) * 35.0,
+                "Indexing interrupted; structure checkpoint saved",
+                analysis_current=analysis_attempted_count,
+                analysis_total=analysis_total,
+                reused_count=reused_count,
+                failed_count=analysis_failed_count,
+            )
+            raise RAGIndexCancelled("RAG indexing interrupted after saving a structure checkpoint")
+
         for position, unit in enumerate(structure_units, 1):
+            stop_if_requested(position - 1)
             chunk_id = unit["id"]
             structure = cached.get(chunk_id)
             if isinstance(structure, dict) and structure:
                 reused_count += 1
             elif analyzer is not None:
+                analysis_attempted_count += 1
                 try:
                     structure = analyzer(unit)
                     analyzed_count += 1
                 except Exception as exc:
+                    analysis_failed_count += 1
                     diagnostics.append(f"Structure analysis failed for {chunk_id}: {exc}")
                     structure = {}
             else:
@@ -231,13 +275,24 @@ class RAGIndexer:
             if structure:
                 structures[chunk_id] = structure
                 if analyzer is not None and chunk_id not in cached:
-                    self.store.save_json(
-                        collection_id,
-                        "structure_cache.json",
-                        {"version": STRUCTURE_VERSION, "chunks": structures},
-                    )
+                    pending_cache_updates += 1
+                    if pending_cache_updates >= STRUCTURE_CACHE_CHECKPOINT_INTERVAL:
+                        save_structure_checkpoint()
+                        pending_cache_updates = 0
             ratio = position / max(1, len(structure_units))
-            _emit_progress(progress, "structure", position, len(structure_units), 45.0 + ratio * 35.0, f"Structuring parent chunks ({position}/{len(structure_units)})")
+            _emit_progress(
+                progress,
+                "structure",
+                position,
+                len(structure_units),
+                45.0 + ratio * 35.0,
+                f"Structuring parent chunks ({position}/{len(structure_units)})",
+                analysis_current=analysis_attempted_count,
+                analysis_total=analysis_total,
+                reused_count=reused_count,
+                failed_count=analysis_failed_count,
+            )
+            stop_if_requested(position)
 
         for chunk in chunks:
             structure_id = chunk.get("metadata", {}).get("structure_id")
@@ -278,4 +333,4 @@ class RAGIndexer:
         })
         self.store.save_collection(collection)
         _emit_progress(progress, "done", 1, 1, 100.0, f"Indexed {len(chunks)} chunks")
-        return {"changed": True, "source_missing": False, "file_count": collection["indexed_file_count"], "chunk_count": len(chunks), "structure_unit_count": len(structure_units), "analyzed_count": analyzed_count, "reused_count": reused_count, "diagnostics": diagnostics}
+        return {"changed": True, "source_missing": False, "file_count": collection["indexed_file_count"], "chunk_count": len(chunks), "structure_unit_count": len(structure_units), "analysis_attempted_count": analysis_attempted_count, "analyzed_count": analyzed_count, "analysis_failed_count": analysis_failed_count, "reused_count": reused_count, "diagnostics": diagnostics}
