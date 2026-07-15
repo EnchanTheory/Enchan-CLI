@@ -10,7 +10,7 @@ import struct
 import threading
 import time
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,6 +20,7 @@ from urllib.parse import unquote, urlparse
 from backend.agent_tools import get_agent_system_prompt
 from backend.context_compression import count_text_tokens
 from backend.memory_store import build_memory_prompt_section, load_memory_context
+from backend.approval import ApprovalDecision, ApprovalRequest, approval_scope
 from backend.session_log import append_session_event
 from backend.tokenizer_bridge import estimate_text_tokens_rough
 
@@ -95,6 +96,75 @@ def _image_dimensions(raw: bytes, image_type: str) -> tuple[int, int]:
                     int.from_bytes(raw[28:30], "little") & 0x3FFF)
     raise ValueError("Could not read spritesheet dimensions")
 
+@dataclass
+class _PendingApproval:
+    request: ApprovalRequest
+    client_id: str
+    event: threading.Event = field(default_factory=threading.Event)
+    decision: ApprovalDecision | None = None
+
+
+class WebApprovalBroker:
+    def __init__(self, timeout_seconds: float = 120.0) -> None:
+        self.timeout_seconds = max(0.01, timeout_seconds)
+        self._lock = threading.Lock()
+        self._pending: _PendingApproval | None = None
+
+    def request(self, request: ApprovalRequest, client_id: str, emit: Any) -> ApprovalDecision:
+        pending = _PendingApproval(request=request, client_id=client_id)
+        with self._lock:
+            if self._pending is not None:
+                return ApprovalDecision(False, "approval_already_pending")
+            self._pending = pending
+        try:
+            emit({"type": "approval_required", "request": request.public_dict()})
+            signalled = pending.event.wait(self.timeout_seconds)
+            with self._lock:
+                if not signalled and pending.decision is None:
+                    pending.decision = ApprovalDecision(False, "timeout")
+                decision = pending.decision or ApprovalDecision(False, "timeout")
+            try:
+                emit({
+                    "type": "approval_resolved",
+                    "requestId": request.id,
+                    "approved": decision.approved,
+                    "reason": decision.reason,
+                })
+            except Exception:
+                pass
+            return decision
+        except Exception:
+            return ApprovalDecision(False, "presentation_error")
+        finally:
+            with self._lock:
+                if self._pending is pending:
+                    self._pending = None
+
+    def resolve(self, request_id: str, client_id: str, approved: bool) -> None:
+        with self._lock:
+            pending = self._pending
+            if pending is None or pending.request.id != request_id:
+                raise LookupError("Approval request is stale or unknown")
+            if pending.client_id != client_id:
+                raise PermissionError("Approval request belongs to another browser client")
+            if pending.decision is not None:
+                raise LookupError("Approval request has already been resolved")
+            pending.decision = ApprovalDecision(approved, "user_approved" if approved else "user_denied")
+            pending.event.set()
+
+    def cancel_client(self, client_id: str, reason: str = "client_disconnected") -> None:
+        with self._lock:
+            pending = self._pending
+            if pending is not None and pending.client_id == client_id and pending.decision is None:
+                pending.decision = ApprovalDecision(False, reason)
+                pending.event.set()
+
+    def cancel_all(self, reason: str) -> None:
+        with self._lock:
+            pending = self._pending
+            if pending is not None and pending.decision is None:
+                pending.decision = ApprovalDecision(False, reason)
+                pending.event.set()
 
 @dataclass
 class WebChatState:
@@ -108,6 +178,8 @@ class WebChatState:
     def __post_init__(self) -> None:
         self.chat_history: list[dict[str, Any]] = []
         self.lock = threading.Lock()
+        timeout = float(self.generation_config.get("approval_timeout_seconds", 120))
+        self.approvals = WebApprovalBroker(timeout)
 
     def public_config(self) -> dict[str, Any]:
         store = _load_store()
@@ -122,13 +194,17 @@ class WebChatState:
         }
 
     def reset(self) -> None:
+        self.approvals.cancel_all("new_chat")
         with self.lock:
             self.chat_history.clear()
 
-    def chat_stream(self, prompt: str) -> Any:
+    def chat_stream(self, prompt: str, client_id: str) -> Any:
         prompt = prompt.strip()
+        client_id = client_id.strip()
         if not prompt:
             raise ValueError("Message is empty")
+        if not client_id:
+            raise ValueError("Browser client ID is required")
         if len(prompt) > 1_000_000:
             raise ValueError("Message is too large")
 
@@ -159,14 +235,22 @@ class WebChatState:
                     })
 
                     def on_chunk(chunk: str):
-                        q.put({"type": "chunk", "text": chunk})
+                        q.put({"type": "chunk", "chunk": chunk})
 
-                    result = self._run_agent_turn(config, chunk_callback=on_chunk)
+                    approval_handler = lambda request: self.approvals.request(request, client_id, q.put)
+                    with approval_scope(
+                        handler=approval_handler,
+                        interface="web",
+                        session_log_path=self.session_log_path,
+                    ):
+                        result = self._run_agent_turn(config, chunk_callback=on_chunk)
                     if not result:
                         self.chat_history.pop()
                         q.put({"type": "error", "error": "The model did not return a response"})
                         return
-                    q.put({"type": "done", "result": result})
+                    if not str(result.get("response", "")).strip() and result.get("toolResult"):
+                        q.put({"type": "tool_result", **result["toolResult"]})
+                    q.put({"type": "done"})
                 except Exception as e:
                     if self.chat_history and self.chat_history[-1].get("role") == "user":
                         self.chat_history.pop()
@@ -176,51 +260,11 @@ class WebChatState:
 
         while True:
             item = q.get()
-            if item["type"] == "chunk":
-                yield item["text"]
-            elif item["type"] == "done":
+            if item["type"] == "done":
                 break
-            elif item["type"] == "error":
-                raise RuntimeError(item["error"])
-
-    def chat(self, prompt: str) -> dict[str, Any]:
-        prompt = prompt.strip()
-        if not prompt:
-            raise ValueError("Message is empty")
-        if len(prompt) > 1_000_000:
-            raise ValueError("Message is too large")
-        with self.lock:
-            input_tokens = count_text_tokens(self.tokenizer, prompt) if self.tokenizer else estimate_text_tokens_rough(prompt)
-            if input_tokens > int(self.generation_config["max_input_tokens"]):
-                raise ValueError("Message exceeds the configured context limit")
-
-            store = _load_store()
-            selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
-            personality = (selected or {}).get("personality", "").strip()
-            system_context = get_agent_system_prompt() + build_memory_prompt_section(load_memory_context())
-            if personality:
-                system_context += f"\n\nCharacter persona for this conversation:\n{personality}"
-            config = dict(self.generation_config)
-            config["system_context"] = system_context
-            config["suppress_response_header"] = True
-
-            self.chat_history.append({"role": "user", "content": prompt})
-            append_session_event(self.session_log_path, {
-                "type": "message", "role": "user", "content": prompt,
-                "input_tokens_estimate": input_tokens, "backend": self.backend_mode, "interface": "web",
-            })
-            try:
-                result = self._run_agent_turn(config)
-            except Exception:
-                self.chat_history.pop()
-                raise
-            if not result:
-                self.chat_history.pop()
-                raise RuntimeError("The model did not return a response")
-            response = result.get("response", "")
-            return {"response": response, "thinking": result.get("thinking", ""), "metrics": {
-                "elapsed": result.get("elapsed_sec"), "tps": result.get("tps"),
-            }}
+            yield item
+            if item["type"] == "error":
+                break
 
     def _run_agent_turn(self, config: dict[str, Any], chunk_callback: Any = None) -> dict[str, Any] | None:
         from backend.agent_loop import run_agent_loop
@@ -260,11 +304,30 @@ class WebChatState:
             tokenizer=self.tokenizer,
             plain=True,
         )
-        for message in reversed(self.chat_history[history_start:]):
+        turn_messages = self.chat_history[history_start:]
+        last_tool_result = None
+        for message in reversed(turn_messages):
+            if message.get("role") != "tool":
+                continue
+            match = re.match(
+                r"^Observation: \[([^\]]+)\] ok=(True|False)\n?(.*)",
+                str(message.get("content", "")),
+                flags=re.DOTALL,
+            )
+            if match:
+                observation = match.group(3).strip()
+                last_tool_result = {
+                    "tool": match.group(1),
+                    "ok": match.group(2) == "True",
+                    "message": observation.splitlines()[0][:500] if observation else "",
+                }
+            break
+        for message in reversed(turn_messages):
             if message.get("role") in ("assistant", "model") and not message.get("tool_calls"):
                 return {
                     "response": message.get("content", ""),
                     "thinking": message.get("thinking", ""),
+                    "toolResult": last_tool_result,
                 }
         return None
 
@@ -335,37 +398,52 @@ class WebUIHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             data = self._read_json()
-            if self.path == "/api/client/heartbeat":
-                self.server.mark_client(str(data.get("clientId", "")))  # type: ignore[attr-defined]
+            path = unquote(urlparse(self.path).path)
+            client_id = str(data.get("clientId", "")).strip()
+            approval_match = re.fullmatch(r"/api/approvals/([0-9a-f-]{36})", path)
+            if path == "/api/client/heartbeat":
+                self.server.mark_client(client_id)  # type: ignore[attr-defined]
                 self._json(HTTPStatus.OK, {"ok": True})
-            elif self.path == "/api/client/close":
-                self.server.remove_client(str(data.get("clientId", "")))  # type: ignore[attr-defined]
+            elif path == "/api/client/close":
+                self.server.remove_client(client_id)  # type: ignore[attr-defined]
                 self._json(HTTPStatus.OK, {"ok": True})
-            elif self.path == "/api/chat":
-                self._json(HTTPStatus.OK, self.state.chat(str(data.get("message", ""))))
-            elif self.path == "/api/chat_stream":
+            elif approval_match:
+                if type(data.get("approved")) is not bool:
+                    raise ValueError("approved must be a boolean")
+                self.state.approvals.resolve(approval_match.group(1), client_id, data["approved"])
+                self._json(HTTPStatus.OK, {"ok": True})
+            elif path == "/api/chat_stream":
                 message = str(data.get("message", ""))
+                self.server.mark_client(client_id)  # type: ignore[attr-defined]
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("Connection", "close")
                 self.end_headers()
-                for chunk in self.state.chat_stream(message):
-                    # Replace newlines with something safe or encode as JSON
-                    payload = json.dumps({"chunk": chunk}, ensure_ascii=False)
-                    self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
-                self.wfile.write(b"data: [DONE]\n\n")
-            elif self.path == "/api/new":
+                try:
+                    for event in self.state.chat_stream(message, client_id):
+                        payload = json.dumps(event, ensure_ascii=False)
+                        self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
+                        self.wfile.flush()
+                    self.wfile.write(b"data: [DONE]\n\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    self.state.approvals.cancel_client(client_id)
+            elif path == "/api/new":
                 self.state.reset()
                 self._json(HTTPStatus.OK, {"ok": True})
-            elif self.path == "/api/mascots/select":
+            elif path == "/api/mascots/select":
                 self._select_mascot(str(data.get("id", "")))
                 self._json(HTTPStatus.OK, self.state.public_config())
-            elif self.path == "/api/mascots":
+            elif path == "/api/mascots":
                 self._save_mascot(data)
                 self._json(HTTPStatus.OK, self.state.public_config())
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
+        except PermissionError as exc:
+            self._json(HTTPStatus.FORBIDDEN, {"error": str(exc)})
+        except LookupError as exc:
+            self._json(HTTPStatus.GONE, {"error": str(exc)})
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
         except Exception as exc:
@@ -441,6 +519,7 @@ class EnchanWebServer(ThreadingHTTPServer):
             self._empty_since = None
 
     def remove_client(self, client_id: str) -> None:
+        self.state.approvals.cancel_client(client_id)
         with self._client_lock:
             self._clients.pop(client_id, None)
             if self._ever_had_client and not self._clients and self._empty_since is None:
@@ -454,6 +533,7 @@ class EnchanWebServer(ThreadingHTTPServer):
                 stale = [client_id for client_id, seen in self._clients.items() if now - seen > 120]
                 for client_id in stale:
                     self._clients.pop(client_id, None)
+                    self.state.approvals.cancel_client(client_id)
                 if self._ever_had_client and not self._clients:
                     if self._empty_since is None:
                         self._empty_since = now
@@ -467,6 +547,7 @@ class EnchanWebServer(ThreadingHTTPServer):
 
     def server_close(self) -> None:
         self._watchdog_stop.set()
+        self.state.approvals.cancel_all("server_shutdown")
         super().server_close()
 
 

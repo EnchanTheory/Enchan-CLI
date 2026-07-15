@@ -555,23 +555,57 @@ TOOL_REGISTRY = {
 }
 
 
-def _interactive_security_prompt() -> bool:
-    from backend.ui_theme import interactive_yes_no
-    return interactive_yes_no("Allow execution?", default_yes=True)
+READ_ONLY_TOOLS = frozenset({
+    "read_file",
+    "search_code",
+    "search_rag",
+    "web_browse",
+    "web_search",
+})
 
 
-def _tool_requires_permission(tool_name: str, args: dict) -> bool:
-    if tool_name == "run_command":
-        return False
+def _classify_tool_capability(tool_name: str, args: dict) -> tuple[bool, str, str, dict[str, object]]:
+    """Return (requires_approval, capability, summary, display details)."""
     if tool_name == "edit_file":
         val = args.get("apply", True)
-        return not (val is False or str(val).lower() == "false")
-    if tool_name == "use_skill":
-        return True
-    return False
+        should_apply = not (val is False or str(val).lower() == "false")
+        if should_apply:
+            if isinstance(args.get("patch"), str) and args["patch"].strip():
+                operation = "apply_patch"
+            elif "old" in args or "new" in args:
+                operation = "replace"
+            elif args.get("overwrite"):
+                operation = "overwrite"
+            else:
+                operation = "write"
+            return True, "filesystem_write", "Modify file", {
+                "operation": operation,
+                "path": args.get("path") or "[paths declared by patch]",
+            }
+        return False, "read_only", "Dry run file edit", {}
 
+    if tool_name == "run_command":
+        command = args.get("command") or args.get("cmd", "")
+        cwd = args.get("cwd") or str(CLI_DIR)
+        return True, "command_execution", "Execute shell command", {"command": command, "cwd": cwd}
+
+    if tool_name == "use_skill":
+        skill_name = args.get("skill_name") or args.get("name") or "unknown"
+        return True, "skill_execution", "Execute skill", {"skill": skill_name}
+
+    if tool_name == "delegate_agent":
+        agent = args.get("agent") or "unknown"
+        return True, "agent_delegation", "Delegate to an external agent", {"agent": agent}
+
+    if tool_name in READ_ONLY_TOOLS:
+        return False, "read_only", "Read-only operation", {}
+
+    # Delegated agents and every new/unclassified tool fail closed.
+    return True, "unknown_capability", f"Execute unknown tool {tool_name}", {}
 
 def execute_agent_tool(call: dict, tokenizer=None, model=None) -> dict:
+    from backend.approval import request_approval
+
     tool_name = call.get("tool")
     if tool_name == "_parse_error":
         return {"tool": tool_name, "ok": False, "observation": call.get("error", "Invalid tool call.")}
@@ -580,16 +614,13 @@ def execute_agent_tool(call: dict, tokenizer=None, model=None) -> dict:
         available = ", ".join(sorted(TOOL_REGISTRY))
         return {"tool": tool_name, "ok": False, "observation": f"Unknown tool: {tool_name}. Available tools: {available}"}
     args = dict(call.get("args", {}))
-    if _tool_requires_permission(tool_name, args):
-        print(f"\n\x1b[38;2;190;170;120m⚠️  [Security Request]\x1b[0m \x1b[38;2;210;200;200mThe local Enchan AI wants to perform a sensitive action:\x1b[0m")
-        print(f"  \x1b[38;2;210;200;200mTool: {tool_name}\x1b[0m")
-        if tool_name == "edit_file":
-            print(f"  \x1b[38;2;210;200;200mTarget: {args.get('path') or '[patch]'}\x1b[0m")
-        elif tool_name == "use_skill":
-            print(f"  \x1b[38;2;210;200;200mSkill: {args.get('skill_name') or args.get('name') or 'unknown'}\x1b[0m")
-        if not _interactive_security_prompt():
-            print("\x1b[38;2;180;100;100m  [System] Execution denied by user.\x1b[0m")
+
+    requires_approval, capability, summary, details = _classify_tool_capability(tool_name, args)
+
+    if requires_approval:
+        if not request_approval(tool_name, summary, details, capability):
             return {"tool": tool_name, "ok": False, "observation": "User denied permission to execute this tool."}
+
     if tokenizer is not None:
         args["__tokenizer"] = tokenizer
     if model is not None:
