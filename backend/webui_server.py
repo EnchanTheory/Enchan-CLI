@@ -248,8 +248,12 @@ class WebChatState:
                         self.chat_history.pop()
                         q.put({"type": "error", "error": "The model did not return a response"})
                         return
-                    if not str(result.get("response", "")).strip() and result.get("toolResult"):
-                        q.put({"type": "tool_result", **result["toolResult"]})
+                    tool_result = result.get("toolResult")
+                    if tool_result and (
+                        not tool_result.get("ok", False)
+                        or not str(result.get("response", "")).strip()
+                    ):
+                        q.put({"type": "tool_result", **tool_result})
                     q.put({"type": "done"})
                 except Exception as e:
                     if self.chat_history and self.chat_history[-1].get("role") == "user":

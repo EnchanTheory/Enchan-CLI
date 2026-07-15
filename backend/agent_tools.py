@@ -265,11 +265,56 @@ def tool_search_code(args: dict) -> dict:
     return {"ok": True, "content": truncate_observation(content, max_chars=20000), "observation_max_chars": 20000}
 
 
+def _normalize_edit_file_args(args: dict) -> dict:
+    """Normalize model-generated edit arguments into one unambiguous operation."""
+    normalized = dict(args)
+    patch = normalized.get("patch")
+    has_patch = isinstance(patch, str) and bool(patch.strip())
+    has_old = "old" in normalized
+    has_new = "new" in normalized
+    has_content = "content" in normalized
+
+    if patch is not None and not isinstance(patch, str):
+        raise ValueError("edit_file patch must be a string.")
+    if has_patch and (has_old or has_new or has_content):
+        raise ValueError("edit_file patch cannot be combined with old, new, or content.")
+
+    if has_patch:
+        operation = "apply_patch"
+    elif has_old or has_new:
+        if not has_old:
+            raise ValueError("Exact replace requires old together with new.")
+        if not isinstance(normalized.get("old"), str):
+            raise ValueError("Exact replace old must be a string.")
+        if has_new and has_content:
+            raise ValueError("Exact replace must use either new or content, not both.")
+        replacement = normalized.get("new") if has_new else normalized.get("content")
+        if not isinstance(replacement, str):
+            raise ValueError("Exact replace requires string new; content is accepted as an alias.")
+        normalized["new"] = replacement
+        normalized.pop("content", None)
+        operation = "replace"
+    elif has_content:
+        if not isinstance(normalized.get("content"), str):
+            raise ValueError("edit_file content must be a string.")
+        operation = "overwrite" if bool(normalized.get("overwrite", False)) else "write"
+    else:
+        raise ValueError("edit_file requires patch, old with new, or content.")
+
+    normalized["_edit_operation"] = operation
+    return normalized
+
+
 def tool_edit_file(args: dict) -> dict:
+    try:
+        args = _normalize_edit_file_args(args)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    operation = args["_edit_operation"]
     apply_val = args.get("apply", True)
     should_apply = not (apply_val is False or str(apply_val).lower() == "false")
     patch = args.get("patch")
-    if isinstance(patch, str) and patch.strip():
+    if operation == "apply_patch":
         if not should_apply:
             return {"ok": True, "content": "DRY RUN PATCH:\n" + patch}
         temp_dir = CLI_DIR / "temp_workspace"
@@ -291,10 +336,8 @@ def tool_edit_file(args: dict) -> dict:
         path = resolve_workspace_path(path_value, require_inside_cli=True)
     except (OSError, ValueError) as e:
         return {"ok": False, "error": str(e)}
-    if "old" in args or "new" in args:
-        old, new = args.get("old"), args.get("new")
-        if not isinstance(old, str) or not isinstance(new, str):
-            return {"ok": False, "error": "Exact replace requires string old and new."}
+    if operation == "replace":
+        old, new = args["old"], args["new"]
         before = path.read_text(encoding="utf-8", errors="replace")
         count = before.count(old)
         if count != 1:
@@ -305,10 +348,8 @@ def tool_edit_file(args: dict) -> dict:
             return {"ok": True, "content": "DRY RUN DIFF:\n" + diff}
         path.write_text(after, encoding="utf-8")
         return {"ok": True, "content": "APPLIED exact replacement.\n" + diff, "event": {"type": "edit_applied", "tool": "edit_file", "path": str(path), "applied": True}}
-    if "content" in args:
-        content = args.get("content")
-        if not isinstance(content, str):
-            return {"ok": False, "error": "content must be a string."}
+    if operation in {"write", "overwrite"}:
+        content = args["content"]
         if path.exists() and not bool(args.get("overwrite", False)):
             return {"ok": False, "error": f"File exists: {path}. Set overwrite=true to replace it."}
         before = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
@@ -318,7 +359,7 @@ def tool_edit_file(args: dict) -> dict:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         return {"ok": True, "content": "WROTE file.\n" + diff, "event": {"type": "edit_applied", "tool": "edit_file", "path": str(path), "applied": True}}
-    return {"ok": False, "error": "edit_file requires patch, old/new, or content."}
+    return {"ok": False, "error": f"Unsupported normalized edit operation: {operation}"}
 
 
 def _resolve_command_cwd(args: dict) -> Path:
@@ -570,14 +611,7 @@ def _classify_tool_capability(tool_name: str, args: dict) -> tuple[bool, str, st
         val = args.get("apply", True)
         should_apply = not (val is False or str(val).lower() == "false")
         if should_apply:
-            if isinstance(args.get("patch"), str) and args["patch"].strip():
-                operation = "apply_patch"
-            elif "old" in args or "new" in args:
-                operation = "replace"
-            elif args.get("overwrite"):
-                operation = "overwrite"
-            else:
-                operation = "write"
+            operation = str(args.get("_edit_operation") or "unknown")
             return True, "filesystem_write", "Modify file", {
                 "operation": operation,
                 "path": args.get("path") or "[paths declared by patch]",
@@ -614,6 +648,11 @@ def execute_agent_tool(call: dict, tokenizer=None, model=None) -> dict:
         available = ", ".join(sorted(TOOL_REGISTRY))
         return {"tool": tool_name, "ok": False, "observation": f"Unknown tool: {tool_name}. Available tools: {available}"}
     args = dict(call.get("args", {}))
+    if tool_name == "edit_file":
+        try:
+            args = _normalize_edit_file_args(args)
+        except ValueError as exc:
+            return {"tool": tool_name, "ok": False, "observation": str(exc)}
 
     requires_approval, capability, summary, details = _classify_tool_capability(tool_name, args)
 

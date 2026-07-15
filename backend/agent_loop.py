@@ -144,7 +144,13 @@ def _run_tool_observation(
         observation_event["single_turn"] = True
     append_session_event(session_log_path, observation_event)
     append_tool_result_event(session_log_path, result, iteration, backend)
-    return f"Observation: [{result['tool']}] ok={result['ok']}\n{observation}"
+    observation_text = f"Observation: [{result['tool']}] ok={result['ok']}\n{observation}"
+    if not result["ok"]:
+        observation_text += (
+            "\nIMPORTANT: This tool action failed. Do not claim that it succeeded. "
+            "Retry with corrected arguments when possible; otherwise report the failure clearly."
+        )
+    return observation_text
 
 
 def run_agent_loop(

@@ -43,15 +43,15 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Single local file editing tool. Supports unified diff patches, exact old/new replacement, and explicit write/create. Use apply=false for dry runs.",
+            "description": "Single local file editing tool. Choose exactly one operation: patch alone; exact replacement with old plus new (content is accepted as an alias for new); or write/create with content. Do not combine patch with replacement/write fields. Use apply=false for dry runs.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Target file path for replace/write operations"},
                     "patch": {"type": "string", "description": "Unified diff patch"},
                     "old": {"type": "string", "description": "Exact existing text; must match once"},
-                    "new": {"type": "string", "description": "Replacement text for exact replace"},
-                    "content": {"type": "string", "description": "Complete content for create/write mode"},
+                    "new": {"type": "string", "description": "Replacement text for exact replace; use an empty string to delete the matched text"},
+                    "content": {"type": "string", "description": "Complete content for create/write mode; also accepted as replacement text when old is supplied"},
                     "overwrite": {"type": "boolean", "description": "Allow replacing an existing file in write mode"},
                     "apply": {"type": "boolean", "description": "False for dry run; true/default applies the edit"}
                 },
