@@ -127,7 +127,7 @@ Inside the CUI, type `/` to see the following commands:
 
 ##### `/rag` — Local Retrieval
 
-Build persistent, private indexes for local text and Markdown collections. The built-in `sessions` collection searches useful user/assistant turns across Enchan session logs without replacing `/resume`.
+Turn local text, Markdown, and Enchan conversation history into private knowledge collections. Enchan retrieves relevant context from them when needed, while source files remain unchanged and collection data stays on your machine.
 
 ```text
 /rag status
@@ -138,7 +138,7 @@ Build persistent, private indexes for local text and Markdown collections. The b
 /rag search all previous discussion about local model memory
 ```
 
-RAG source documents are read-only. Generated structures, chunks, graphs, and indexes are stored under `~/.enchan/rag/`. During indexing, the active local model extracts entities, concepts, claims, events, texture, and relations from 12,000-character parent units. Directory search uses 1,500-character chunks with a 500-character stride that inherit their parent structure; session logs preserve each user/assistant turn. Retrieval combines this structure with Unicode words, word pairs, and character n-grams across writing systems. Local Enchan Cosmic v2 then uses MaxCut to select a diverse evidence set when available, with deterministic relevance selection otherwise. Each directory is an independent collection. Its title and AI-facing description are included as lightweight catalog metadata on every model turn so the agent can decide when to call `search_rag`; indexed document content is retrieved only when needed. Registration never starts indexing automatically: start it explicitly with `/rag rebuild <collection>` or from the Web UI RAG panel. The built-in `logs/sessions` collection is registered automatically and cannot be removed. Web UI indexing runs as an interruptible job, displays elapsed and estimated remaining time, and disables chat until the job completes or reaches an interruption checkpoint. Interrupted indexing resumes from the saved structure cache. `/rag status`, `/rag sources`, and search results report changed sources, and searches can target one collection or `all` registered sources.
+Add and describe collections from the Web UI or `/rag`, then start indexing when you are ready. The Web UI shows progress and estimated completion time, and supports interruption and resume. A built-in Conversation History collection is registered automatically, and searches can use one collection or all available sources.
 
 
 ##### `/set` — Managed Settings
