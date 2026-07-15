@@ -199,7 +199,9 @@ enchan --ask "Summarize this repository" --plain
 
 ### Enchan Engine (Attention Screening)
 
-While Enchan CLI utilizes llama.cpp as its base runtime, it integrates a proprietary **Enchan Cosmic Engine** directly into the core Attention calculations. This mechanism is based on the **working hypothesis** that mathematically relaxing the over-concentration of Attention scores can mitigate the model fixating too rigidly on a single context path.
+Enchan CLI uses a llama.cpp-based local runtime and connects it to the proprietary **Enchan Engine** through a minimal integration hook. When enabled, Attention Screening applies an optional stabilization step at an internal processing boundary. It does not replace or reimplement the model architecture or the standard llama.cpp inference pipeline.
+
+Attention Screening is an experimental feature developed for compact local models. Its behavior depends on the model, prompt, context, and setting, and no specific quality improvement is guaranteed. Internal formulas and implementation details are intentionally not documented here.
 
 To customize the screening strength, set it from inside the interactive CLI:
 
@@ -207,42 +209,7 @@ To customize the screening strength, set it from inside the interactive CLI:
 /set screen_strength 0.4
 ```
 
-#### Representative Attention Distribution
-
-The engine applies a non-linear tension response to the raw Attention logits before the Softmax operation. In the simplified example below, `S` denotes the screening strength.
-
-| Context Token | Raw Logit | S=0.0 (Standard) | S=0.2 (Moderate) | S=1.0 (Extreme) |
-| :--- | :--- | :--- | :--- | :--- |
-| `To` | 5.8 | 6.53% | 8.98% | 24.19% |
-| `be` | **8.2** | **84.23%** | **78.70%** | 45.17% |
-| `or` | 2.7 | 0.25% | 0.45% | 3.51% |
-| `not` | 6.1 | 8.98% | 11.86% | 27.13% |
-
-*The table above is an illustrative, simplified view of how the screening changes attention-score concentration before Softmax. It is not intended to expose the exact proprietary kernel or reproduce the full end-to-end vocabulary distribution.*
-
-At `S=0.2`, the dominant logit (`8.2`) is selectively suppressed. The Softmax weight of `be` drops from `84.23%` to `78.70%`, gently redistributing probability mass to the surrounding context without breaking the monotonic ranking.
-
-#### Toy View: Attention Peak Relaxation
-
-The following toy model illustrates the intuition behind Enchan Screening.
-
-A small model can form a sharp probability peak over a small number of semantic candidates. Enchan Screening relaxes that peak so the distribution becomes less rigid and neighboring candidates can surface.
-
-![Toy probability distribution showing Enchan relaxation](docs/images/toy_attention_distribution.png)
-
-This is not a claim that a small model becomes a large model. The point is narrower: Enchan Screening reduces Attention over-concentration and gives the model more room to express alternatives already present in its own distribution.
-
-#### How it changes the output
-
-Under this working hypothesis, by selectively reducing matrix-level Attention over-concentration, the engine is designed to broaden the probability distribution of alternative candidates.
-
-*The downstream vocabulary examples below show representative observed behavior under this intervention; they are not a direct one-step Softmax over the representative attention table above.*
-
-For example, given the prompt `"To be, or not to be, that is the [MASK]"` (Example measured output):
-
-- **Strength 0.0 (Standard)**: The unmitigated attention strictly enforces the dominant latent path, predicting **`"existence"` (56%)**.
-- **Strength 0.2 (Moderate)**: The subtle tension relaxation allows alternative semantic paths to surface naturally, shifting the vocabulary prediction to **`"question"` (56%)**.
-- **Strength 1.0 (Extreme)**: The extreme smoothing destroys contextual dependence. Stripped of semantic anchors, the model hallucinates completely unrelated tokens like **`"apple"` (48%)**.
+Set the strength to `0` to disable the screening effect.
 
 ---
 
@@ -281,7 +248,7 @@ git pull --ff-only
 Runtime assets are published in the Enchan CLI release:
 
 - **Repo:** `EnchanTheory/Enchan-CLI`
-- **Tag:** `llamacpp-b9888-enchan-20260707`
+- **Tag:** `llamacpp-b9888-enchan-20260713`
 - **Windows asset:** `enchan-cli-runtime-win-x64.zip`
 - **macOS asset:** `enchan-cli-runtime-macos-arm64.zip`
 
@@ -314,4 +281,4 @@ Enchan CLI is distributed under the Enchan CLI Research & Evaluation License v1.
 See [LICENSE](LICENSE) for the full terms. Commercial use, product integration,
 hosted deployment, and derivative distribution require separate permission.
 
-Native runtime packages also include third-party components such as llama.cpp/ggml and Ollama compatibility components. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Native runtime packages include third-party components such as llama.cpp/ggml and Ollama compatibility components. Model files and Python packages are obtained separately and remain subject to their respective license terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
