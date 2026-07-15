@@ -1,7 +1,7 @@
 window.EnchanI18n.ready.then(()=>{
 const $=id=>document.getElementById(id);
 const {t}=window.EnchanI18n;
-const state={config:null,mascot:null,timer:null,frame:0,busy:false,imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0};
+const state={config:null,mascot:null,timer:null,frame:0,busy:false,imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null};
 const messages=$("messages"),welcome=$("welcome"),prompt=$("prompt"),send=$("send");
 
 const clientId=crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -19,6 +19,32 @@ async function api(path,body){
   if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
   return data;
 }
+  function approvalDetailLabel(key){return t(`approval.detail.${key}`,{},key.replaceAll("_"," "))}
+  function showApproval(request){
+    state.pendingApproval=request;
+    $("approvalSummary").textContent=t(`approval.summary.${request.capability}`,{},request.summary);
+    const details=$("approvalDetails");details.replaceChildren();
+    const entries=[["tool",request.tool],["capability",request.capability],...Object.entries(request.details||{})];
+    for(const [key,rawValue] of entries){
+      const term=document.createElement("dt");term.textContent=approvalDetailLabel(key);
+      const value=document.createElement("dd");
+      value.textContent=key==="operation"?t(`approval.operation.${rawValue}`,{},rawValue):String(rawValue);
+      details.append(term,value);
+    }
+    $("approvalAllow").disabled=false;$("approvalDeny").disabled=false;
+    const dialog=$("approvalDialog");if(!dialog.open)dialog.showModal();
+    $("approvalDeny").focus();play("review",{loop:true});
+  }
+  async function resolveApproval(approved){
+    const request=state.pendingApproval;if(!request)return;
+    $("approvalAllow").disabled=true;$("approvalDeny").disabled=true;
+    state.pendingApproval=null;
+    try{await api(`/api/approvals/${encodeURIComponent(request.id)}`,{clientId,approved})}
+    finally{if($("approvalDialog").open)$("approvalDialog").close()}
+  }
+  $("approvalAllow").onclick=()=>resolveApproval(true);
+  $("approvalDeny").onclick=()=>resolveApproval(false);
+  $("approvalDialog").addEventListener("cancel",event=>{event.preventDefault();resolveApproval(false)});
 const ghost=document.createElement("div");
 ghost.style.cssText="position:absolute;visibility:hidden;white-space:pre-wrap;overflow-wrap:anywhere;line-height:22px;padding:9px 2px 7px;border:0;box-sizing:border-box;word-break:break-all;";
 document.body.appendChild(ghost);
@@ -92,9 +118,69 @@ function editMascot(m){
   const preview=$("sheetPreviewText"),cvs=$("livePreviewCanvas"),sel=$("previewAnimSelect");
   if(m?.spritesheet){preview.hidden=true;cvs.hidden=false;sel.hidden=false;previewImage=new Image();previewImage.onload=updatePreviewCanvas;previewImage.src=`/api/mascots/${encodeURIComponent(m.id)}?v=${Date.now()}`}else{preview.hidden=false;cvs.hidden=true;sel.hidden=true}
 }
-$("composer").addEventListener("submit",async e=>{e.preventDefault();const text=prompt.value.trim();if(!text||state.busy)return;addMessage("user",text);prompt.value="";state.busy=true;resize();play("waiting",{loop:true});const row=addMessage("assistant","");const textNode=row.querySelector(".message-text");try{const response=await fetch("/api/chat_stream",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text})});if(!response.ok){const err=await response.json();throw new Error(err.error||`HTTP ${response.status}`)}play(state.config?.agentMode?"running":"waiting",{loop:true});const reader=response.body.getReader();const decoder=new TextDecoder("utf-8");let fullText="",buffer="",isDone=false;while(true){const {value,done}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop();for(const line of lines){if(line.startsWith("data: ")){const dataStr=line.slice(6).trim();if(dataStr==="[DONE]"){isDone=true;break}try{const data=JSON.parse(dataStr);if(data.chunk){fullText+=data.chunk;textNode.innerHTML=renderMarkdown(fullText)||"&nbsp;";window.scrollTo({top:document.body.scrollHeight,behavior:"auto"})}}catch(_){}}}if(isDone)break}if(!fullText)textNode.textContent=t("errors.emptyResponse");play("waving")}catch(error){textNode.textContent=t("errors.request",{message:error.message});row.classList.add("error");play("failed")}finally{state.busy=false;resize();prompt.focus()}});
+$("composer").addEventListener("submit",async event=>{
+  event.preventDefault();
+  const text=prompt.value.trim();if(!text||state.busy)return;
+  addMessage("user",text);prompt.value="";state.busy=true;resize();play("waiting",{loop:true});
+  const row=addMessage("assistant","");const textNode=row.querySelector(".message-text");
+  try{
+    const response=await fetch("/api/chat_stream",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message:text,clientId})
+    });
+    if(!response.ok){const error=await response.json();throw new Error(error.error||`HTTP ${response.status}`)}
+    play(state.config?.agentMode?"running":"waiting",{loop:true});
+    const reader=response.body.getReader(),decoder=new TextDecoder("utf-8");
+    let fullText="",buffer="",isDone=false,toolFailed=false;
+    while(true){
+      const {value,done}=await reader.read();if(done)break;
+      buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop();
+      for(const line of lines){
+        if(!line.startsWith("data: "))continue;
+        const dataText=line.slice(6).trim();if(dataText==="[DONE]"){isDone=true;break}
+        const data=JSON.parse(dataText);
+        if(data.type==="approval_required"){showApproval(data.request);continue}
+        if(data.type==="approval_resolved"){
+          if(state.pendingApproval?.id===data.requestId){
+            state.pendingApproval=null;
+            if($("approvalDialog").open)$("approvalDialog").close();
+            play(state.config?.agentMode?"running":"waiting",{loop:true});
+          }
+          continue;
+        }
+        if(data.type==="error")throw new Error(data.error||t("errors.emptyResponse"));
+        if(data.type==="tool_result"){
+          toolFailed=!data.ok;
+          fullText=t(data.ok?"toolResult.success":"toolResult.failure",{tool:data.tool});
+          if(data.message)fullText+=`\n\n${data.message}`;
+          textNode.innerHTML=renderMarkdown(fullText);
+          if(toolFailed)row.classList.add("error");
+          continue;
+        }
+        if(data.type==="chunk"&&data.chunk){
+          fullText+=data.chunk;textNode.innerHTML=renderMarkdown(fullText)||"&nbsp;";
+          window.scrollTo({top:document.body.scrollHeight,behavior:"auto"});
+        }
+      }
+      if(isDone)break;
+    }
+    if(!fullText)textNode.textContent=t("errors.emptyResponse");
+    play(toolFailed?"failed":"waving");
+  }catch(error){
+    if(state.pendingApproval)await resolveApproval(false).catch(()=>{});
+    textNode.textContent=t("errors.request",{message:error.message});row.classList.add("error");play("failed");
+  }finally{
+    state.busy=false;resize();prompt.focus();
+  }
+});
 prompt.addEventListener("input",resize);prompt.addEventListener("keydown",e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("composer").requestSubmit()}});
-$("newChat").onclick=async()=>{await api("/api/new",{});[...messages.querySelectorAll(".message")].forEach(x=>x.remove());welcome.hidden=false;play("jumping")};
+$("newChat").onclick=async()=>{
+  if(state.pendingApproval)await resolveApproval(false).catch(()=>{});
+  await api("/api/new",{clientId});
+  [...messages.querySelectorAll(".message")].forEach(element=>element.remove());
+  welcome.hidden=false;
+  play("jumping");
+};
 $("settings").onclick=()=>{$("mascotDialog").showModal();editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};
 $("addMascot").onclick=()=>editMascot(null);
 $("mascotImage").onchange=async e=>{const file=e.target.files[0];if(!file)return;const url=URL.createObjectURL(file);previewImage=new Image();await new Promise((resolve,reject)=>{previewImage.onload=resolve;previewImage.onerror=reject;previewImage.src=url});URL.revokeObjectURL(url);const validationError=validatePetSheet(previewImage);$("sheetError").textContent=validationError;if(validationError){e.target.value="";state.imageData="";return}state.imageData=await new Promise(resolve=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(file)});$("sheetPreviewText").hidden=true;$("livePreviewCanvas").hidden=false;$("previewAnimSelect").hidden=false;clearTimeout(state.previewTimer);updatePreviewCanvas()};

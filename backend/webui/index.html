@@ -110,6 +110,21 @@
       </form>
     </div>
   </dialog>
+  <dialog id="approvalDialog" class="approval-dialog" aria-labelledby="approvalTitle" aria-describedby="approvalDescription">
+    <div class="approval-head">
+      <span class="approval-badge" data-i18n="approval.badge"></span>
+      <h2 id="approvalTitle" data-i18n="approval.title"></h2>
+      <p id="approvalDescription" data-i18n="approval.description"></p>
+    </div>
+    <div class="approval-body">
+      <p id="approvalSummary" class="approval-summary"></p>
+      <dl id="approvalDetails" class="approval-details"></dl>
+    </div>
+    <div class="approval-actions">
+      <button id="approvalAllow" class="primary approval-allow" type="button" data-i18n="approval.allow"></button>
+      <button id="approvalDeny" class="secondary approval-deny" type="button" data-i18n="approval.deny"></button>
+    </div>
+  </dialog>
   <script src="/assets/js/initial-scroll.js"></script>
   <script src="/assets/js/i18n.js"></script>
   <script src="/assets/js/app.js"></script>

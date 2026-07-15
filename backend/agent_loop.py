@@ -19,6 +19,7 @@ from backend.ui_theme import get_spinner_status, print_agent_action, print_agent
 SENSITIVE_SPINNER_TOOLS = {
     "edit_file",
     "use_skill",
+    "run_command",
     "delegate_agent",
 }
 
@@ -101,7 +102,10 @@ def _run_tool_observation(
 
     status = _tool_spinner(call)
     try:
-        result = execute_agent_tool(call, tokenizer=tokenizer)
+        from backend.approval import approval_scope
+
+        with approval_scope(session_log_path=session_log_path):
+            result = execute_agent_tool(call, tokenizer=tokenizer)
     except Exception as e:
         result = {
             "tool": call.get("tool"),
