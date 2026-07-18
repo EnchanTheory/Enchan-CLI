@@ -25,6 +25,8 @@ def _idle_status() -> dict[str, Any]:
         "collectionId": None,
         "stage": "idle",
         "message": "",
+        "messageKey": "",
+        "messageValues": {},
         "current": 0,
         "total": 0,
         "percent": 0.0,
@@ -59,7 +61,8 @@ class RAGIndexJobManager:
                 continue
             if job.get("state") in ACTIVE_STATES:
                 job = {**job, "state": "interrupted", "stage": "interrupted", "canResume": True,
-                       "message": "Previous indexing process ended before completion"}
+                       "message": "Previous indexing process ended before completion",
+                       "messageKey": "rag.progress.previousInterrupted", "messageValues": {}}
                 self.service.store.save_json(collection["id"], "index_job.json", job)
             restored.append(job)
         if restored:
@@ -103,6 +106,8 @@ class RAGIndexJobManager:
                 "collectionName": collection["name"],
                 "stage": "starting",
                 "message": "Preparing RAG indexing",
+                "messageKey": "rag.progress.preparing",
+                "messageValues": {},
                 "current": 0,
                 "total": 0,
                 "percent": 0.0,
@@ -134,6 +139,8 @@ class RAGIndexJobManager:
             self._status.update({
                 "state": "stopping",
                 "message": "Stopping after the current structure analysis",
+                "messageKey": "rag.progress.stopping",
+                "messageValues": {},
                 "updatedAt": _now_iso(),
             })
             self._persist_unlocked()
@@ -166,6 +173,8 @@ class RAGIndexJobManager:
             self._status.update({
                 "stage": event.get("stage", "running"),
                 "message": event.get("message", ""),
+                "messageKey": event.get("messageKey", ""),
+                "messageValues": event.get("messageValues", {}),
                 "current": int(event.get("current", 0)),
                 "total": int(event.get("total", 0)),
                 "percent": float(event.get("percent", 0.0)),
@@ -190,17 +199,18 @@ class RAGIndexJobManager:
                 should_cancel=self._cancel.is_set,
             )
         except RAGIndexCancelled as exc:
-            self._finish("interrupted", str(exc), can_resume=True)
+            self._finish("interrupted", str(exc), message_key="rag.progress.interrupted", can_resume=True)
         except Exception as exc:
             self._finish("failed", str(exc), can_resume=True)
         else:
-            self._finish("completed", "RAG indexing completed", stats=stats, can_resume=False)
+            self._finish("completed", "RAG indexing completed", message_key="rag.progress.completed", stats=stats, can_resume=False)
 
     def _finish(
         self,
         state: str,
         message: str,
         *,
+        message_key: str = "",
         stats: dict[str, Any] | None = None,
         can_resume: bool,
     ) -> None:
@@ -210,6 +220,8 @@ class RAGIndexJobManager:
                 "state": state,
                 "stage": state,
                 "message": message,
+                "messageKey": message_key,
+                "messageValues": {},
                 "elapsedSeconds": elapsed,
                 "etaSeconds": 0.0 if state == "completed" else None,
                 "percent": 100.0 if state == "completed" else self._status.get("percent", 0.0),

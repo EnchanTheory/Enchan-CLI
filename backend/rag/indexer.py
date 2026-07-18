@@ -30,6 +30,8 @@ def _emit_progress(
     total: int,
     percent: float,
     message: str,
+    message_key: str = "",
+    message_values: dict[str, Any] | None = None,
     **details: Any,
 ) -> None:
     if callback is not None:
@@ -39,6 +41,8 @@ def _emit_progress(
             "total": total,
             "percent": max(0.0, min(100.0, percent)),
             "message": message,
+            "messageKey": message_key,
+            "messageValues": message_values or {},
             **details,
         })
 
@@ -179,10 +183,10 @@ class RAGIndexer:
         should_cancel: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         collection_id = collection["id"]
-        _emit_progress(progress, "scan", 0, 1, 0.0, "Scanning source files")
+        _emit_progress(progress, "scan", 0, 1, 0.0, "Scanning source files", "rag.progress.scanning")
         snapshot = source.snapshot()
         file_total = len(snapshot.get("files", {}))
-        _emit_progress(progress, "scan", file_total, file_total, 5.0, f"Found {file_total} files")
+        _emit_progress(progress, "scan", file_total, file_total, 5.0, f"Found {file_total} files", "rag.progress.foundFiles", {"count": file_total})
         previous = self.store.load_json(collection_id, "file_state.json", {})
         has_index = (self.store.collection_dir(collection_id) / "lexical_index.json").exists()
         index_compatible = int(collection.get("index_version", 0)) == INDEX_VERSION
@@ -196,7 +200,7 @@ class RAGIndexer:
 
         def on_load(current: int, total: int, name: str) -> None:
             ratio = current / max(1, total)
-            _emit_progress(progress, "load", current, total, 5.0 + ratio * 15.0, f"Reading {name}")
+            _emit_progress(progress, "load", current, total, 5.0 + ratio * 15.0, f"Reading {name}", "rag.progress.reading", {"name": name})
 
         documents, diagnostics = source.load_documents(progress=on_load)
         structure_units: list[dict[str, Any]] = []
@@ -214,6 +218,8 @@ class RAGIndexer:
                 document_total,
                 20.0 + ratio * 25.0,
                 f"Chunking {document.get('source_path', '')}",
+                "rag.progress.chunking",
+                {"path": document.get("source_path", "")},
             )
 
         cached_payload = self.store.load_json(collection_id, "structure_cache.json", {})
@@ -247,6 +253,7 @@ class RAGIndexer:
                 len(structure_units),
                 45.0 + (position / max(1, len(structure_units))) * 35.0,
                 "Indexing interrupted; structure checkpoint saved",
+                "rag.progress.interrupted",
                 analysis_current=analysis_attempted_count,
                 analysis_total=analysis_total,
                 reused_count=reused_count,
@@ -287,6 +294,8 @@ class RAGIndexer:
                 len(structure_units),
                 45.0 + ratio * 35.0,
                 f"Structuring parent chunks ({position}/{len(structure_units)})",
+                "rag.progress.structuring",
+                {"current": position, "total": len(structure_units)},
                 analysis_current=analysis_attempted_count,
                 analysis_total=analysis_total,
                 reused_count=reused_count,
@@ -309,11 +318,13 @@ class RAGIndexer:
                 total,
                 80.0 + ratio * 12.0,
                 f"Indexing multilingual features ({current}/{total} chunks)",
+                "rag.progress.multilingual",
+                {"current": current, "total": total},
             )
 
         lexical_index = build_lexical_index(chunks, progress=on_index)
 
-        _emit_progress(progress, "save", 0, 1, 92.0, "Saving persistent index")
+        _emit_progress(progress, "save", 0, 1, 92.0, "Saving persistent index", "rag.progress.saving")
         self.store.save_chunks(collection_id, chunks)
         self.store.save_json(collection_id, "lexical_index.json", lexical_index)
         self.store.save_json(collection_id, "structure_cache.json", {"version": STRUCTURE_VERSION, "chunks": structures})
@@ -332,5 +343,5 @@ class RAGIndexer:
             "structure_unit_count": len(structure_units),
         })
         self.store.save_collection(collection)
-        _emit_progress(progress, "done", 1, 1, 100.0, f"Indexed {len(chunks)} chunks")
+        _emit_progress(progress, "done", 1, 1, 100.0, f"Indexed {len(chunks)} chunks", "rag.progress.indexed", {"count": len(chunks)})
         return {"changed": True, "source_missing": False, "file_count": collection["indexed_file_count"], "chunk_count": len(chunks), "structure_unit_count": len(structure_units), "analysis_attempted_count": analysis_attempted_count, "analyzed_count": analyzed_count, "analysis_failed_count": analysis_failed_count, "reused_count": reused_count, "diagnostics": diagnostics}

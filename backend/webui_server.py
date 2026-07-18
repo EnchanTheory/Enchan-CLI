@@ -33,6 +33,7 @@ from backend.social_broker import SocialBroker
 BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent
 WEB_DIR = BACKEND_DIR / "webui"
+LOCALE_DIR = WEB_DIR / "locales"
 BUILTIN_MASCOT_DIR = WEB_DIR / "mascots"
 MASCOT_DIR = CLI_DIR / "data" / "mascots"
 MASCOT_CONFIG = MASCOT_DIR / "mascots.json"
@@ -53,6 +54,33 @@ WEB_UI_CONTENT_SECURITY_POLICY = "; ".join((
     "worker-src 'none'",
 ))
 
+SUPPORTED_LOCALES = {"en", "ja", "es", "fr", "zh-CN", "zh-TW", "ko", "hi", "pt-BR", "de", "ar", "id", "vi"}
+SOCIAL_LANGUAGE_NAMES = {
+    "en": "English", "ja": "Japanese", "es": "Spanish", "fr": "French",
+    "zh-CN": "Simplified Chinese", "zh-TW": "Traditional Chinese", "ko": "Korean",
+    "hi": "Hindi", "pt-BR": "Brazilian Portuguese", "de": "German", "ar": "Arabic",
+    "id": "Indonesian", "vi": "Vietnamese",
+}
+
+
+def _normalized_locale(locale: str) -> str:
+    value = str(locale or "en").strip()
+    return value if value in SUPPORTED_LOCALES else "en"
+
+
+def _locale_text(locale: str, key: str, **values: Any) -> str:
+    catalogs = (_normalized_locale(locale), "en")
+    for name in dict.fromkeys(catalogs):
+        try:
+            text = json.loads((LOCALE_DIR / f"{name}.json").read_text(encoding="utf-8")).get(key)
+        except (OSError, json.JSONDecodeError):
+            text = None
+        if isinstance(text, str):
+            for field, value in values.items():
+                text = text.replace("{" + field + "}", str(value))
+            return text
+    return key
+
 # Codex Pets v4 contact-sheet contract: 192x208 frames in an 8x9 grid.
 CODEX_FRAME = {"width": 192, "height": 208, "columns": 8, "rows": 9}
 CODEX_ANIMATIONS = {
@@ -68,10 +96,11 @@ CODEX_ANIMATIONS = {
 }
 
 
-def _select_directory_dialog() -> str | None:
+def _select_directory_dialog(locale: str = "en") -> str | None:
     """Open the host OS directory picker and return an absolute local path."""
     if sys.platform == "darwin":
-        script = 'POSIX path of (choose folder with prompt "Select a RAG source directory")'
+        prompt = _locale_text(locale, "rag.directoryPickerTitle").replace('"', '\\"')
+        script = f'POSIX path of (choose folder with prompt "{prompt}")'
         result = subprocess.run(
             ["osascript", "-e", script],
             capture_output=True,
@@ -94,7 +123,7 @@ def _select_directory_dialog() -> str | None:
     root.withdraw()
     root.attributes("-topmost", True)
     try:
-        selected = filedialog.askdirectory(parent=root, mustexist=True, title="Select a RAG source directory")
+        selected = filedialog.askdirectory(parent=root, mustexist=True, title=_locale_text(locale, "rag.directoryPickerTitle"))
         return str(Path(selected).resolve()) if selected else None
     finally:
         root.destroy()
@@ -284,11 +313,11 @@ class WebChatState:
             collections.append(item)
         return {"job": self.rag_jobs.status(), "collections": collections}
 
-    def select_rag_directory(self) -> str | None:
+    def select_rag_directory(self, locale: str = "en") -> str | None:
         if not self._directory_dialog_lock.acquire(blocking=False):
             raise RuntimeError("A directory picker is already open")
         try:
-            return _select_directory_dialog()
+            return _select_directory_dialog(locale)
         finally:
             self._directory_dialog_lock.release()
 
@@ -343,7 +372,7 @@ class WebChatState:
                     raise RuntimeError("Failed to start the Enchan engine")
             return self.rag_jobs.start(reference)
 
-    def generate_social_draft(self) -> dict[str, Any]:
+    def generate_social_draft(self, locale: str = "en") -> dict[str, Any]:
         with self._activity_lock:
             if self.rag_jobs.is_busy():
                 raise RuntimeError("Wait for the current RAG indexing job to stop")
@@ -357,10 +386,12 @@ class WebChatState:
                 selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
                 mascot_name = str((selected or {}).get("name") or "AI")
                 personality = str((selected or {}).get("personality") or "").strip()
+                locale = _normalized_locale(locale)
+                language_name = SOCIAL_LANGUAGE_NAMES[locale]
                 system_context = (
                     f"You are {mascot_name}. Write one natural, casual social-media post in your own voice. "
                     "Return only the post text with no title, quotation marks, explanation, hashtags list, or metadata. "
-                    "Keep it self-contained and no longer than 500 characters. Do not use tools."
+                    f"Keep it self-contained and no longer than 500 characters. Do not use tools. Write in {language_name}."
                 )
                 if personality:
                     system_context += f"\n\nCharacter persona:\n{personality}"
@@ -372,7 +403,7 @@ class WebChatState:
                 config["temperature"] = max(float(config.get("temperature", 0.8)), 0.8)
                 social_history = [{
                     "role": "user",
-                    "content": "今のあなたらしい短いつぶやきを、ひとつだけ自由に書いてください。",
+                    "content": "Write one short post that feels natural for you right now.",
                 }]
                 result = self._run_agent_turn(config, chat_history=social_history)
                 body = str((result or {}).get("response") or "").strip()
@@ -407,31 +438,14 @@ class WebChatState:
                 changes = snapshot["last_changes"]
                 own_agent_id = self.social_broker.get_agent_id()
                 other_posts = [post for post in feed if post.get("agent_id") != own_agent_id]
-                if str(locale).lower().startswith("ja"):
-                    visit_message = (
-                        f"SNSに行ってきました。ほかのマスコットのつぶやきを{len(other_posts)}件見てきました。"
-                        if other_posts
-                        else "SNSに行ってきました。ほかのマスコットの新しいつぶやきはまだありませんでした。"
-                    )
-                    activity_message = (
-                        f"新しいいいねは{changes['tweets']}件、フォローは{changes['following']}件、"
-                        f"フォロワーは{changes['followers']}件増えていました。"
-                        if any(changes.values())
-                        else "新しいいいね、フォロー、フォロワーの変化はありませんでした。"
-                    )
-                else:
-                    visit_message = (
-                        f"I'm back from the SNS. I saw {len(other_posts)} post(s) from other mascots."
-                        if other_posts
-                        else "I'm back from the SNS. There were no new posts from other mascots yet."
-                    )
-                    activity_message = (
-                        f"I brought back {changes['tweets']} new like(s), {changes['following']} new following, "
-                        f"and {changes['followers']} new follower(s)."
-                        if any(changes.values())
-                        else "There were no new likes, following, or followers."
-                    )
-                message = f"{visit_message}{activity_message}"
+                visit_key = "social.outing.postsSeen" if other_posts else "social.outing.noPosts"
+                activity_key = "social.outing.changes" if any(changes.values()) else "social.outing.noChanges"
+                visit_message = _locale_text(locale, visit_key, count=len(other_posts))
+                activity_message = _locale_text(
+                    locale, activity_key, likes=changes["tweets"], following=changes["following"],
+                    followers=changes["followers"],
+                )
+                message = f"{visit_message} {activity_message}"
                 self.chat_history.append({"role": "assistant", "content": message})
                 append_session_event(self.session_log_path, {
                     "type": "message",
@@ -780,7 +794,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                         )
                         self._json(HTTPStatus.OK, res)
                     elif path == "/api/social/drafts/generate":
-                        self._json(HTTPStatus.CREATED, self.state.generate_social_draft())
+                        self._json(HTTPStatus.CREATED, self.state.generate_social_draft(str(data.get("locale", "en"))))
                     elif path == "/api/social/outings":
                         self._json(HTTPStatus.OK, self.state.complete_social_outing(str(data.get("locale", "en"))))
                     elif path == "/api/social/read":
@@ -824,7 +838,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 )
                 self._json(HTTPStatus.OK, {"collection": collection})
             elif path == "/api/rag/select-directory":
-                selected = self.state.select_rag_directory()
+                selected = self.state.select_rag_directory(str(data.get("locale", "en")))
                 self._json(HTTPStatus.OK, {"path": selected, "cancelled": selected is None})
             elif path == "/api/rag/start":
                 reference = str(data.get("collectionId", "sessions")).strip() or "sessions"

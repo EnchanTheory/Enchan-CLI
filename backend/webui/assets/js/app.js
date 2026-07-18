@@ -126,7 +126,7 @@ function renderRagStatus(data){
   state.ragStatus=data;const job=data.job||{};state.ragBusy=["running","stopping"].includes(job.state);resize();
   const jobBox=$("ragJob");jobBox.hidden=!job.collectionId;
   if(job.collectionId){
-    const target=(data.collections||[]).find(collection=>collection.id===job.collectionId);$("ragJobCollection").textContent=ragCollectionName(target)||job.collectionName||job.collectionId;$("ragJobState").textContent=ragStateLabel(job.state);$("ragJobPercent").textContent=`${Math.round(job.percent||0)}%`;$("ragProgress").value=job.percent||0;$("ragJobMessage").textContent=job.message||"";$("ragElapsed").textContent=formatDuration(job.elapsedSeconds);$("ragEta").textContent=job.state==="completed"?t("rag.complete"):formatDuration(job.etaSeconds);$("ragCancel").hidden=!state.ragBusy;$("ragCancel").disabled=job.state==="stopping";$("ragDismiss").hidden=job.state!=="completed";
+    const target=(data.collections||[]).find(collection=>collection.id===job.collectionId);$("ragJobCollection").textContent=ragCollectionName(target)||job.collectionName||job.collectionId;$("ragJobState").textContent=ragStateLabel(job.state);$("ragJobPercent").textContent=`${Math.round(job.percent||0)}%`;$("ragProgress").value=job.percent||0;$("ragJobMessage").textContent=job.messageKey?t(job.messageKey,job.messageValues||{},job.message||""):job.message||"";$("ragElapsed").textContent=formatDuration(job.elapsedSeconds);$("ragEta").textContent=job.state==="completed"?t("rag.complete"):formatDuration(job.etaSeconds);$("ragCancel").hidden=!state.ragBusy;$("ragCancel").disabled=job.state==="stopping";$("ragDismiss").hidden=job.state!=="completed";
   }
   const list=$("ragCollections");list.replaceChildren();
   for(const collection of data.collections||[]){
@@ -171,7 +171,7 @@ function openRagRegistration(collection=null){
 async function selectRagDirectory(){
   const button=$("ragBrowse");button.disabled=true;$("ragRegisterError").textContent="";
   try{
-    const result=await api("/api/rag/select-directory",{});
+    const result=await api("/api/rag/select-directory",{locale:window.EnchanI18n.locale});
     if(!result.cancelled&&result.path){$("ragDirectory").value=result.path;if(!$("ragTitle").value.trim())$("ragTitle").value=result.path.split(/[\\/]/).filter(Boolean).pop()||"RAG"}
   }catch(error){$("ragRegisterError").textContent=t("errors.request",{message:error.message})}finally{button.disabled=false}
 }

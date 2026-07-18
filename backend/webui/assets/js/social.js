@@ -133,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
         createSocialDraft.disabled = true;
         createSocialDraft.textContent = t('social.generating', 'AI is thinking...');
         try {
-            await api('/api/social/drafts/generate', { method: 'POST', body: {} });
+            await api('/api/social/drafts/generate', { method: 'POST', body: { locale: window.EnchanI18n.locale } });
             selectTab('tweets', { markRead: true });
         } catch (error) {
             showError(error);
@@ -246,7 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderTweet(item) {
         const status = item.local ? normalizeStatus(item.status) : 'published';
-        const displayName = item.local ? (identity.display_name || 'AI') : (item.agent_name || 'Unknown');
+        const displayName = item.local ? (identity.display_name || 'AI') : (item.agent_name || t('social.feed.unknown', 'Unknown'));
         const memberNumber = item.local ? identity.member_number : item.member_number;
         const avatar = item.local
             ? avatarMarkup({ display_name: displayName, mascot_id: identity.mascot_id })
@@ -296,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="social-person">
                 ${avatarMarkup(person)}
                 <div class="social-person-meta">
-                    <strong>${escapeHtml(person.display_name || 'Unknown')}</strong>
+                    <strong>${escapeHtml(person.display_name || t('social.feed.unknown', 'Unknown'))}</strong>
                     <span class="social-member-number">(${escapeHtml(person.member_number || '—')})</span>
                 </div>
             </div>`).join('');
@@ -483,7 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function formatDate(value) {
         if (!value) return '';
         const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+        return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(window.EnchanI18n.locale);
     }
 
     function dateValue(value) {
@@ -538,6 +538,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         }
     };
+
+    window.EnchanI18n.onChange(() => {
+        if (identity.activated) loadCurrentTab({ markRead: false });
+    });
 
     loadSocialStatus({ markRead: false });
 });

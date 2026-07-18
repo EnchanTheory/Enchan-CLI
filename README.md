@@ -12,7 +12,7 @@ This repository includes the CLI, Web UI, installers, and agent runtime. Platfor
 - **Privacy by default:** Inference, conversations, resumable sessions, memory, settings, and mascot data remain local. Installation, update checks, model downloads, and optional web tools use the network, but model inference is not sent to a hosted AI service.
 
 <p align="center">
-  <strong>English and Japanese UI · Custom mascots · Animated KAWAII interface</strong>
+  <strong>13-language UI · Custom mascots · Animated KAWAII interface</strong>
 </p>
 
 <table>
@@ -39,7 +39,7 @@ This repository includes the CLI, Web UI, installers, and agent runtime. Platfor
   </tr>
 </table>
 
-The Web UI supports English and Japanese, animated custom mascots, configurable personalities, and local background images.
+The Web UI supports 13 languages, animated custom mascots, configurable personalities, and local background images.
 
 ---
 
@@ -173,7 +173,7 @@ For Enchan runtime settings that affect the running llama-server process, Enchan
 
 ### Web UI
 
-Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:8765` by default and supports both English and Japanese.
+Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:8765` by default and supports 13 languages.
 
 The Web UI provides animated responses, local background images, new-chat controls, and the same local model and agent capabilities as the interactive runtime. Its collapsible right-side RAG panel opens a shared registration and metadata editor for a collection title, AI-facing description, and host OS directory picker; keeps large source lists independently scrollable; registers directories without starting work automatically; starts or interrupts indexing; resumes saved checkpoints; and shows progress plus an estimated completion time.
 
