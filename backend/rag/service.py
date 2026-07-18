@@ -17,6 +17,7 @@ class RAGService:
         self.store = RAGStore(store_root)
         self.indexer = RAGIndexer(self.store)
         self.selector = selector
+        self._active_session_collection_id: str | None = None
 
     def register_directory(
         self,
@@ -73,10 +74,20 @@ class RAGService:
             "status": existing.get("status", "registered"),
         }
         self.store.save_collection(collection)
+        self._active_session_collection_id = collection_id
         return collection
 
+    def _collection_is_visible(self, collection: dict[str, Any]) -> bool:
+        if collection.get("source_type") != "sessions":
+            return True
+        return collection.get("id") == self._active_session_collection_id
+
     def list_collections(self) -> list[dict[str, Any]]:
-        return self.store.list_collections()
+        return [
+            collection
+            for collection in self.store.list_collections()
+            if self._collection_is_visible(collection)
+        ]
 
     def update_collection_metadata(self, reference: str, name: str, description: str) -> dict[str, Any]:
         collection = self.resolve_collection(reference)
@@ -89,7 +100,7 @@ class RAGService:
 
     def build_prompt_section(self) -> str:
         collections = [
-            collection for collection in self.store.list_collections()
+            collection for collection in self.list_collections()
             if collection.get("enabled", True)
         ]
         if not collections:
@@ -124,12 +135,22 @@ class RAGService:
     def list_collection_statuses(self) -> list[dict[str, Any]]:
         return [
             {**collection, **self.indexer.inspect(collection, self._source_for(collection))}
-            for collection in self.store.list_collections()
+            for collection in self.list_collections()
         ]
 
     def resolve_collection(self, reference: str) -> dict[str, Any]:
+        normalized = reference.strip().lower()
+        if self._active_session_collection_id:
+            active_session = self.store.load_collection(self._active_session_collection_id)
+            if active_session and normalized in {
+                "session",
+                "sessions",
+                str(active_session.get("id", "")).lower(),
+                str(active_session.get("name", "")).lower(),
+            }:
+                return active_session
         collection = self.store.resolve_collection(reference)
-        if collection is None:
+        if collection is None or not self._collection_is_visible(collection):
             raise KeyError(f"RAG collection not found: {reference}")
         return collection
 
@@ -172,7 +193,7 @@ class RAGService:
         stale = False
         source_missing = False
         searched = 0
-        for collection in self.store.list_collections():
+        for collection in self.list_collections():
             if not collection.get("enabled", True):
                 continue
             state = self.indexer.inspect(collection, self._source_for(collection))
