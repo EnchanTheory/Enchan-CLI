@@ -189,6 +189,8 @@ def generate_ollama_response(
         },
         "tools": get_agent_tools_schema(),
     }
+    if generation_config.get("disable_tools"):
+        payload.pop("tools", None)
 
     if stream_output and not generation_config.get("suppress_response_header", False):
         width = shutil.get_terminal_size().columns
@@ -444,4 +446,3 @@ def run_ollama_agent_turn(
         append_tool_result_event=append_tool_result_event,
         tokenizer=tokenizer,
     )
-

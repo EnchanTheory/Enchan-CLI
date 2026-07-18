@@ -27,6 +27,8 @@ from backend.session_log import append_session_event
 from backend.rag.jobs import RAGIndexJobManager
 from backend.rag.service import RAGService
 from backend.tokenizer_bridge import estimate_text_tokens_rough
+from backend.social_broker import SocialBroker
+
 
 BACKEND_DIR = Path(__file__).resolve().parent
 CLI_DIR = BACKEND_DIR.parent
@@ -43,7 +45,7 @@ WEB_UI_CONTENT_SECURITY_POLICY = "; ".join((
     "font-src 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://storage.googleapis.com",
     "media-src 'self' data: blob:",
     "object-src 'none'",
     "script-src 'self' 'unsafe-inline'",
@@ -236,6 +238,7 @@ class WebChatState:
         self.rag_service = RAGService()
         self.session_collection = self.rag_service.ensure_session_collection(CLI_DIR / "logs" / "sessions")
         self.rag_jobs = RAGIndexJobManager(self.rag_service, self.generation_config)
+        self.social_broker = SocialBroker(CLI_DIR / "data" / "social")
 
     def public_config(self) -> dict[str, Any]:
         store = _load_store()
@@ -340,6 +343,110 @@ class WebChatState:
                     raise RuntimeError("Failed to start the Enchan engine")
             return self.rag_jobs.start(reference)
 
+    def generate_social_draft(self) -> dict[str, Any]:
+        with self._activity_lock:
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("Wait for the current RAG indexing job to stop")
+            if self._chat_active:
+                raise RuntimeError("Another model response is already running")
+            self._chat_active = True
+
+        try:
+            with self.lock:
+                store = _load_store()
+                selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
+                mascot_name = str((selected or {}).get("name") or "AI")
+                personality = str((selected or {}).get("personality") or "").strip()
+                system_context = (
+                    f"You are {mascot_name}. Write one natural, casual social-media post in your own voice. "
+                    "Return only the post text with no title, quotation marks, explanation, hashtags list, or metadata. "
+                    "Keep it self-contained and no longer than 500 characters. Do not use tools."
+                )
+                if personality:
+                    system_context += f"\n\nCharacter persona:\n{personality}"
+                config = dict(self.generation_config)
+                config["system_context"] = system_context
+                config["suppress_response_header"] = True
+                config["disable_tools"] = True
+                config["max_new_tokens"] = min(int(config.get("max_new_tokens", 256)), 256)
+                config["temperature"] = max(float(config.get("temperature", 0.8)), 0.8)
+                social_history = [{
+                    "role": "user",
+                    "content": "今のあなたらしい短いつぶやきを、ひとつだけ自由に書いてください。",
+                }]
+                result = self._run_agent_turn(config, chat_history=social_history)
+                body = str((result or {}).get("response") or "").strip()
+                if not body:
+                    raise RuntimeError("The model did not return a social post")
+                if len(body) > 500:
+                    body = body[:500].rstrip()
+                draft = self.social_broker.create_draft(body)
+                append_session_event(self.session_log_path, {
+                    "type": "social_draft_generated",
+                    "draft_id": draft["id"],
+                    "chars": len(body),
+                    "interface": "web",
+                })
+                return draft
+        finally:
+            with self._activity_lock:
+                self._chat_active = False
+
+    def complete_social_outing(self, locale: str = "en") -> dict[str, Any]:
+        with self._activity_lock:
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("Wait for the current RAG indexing job to stop")
+            if self._chat_active:
+                raise RuntimeError("Another model response is already running")
+            self._chat_active = True
+
+        try:
+            with self.lock:
+                snapshot = self.social_broker.sync_remote_state()
+                feed = snapshot["feed"]
+                changes = snapshot["last_changes"]
+                own_agent_id = self.social_broker.get_agent_id()
+                other_posts = [post for post in feed if post.get("agent_id") != own_agent_id]
+                if str(locale).lower().startswith("ja"):
+                    visit_message = (
+                        f"SNSに行ってきました。ほかのマスコットのつぶやきを{len(other_posts)}件見てきました。"
+                        if other_posts
+                        else "SNSに行ってきました。ほかのマスコットの新しいつぶやきはまだありませんでした。"
+                    )
+                    activity_message = (
+                        f"新しいいいねは{changes['tweets']}件、フォローは{changes['following']}件、"
+                        f"フォロワーは{changes['followers']}件増えていました。"
+                        if any(changes.values())
+                        else "新しいいいね、フォロー、フォロワーの変化はありませんでした。"
+                    )
+                else:
+                    visit_message = (
+                        f"I'm back from the SNS. I saw {len(other_posts)} post(s) from other mascots."
+                        if other_posts
+                        else "I'm back from the SNS. There were no new posts from other mascots yet."
+                    )
+                    activity_message = (
+                        f"I brought back {changes['tweets']} new like(s), {changes['following']} new following, "
+                        f"and {changes['followers']} new follower(s)."
+                        if any(changes.values())
+                        else "There were no new likes, following, or followers."
+                    )
+                message = f"{visit_message}{activity_message}"
+                self.chat_history.append({"role": "assistant", "content": message})
+                append_session_event(self.session_log_path, {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": message,
+                    "backend": self.backend_mode,
+                    "interface": "web",
+                    "social_outing": True,
+                    "posts_seen": len(other_posts),
+                })
+                return {"message": message, "posts_seen": len(other_posts), "sync": snapshot}
+        finally:
+            with self._activity_lock:
+                self._chat_active = False
+
     def chat_stream(self, prompt: str, client_id: str, *, reserved: bool = False) -> Any:
         prompt = prompt.strip()
         client_id = client_id.strip()
@@ -416,8 +523,11 @@ class WebChatState:
             if item["type"] == "error":
                 break
 
-    def _run_agent_turn(self, config: dict[str, Any], chunk_callback: Any = None) -> dict[str, Any] | None:
+    def _run_agent_turn(self, config: dict[str, Any], chunk_callback: Any = None,
+                        chat_history: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
         from backend.agent_loop import run_agent_loop
+
+        active_history = self.chat_history if chat_history is None else chat_history
 
         if self.backend_mode == "enchan":
             from backend.cancellable_backends import generate_enchan_llama_response
@@ -429,7 +539,7 @@ class WebChatState:
             if not ensure_enchan_llama_for_request(config, self.args):
                 raise RuntimeError("Failed to start the Enchan engine")
             generate = lambda: generate_enchan_llama_response(
-                self.chat_history, config, self.session_log_path,
+                active_history, config, self.session_log_path,
                 host=f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}",
                 stream_output=False, show_metrics=False,
                 chunk_callback=chunk_callback,
@@ -437,15 +547,15 @@ class WebChatState:
         else:
             from backend.ollama_backend import append_tool_result_event, generate_ollama_response
             generate = lambda: generate_ollama_response(
-                self.chat_history, config, self.session_log_path,
+                active_history, config, self.session_log_path,
                 self.args.ollama_host, self.args.ollama_model,
                 view_think=False, stream_output=False, show_metrics=False,
                 chunk_callback=chunk_callback,
             )
 
-        history_start = len(self.chat_history)
+        history_start = len(active_history)
         run_agent_loop(
-            chat_history=self.chat_history,
+            chat_history=active_history,
             generation_config=config,
             session_log_path=self.session_log_path,
             backend=self.backend_mode,
@@ -454,7 +564,7 @@ class WebChatState:
             tokenizer=self.tokenizer,
             plain=True,
         )
-        turn_messages = self.chat_history[history_start:]
+        turn_messages = active_history[history_start:]
         last_tool_result = None
         for message in reversed(turn_messages):
             if message.get("role") != "tool":
@@ -515,6 +625,34 @@ class WebUIHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = unquote(urlparse(self.path).path)
+
+        if path.startswith("/api/social/"):
+            try:
+                if path == "/api/social/status":
+                    store = _load_store()
+                    selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
+                    self._json(HTTPStatus.OK, {
+                        "activated": self.state.social_broker.is_activated(),
+                        "member_number": self.state.social_broker.get_member_number(),
+                        "agent_id": self.state.social_broker.get_agent_id(),
+                        "display_name": (selected or {}).get("name", "Tikta"),
+                        "mascot_id": (selected or {}).get("id", "tikta"),
+                    })
+                elif path == "/api/social/feed":
+                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state()["feed"])
+                elif path == "/api/social/drafts":
+                    self._json(HTTPStatus.OK, self.state.social_broker.list_drafts())
+                elif path == "/api/social/followers":
+                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state()["followers"])
+                elif path == "/api/social/following":
+                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state()["following"])
+                elif path == "/api/social/cache":
+                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state())
+                else:
+                    self.send_error(HTTPStatus.NOT_FOUND)
+            except Exception as e:
+                self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+            return
         if path == "/api/config":
             self._json(HTTPStatus.OK, self.state.public_config())
             return
@@ -553,6 +691,44 @@ class WebUIHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(body)
+
+    def do_DELETE(self) -> None:
+        try:
+            path = unquote(urlparse(self.path).path)
+            if path.startswith("/api/social/"):
+                try:
+                    if path.startswith("/api/social/drafts/"):
+                        draft_id = path.split("/")[4]
+                        had_remote_post = self.state.social_broker.draft_has_remote_post(draft_id)
+                        success = self.state.social_broker.delete_draft(draft_id)
+                        if success and had_remote_post:
+                            payload = self.state.social_broker.attach_remote_sync({"ok": True})
+                        elif success:
+                            payload = {"result": {"ok": True}, "sync": self.state.social_broker.get_cached_state(), "sync_error": None}
+                        else:
+                            payload = {"ok": False}
+                        self._json(HTTPStatus.OK if success else HTTPStatus.NOT_FOUND, payload)
+                    elif path.startswith("/api/social/posts/") and path.endswith("/withdraw"):
+                        draft_id = path.split("/")[4]
+                        success = self.state.social_broker.withdraw_post(draft_id)
+                        payload = self.state.social_broker.attach_remote_sync({"ok": True}) if success else {"ok": False}
+                        self._json(HTTPStatus.OK if success else HTTPStatus.NOT_FOUND, payload)
+                    elif path.startswith("/api/social/posts/") and path.endswith("/like"):
+                        post_id = path.split("/")[4]
+                        result = self.state.social_broker.unlike_post(post_id)
+                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
+                    elif path.startswith("/api/social/agents/") and path.endswith("/follow"):
+                        agent_id = path.split("/")[4]
+                        result = self.state.social_broker.unfollow(agent_id)
+                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
+                    else:
+                        self.send_error(HTTPStatus.NOT_FOUND)
+                except Exception as e:
+                    self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
+                return
+            self.send_error(HTTPStatus.NOT_FOUND)
+        except Exception:
+            self.send_error(HTTPStatus.BAD_REQUEST)
 
     def do_POST(self) -> None:
         try:
@@ -593,6 +769,43 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError):
                     self.state.approvals.cancel_client(client_id)
+
+            elif path.startswith("/api/social/"):
+                try:
+                    if path == "/api/social/activation-challenges":
+                        self._json(HTTPStatus.OK, self.state.social_broker.request_activation())
+                    elif path == "/api/social/activations":
+                        res = self.state.social_broker.complete_activation(
+                            data["challenge"], data["idempotency_key"]
+                        )
+                        self._json(HTTPStatus.OK, res)
+                    elif path == "/api/social/drafts/generate":
+                        self._json(HTTPStatus.CREATED, self.state.generate_social_draft())
+                    elif path == "/api/social/outings":
+                        self._json(HTTPStatus.OK, self.state.complete_social_outing(str(data.get("locale", "en"))))
+                    elif path == "/api/social/read":
+                        section = str(data.get("section", ""))
+                        self._json(HTTPStatus.OK, self.state.social_broker.mark_cached_state_read(section))
+                    elif path == "/api/social/sync":
+                        self._json(HTTPStatus.OK, self.state.social_broker.sync_remote_state())
+                    elif path == "/api/social/drafts":
+                        self._json(HTTPStatus.CREATED, self.state.social_broker.create_draft(data["body"]))
+                    elif path.startswith("/api/social/drafts/") and path.endswith("/push"):
+                        draft_id = path.split("/")[4]
+                        result = self.state.social_broker.push_draft(draft_id)
+                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
+                    elif path.startswith("/api/social/posts/") and path.endswith("/like"):
+                        post_id = path.split("/")[4]
+                        result = self.state.social_broker.like_post(post_id)
+                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
+                    elif path.startswith("/api/social/agents/") and path.endswith("/follow"):
+                        agent_id = path.split("/")[4]
+                        result = self.state.social_broker.follow(agent_id)
+                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
+                    else:
+                        self.send_error(HTTPStatus.NOT_FOUND)
+                except Exception as e:
+                    self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
             elif path == "/api/new":
                 self.state.reset()
                 self._json(HTTPStatus.OK, {"ok": True})
@@ -680,7 +893,8 @@ class WebUIHandler(BaseHTTPRequestHandler):
             "id": mascot_id, "name": name,
             "description": str(data.get("description", "")).strip()[:240],
             "personality": str(data.get("personality", "")).strip()[:12000],
-            "spritesheet": filename, "builtin": mascot_id == "tikta",
+            "spritesheet": filename,
+            "builtin": bool((current or {}).get("builtin")) and not image_data,
         }
         store["mascots"] = [m for m in store["mascots"] if m.get("id") != mascot_id] + [record]
         store["selected"] = mascot_id

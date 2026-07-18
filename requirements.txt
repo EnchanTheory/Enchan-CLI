@@ -1,3 +1,5 @@
 prompt_toolkit
 rich
 ddgs
+httpx
+Pillow

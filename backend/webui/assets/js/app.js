@@ -80,6 +80,16 @@ function addMessage(role,text,error=false){
   else{const body=document.createElement("div");const name=document.createElement("div");name.className="assistant-name";name.textContent=state.mascot?.name||"Enchan";const content=document.createElement("div");content.className="message-text";content.innerHTML=renderMarkdown(text);body.append(name,content);row.append(body)}
   messages.append(row);window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});return row
 }
+window.addEventListener("enchan:social-outing-start",event=>{
+  if(state.busy||state.ragBusy){event.preventDefault();return}
+  state.busy=true;resize();play("running-right",{loop:true});
+});
+window.addEventListener("enchan:social-outing-complete",event=>{
+  state.busy=false;resize();addMessage("assistant",event.detail?.message||t("social.outing.returned"));play("waving");
+});
+window.addEventListener("enchan:social-outing-error",()=>{
+  state.busy=false;resize();play("failed");
+});
 function selectedMascot(){return state.config?.mascots.find(m=>m.id===state.config.selectedMascot)}
 function applyMascot(){
   state.mascot=selectedMascot();const stage=$("mascotStage");
@@ -136,16 +146,17 @@ async function loadRagStatus({showError=false}={}){
   if(ragRequestActive)return;ragRequestActive=true;
   try{renderRagStatus(await api("/api/rag/status"));if(showError)$("ragError").textContent=""}catch(error){if(showError)$("ragError").textContent=t("errors.request",{message:error.message})}finally{ragRequestActive=false}
 }
-function confirmAction({label,message,target="",badge="Enchan",danger=false}){
+function confirmAction({message}){
   if(state.pendingConfirmation)return Promise.resolve(false);
-  const dialog=$("confirmationDialog"),accept=$("confirmationAccept"),targetElement=$("confirmationTarget");
-  dialog.label=label;$("confirmationBadge").textContent=badge;targetElement.textContent=target;targetElement.hidden=!target;$("confirmationMessage").textContent=message;accept.textContent=label;accept.classList.toggle("danger",danger);
+  const dialog=$("confirmationDialog");
+  dialog.label=t("common.confirm");$("confirmationMessage").textContent=message;$("confirmationAccept").textContent=t("common.yes");$("confirmationCancel").textContent=t("common.no");
   return new Promise(resolve=>{state.pendingConfirmation=resolve;dialogs.open(dialog)});
 }
 function resolveConfirmation(confirmed){
   const resolve=state.pendingConfirmation;if(!resolve)return;
   state.pendingConfirmation=null;dialogs.close("confirmationDialog");resolve(confirmed);
 }
+window.EnchanConfirmAction=confirmAction;
 async function startRag(collectionId,name,resume){
   if(!await confirmAction({label:t(resume?"rag.resume":"rag.start"),message:t(resume?"rag.confirmResume":"rag.confirmStart"),target:name,badge:"RAG"}))return;$("ragError").textContent="";
   try{await api("/api/rag/start",{collectionId});await loadRagStatus({showError:true})}catch(error){$("ragError").textContent=t("errors.request",{message:error.message})}

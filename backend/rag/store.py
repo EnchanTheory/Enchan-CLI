@@ -11,6 +11,7 @@ from typing import Any
 
 
 STORE_VERSION = 1
+CLI_DIR = Path(__file__).resolve().parents[2]
 
 
 def normalize_source_path(path: str | Path) -> str:
@@ -33,7 +34,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
 class RAGStore:
     def __init__(self, root: str | Path | None = None):
         configured = root or os.environ.get("ENCHAN_RAG_HOME")
-        self.root = Path(configured).expanduser() if configured else Path.home() / ".enchan" / "rag"
+        self.root = Path(configured).expanduser() if configured else CLI_DIR / "rag"
         self.collections_dir = self.root / "collections"
         self._json_cache: dict[tuple[str, str], tuple[int, int, Any]] = {}
         self._chunks_cache: dict[str, tuple[int, int, list[dict[str, Any]]]] = {}

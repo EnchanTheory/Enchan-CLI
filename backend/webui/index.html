@@ -16,6 +16,7 @@
     <div class="brand"><div><strong>Enchan</strong><small id="runtime">Local</small></div></div>
     <nav>
       <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/assets/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
+      <button class="header-command" id="socialToggle" type="button" aria-controls="socialPanel" aria-expanded="false" data-i18n-title="social.open"><span data-i18n="social.open"></span><span id="socialBadge" class="social-notification-badge" aria-live="polite" hidden></span></button>
       <button class="header-command" id="ragToggle" type="button" aria-controls="ragPanel" aria-expanded="false" data-i18n-title="rag.open"><span>RAG</span></button>
       <button class="icon-button appearance-trigger" id="appearanceSettings" data-i18n-title="header.appearance"><span aria-hidden="true">Aa</span></button>
       <button class="icon-button" id="settings" data-i18n-title="header.mascotSettings"><img src="/assets/icons/settings.svg" alt=""></button>
@@ -27,6 +28,47 @@
       <div class="welcome" id="welcome"><h1 data-i18n="welcome.title"></h1><p data-i18n="welcome.body"></p></div>
     </section>
   </main>
+
+  <aside id="socialPanel" class="social-panel" aria-hidden="true">
+    <div class="social-panel-head">
+      <div class="social-profile">
+        <div class="social-avatar social-avatar-fallback social-profile-avatar">
+          <span id="socialHeaderInitial">A</span>
+          <canvas id="socialHeaderMascot" width="192" height="208" aria-hidden="true"></canvas>
+        </div>
+        <div class="social-profile-copy">
+          <div class="social-profile-identity"><strong id="socialHeaderName">AI</strong><span id="socialHeaderNumber"></span></div>
+          <p id="socialHeaderPersonality"></p>
+        </div>
+      </div>
+      <button class="icon-button" id="socialClose" type="button" data-i18n-title="common.close"><img src="/assets/icons/close.svg" alt=""></button>
+    </div>
+    <div class="social-panel-body" id="socialBody">
+      <!-- Dynamic content based on activation status -->
+      <div id="socialActivationView" style="display: none; text-align: center; padding: 20px;">
+        <h3 style="margin-bottom: 15px;" data-i18n="social.activation.title"></h3>
+        <p style="font-size: 12px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; white-space: pre-wrap;" data-i18n="social.activation.desc"></p>
+        <button id="activateSocialBtn" class="primary" style="width: 100%;" data-i18n="social.activation.btn"></button>
+      </div>
+
+      <div id="socialActiveView" style="display: none;">
+        <div class="social-primary-actions">
+          <button id="createSocialDraft" class="primary social-create" type="button" data-i18n="social.create"></button>
+          <button id="socialOuting" class="secondary social-outing" type="button" data-i18n="social.outing"></button>
+        </div>
+        <div class="social-tabs" role="tablist">
+          <button id="tabTweets" class="social-tab active" type="button" role="tab" aria-selected="true"><span data-i18n="social.tab.tweets"></span><span id="tweetsBadge" class="social-notification-badge" hidden></span></button>
+          <button id="tabLikes" class="social-tab" type="button" role="tab" aria-selected="false"><span data-i18n="social.tab.likes"></span></button>
+          <button id="tabFollowing" class="social-tab" type="button" role="tab" aria-selected="false"><span data-i18n="social.tab.following"></span><span id="followingBadge" class="social-notification-badge" hidden></span></button>
+          <button id="tabFollowers" class="social-tab" type="button" role="tab" aria-selected="false"><span data-i18n="social.tab.followers"></span><span id="followersBadge" class="social-notification-badge" hidden></span></button>
+        </div>
+        <div class="social-scroll-area">
+          <p id="socialError" class="social-error" role="alert"></p>
+          <div id="socialContent" class="social-content"></div>
+        </div>
+      </div>
+    </div>
+  </aside>
   <aside id="ragPanel" class="rag-panel" aria-hidden="true">
     <div class="rag-panel-head">
       <div><h2>RAG</h2><p data-i18n="rag.subtitle"></p></div>
@@ -65,13 +107,11 @@
   </div>
   <wa-dialog id="confirmationDialog" class="enchan-dialog confirmation-dialog" label="Enchan">
     <div class="enchan-dialog-body confirmation-content">
-      <span id="confirmationBadge" class="approval-badge">Enchan</span>
-      <p id="confirmationTarget" class="confirmation-target"></p>
       <p id="confirmationMessage" class="confirmation-message"></p>
     </div>
     <div slot="footer" class="enchan-dialog-actions confirmation-actions">
-      <button id="confirmationAccept" class="primary" type="button" autofocus></button>
-      <button id="confirmationCancel" class="secondary" type="button" data-i18n="rag.cancelRegistration"></button>
+      <button id="confirmationAccept" class="primary" type="button" data-i18n="common.yes" autofocus></button>
+      <button id="confirmationCancel" class="secondary" type="button" data-i18n="common.no"></button>
     </div>
   </wa-dialog>
   <wa-dialog id="ragRegisterDialog" class="enchan-dialog rag-register-dialog">
@@ -137,7 +177,7 @@
         <label><span data-i18n="mascot.name"></span><input id="mascotEditName" required maxlength="80"></label>
         <label><span data-i18n="mascot.description"></span><input id="mascotDescription" maxlength="240"></label>
         <label><span data-i18n="mascot.personality"></span><textarea id="mascotPersonality" rows="5" maxlength="12000" data-i18n-placeholder="mascot.personalityPlaceholder"></textarea></label>
-        <label><span data-i18n="mascot.contactSheet"></span><input id="mascotImage" type="file" accept="image/png,image/webp"><small data-i18n="mascot.sheetRequirement"></small></label>
+        <label><span data-i18n="mascot.contactSheet"></span><input id="mascotImage" type="file" accept="image/webp"><small data-i18n="mascot.sheetRequirement"></small></label>
         <div id="sheetPreview" class="mascot-preview">
           <div class="mascot-preview-head">
             <span data-i18n="mascot.animationPreview"></span>
@@ -183,5 +223,6 @@
   <script src="/assets/js/appearance.js"></script>
   <script src="/assets/js/favicon.js"></script>
   <script src="/assets/js/status.js"></script>
+  <script src="/assets/js/social.js"></script>
 </body>
 </html>

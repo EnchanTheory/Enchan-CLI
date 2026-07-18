@@ -116,6 +116,8 @@ def generate_enchan_llama_response(
         "max_tokens": int(generation_config.get("max_new_tokens", -1)),
         "tools": get_agent_tools_schema(),
     }
+    if generation_config.get("disable_tools"):
+        payload.pop("tools", None)
 
     chat_template_kwargs = {}
     if not generation_config.get("enable_thinking", True):
