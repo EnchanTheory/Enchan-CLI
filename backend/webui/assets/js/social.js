@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else openSocial();
     });
     socialClose.addEventListener('click', closeSocial);
+    window.addEventListener('enchan:mascot-change', () => loadSocialStatus({ markRead: false }));
 
     for (const [name, button] of Object.entries(tabs)) {
         button.addEventListener('click', () => selectTab(name, { markRead: true }));

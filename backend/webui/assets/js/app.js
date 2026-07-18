@@ -80,6 +80,13 @@ function addMessage(role,text,error=false){
   else{const body=document.createElement("div");const name=document.createElement("div");name.className="assistant-name";name.textContent=state.mascot?.name||"Enchan";const content=document.createElement("div");content.className="message-text";content.innerHTML=renderMarkdown(text);body.append(name,content);row.append(body)}
   messages.append(row);window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});return row
 }
+function renderChatHistory(history=[]){
+  [...messages.querySelectorAll(".message")].forEach(element=>element.remove());
+  welcome.hidden=history.length>0;
+  for(const message of history){
+    if((message.role==="user"||message.role==="assistant")&&message.content)addMessage(message.role,message.content);
+  }
+}
 window.addEventListener("enchan:social-outing-start",event=>{
   if(state.busy||state.ragBusy){event.preventDefault();return}
   state.busy=true;resize();play("running-right",{loop:true});
@@ -109,7 +116,7 @@ function play(name,{loop=false,resume=true,restart=true}={}){
   if(anim.frames){frames=anim.frames;durations=anim.durations}else{const cycle=Array.from({length:anim.count},(_,i)=>anim.row*8+i);frames=Array.from({length:anim.repeats||1},()=>cycle).flat();durations=frames.map((_,i)=>i%anim.count===anim.count-1?anim.finalDuration:anim.frameDuration)}
   state.frame=0;const tick=()=>{const index=frames[state.frame];drawFrame(index);const duration=durations[state.frame]||140;state.frame++;if(state.frame>=frames.length){if(loop||name==="idle"){state.frame=0}else{state.timer=setTimeout(()=>{if(token===state.animationToken&&resume)play(restingAnimation(),{loop:state.busy})},duration);return}}state.timer=setTimeout(()=>{if(token===state.animationToken)tick()},duration)};tick();
 }
-async function loadConfig(){state.config=await api("/api/config");$("runtime").textContent=`${state.config.model} · ${state.config.backend}`;applyMascot();renderMascotList()}
+async function loadConfig(){state.config=await api("/api/config");$("runtime").textContent=`${state.config.model} · ${state.config.backend}`;applyMascot();renderMascotList();renderChatHistory(state.config.chatHistory)}
 function formatDuration(value){
   if(value===null||value===undefined||!Number.isFinite(Number(value)))return t("rag.calculating");
   const seconds=Math.max(0,Math.round(Number(value)));if(seconds<60)return t("rag.seconds",{count:seconds});
@@ -277,7 +284,7 @@ $("ragRegisterForm").onsubmit=async event=>{event.preventDefault();const collect
 $("settings").onclick=()=>{dialogs.open("mascotDialog");editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};
 $("addMascot").onclick=()=>editMascot(null);
 $("mascotImage").onchange=async e=>{const file=e.target.files[0];if(!file)return;const url=URL.createObjectURL(file);previewImage=new Image();await new Promise((resolve,reject)=>{previewImage.onload=resolve;previewImage.onerror=reject;previewImage.src=url});URL.revokeObjectURL(url);const validationError=validatePetSheet(previewImage);$("sheetError").textContent=validationError;if(validationError){e.target.value="";state.imageData="";return}state.imageData=await new Promise(resolve=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(file)});$("sheetPreviewText").hidden=true;$("livePreviewCanvas").hidden=false;$("previewAnimSelect").hidden=false;clearTimeout(state.previewTimer);updatePreviewCanvas()};
-$("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textContent="";try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();dialogs.close("mascotDialog");play("waving")}catch(error){$("sheetError").textContent=t("errors.request",{message:error.message})}};
+$("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textContent="";try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();renderChatHistory(state.config.chatHistory);window.dispatchEvent(new CustomEvent("enchan:mascot-change"));dialogs.close("mascotDialog");play("waving")}catch(error){$("sheetError").textContent=t("errors.request",{message:error.message})}};
 $("mascotDialog").addEventListener("wa-after-hide",()=>{clearTimeout(state.previewTimer);state.previewTimer=null});
 setRagPanel(localStorage.getItem("enchan.rag.open")==="1");
 window.EnchanI18n.onChange(()=>{if(state.ragStatus)renderRagStatus(state.ragStatus)});

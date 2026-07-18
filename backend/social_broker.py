@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, Tuple
 import httpx
 import threading
 from datetime import datetime, timezone
+from urllib.parse import quote
 
 logger = logging.getLogger("enchan.social")
 
@@ -63,6 +64,8 @@ class SocialBroker:
 
         self.client = httpx.Client(timeout=15.0)
         self._ensure_files()
+        self._migrate_legacy_drafts()
+        self._migrate_legacy_cache()
 
     def _ensure_files(self):
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -77,14 +80,17 @@ class SocialBroker:
     @staticmethod
     def _default_cache() -> Dict[str, Any]:
         return {
-            "version": 2,
+            "version": 3,
             "feed": [],
             "own_posts": [],
+            "own_posts_by_mascot": {},
             "liked_posts": [],
             "following": [],
             "followers": [],
             "unread": {"tweets": 0, "following": 0, "followers": 0},
+            "unread_tweets_by_mascot": {},
             "last_changes": {"tweets": 0, "following": 0, "followers": 0},
+            "last_tweet_changes_by_mascot": {},
             "updated_at": None,
         }
 
@@ -93,10 +99,14 @@ class SocialBroker:
             data = json.loads(self.cache_file.read_text(encoding="utf-8"))
         except Exception:
             data = {}
+        legacy_cache = not isinstance(data, dict) or int(data.get("version", 0) or 0) < 3
         cache = self._default_cache()
         if isinstance(data, dict):
             for key in ("feed", "own_posts", "liked_posts", "following", "followers"):
                 if isinstance(data.get(key), list):
+                    cache[key] = data[key]
+            for key in ("own_posts_by_mascot", "unread_tweets_by_mascot", "last_tweet_changes_by_mascot"):
+                if isinstance(data.get(key), dict):
                     cache[key] = data[key]
             for key in ("unread", "last_changes"):
                 values = data.get(key)
@@ -106,6 +116,27 @@ class SocialBroker:
                         for section in ("tweets", "following", "followers")
                     }
             cache["updated_at"] = data.get("updated_at")
+
+        active_mascot_id = self._get_active_mascot_id()
+        if legacy_cache and not cache["own_posts_by_mascot"] and cache["own_posts"]:
+            grouped: Dict[str, list[Dict[str, Any]]] = {}
+            for post in cache["own_posts"]:
+                mascot_id = str(post.get("mascot_id") or active_mascot_id)
+                grouped.setdefault(mascot_id, []).append(post)
+            cache["own_posts_by_mascot"] = grouped
+        cache["own_posts"] = list(cache["own_posts_by_mascot"].get(active_mascot_id, []))
+        legacy_unread_tweets = int(cache["unread"].get("tweets", 0) or 0)
+        legacy_last_tweets = int(cache["last_changes"].get("tweets", 0) or 0)
+        if legacy_cache and active_mascot_id not in cache["unread_tweets_by_mascot"] and legacy_unread_tweets:
+            cache["unread_tweets_by_mascot"][active_mascot_id] = legacy_unread_tweets
+        if legacy_cache and active_mascot_id not in cache["last_tweet_changes_by_mascot"] and legacy_last_tweets:
+            cache["last_tweet_changes_by_mascot"][active_mascot_id] = legacy_last_tweets
+        cache["unread"]["tweets"] = max(
+            0, int(cache["unread_tweets_by_mascot"].get(active_mascot_id, 0) or 0)
+        )
+        cache["last_changes"]["tweets"] = max(
+            0, int(cache["last_tweet_changes_by_mascot"].get(active_mascot_id, 0) or 0)
+        )
         return cache
 
     def _save_cache(self, cache: Dict[str, Any]) -> None:
@@ -113,6 +144,15 @@ class SocialBroker:
             json.dumps(cache, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+
+    def _migrate_legacy_cache(self) -> None:
+        with self._cache_lock:
+            try:
+                data = json.loads(self.cache_file.read_text(encoding="utf-8"))
+            except Exception:
+                data = {}
+            if not isinstance(data, dict) or int(data.get("version", 0) or 0) < 3:
+                self._save_cache(self._load_cache())
 
     def get_cached_state(self) -> Dict[str, Any]:
         with self._cache_lock:
@@ -124,6 +164,8 @@ class SocialBroker:
         with self._cache_lock:
             cache = self._load_cache()
             cache["unread"][section] = 0
+            if section == "tweets":
+                cache["unread_tweets_by_mascot"][self._get_active_mascot_id()] = 0
             self._save_cache(cache)
             return cache
 
@@ -437,6 +479,32 @@ class SocialBroker:
     def _save_drafts(self, drafts: Dict[str, Any]):
         self.drafts_file.write_text(json.dumps(drafts, indent=2), encoding="utf-8")
 
+    def _draft_mascot_id(self, draft: Dict[str, Any]) -> str:
+        return str(draft.get("mascot_id") or self._get_active_mascot_id())
+
+    def _migrate_legacy_drafts(self) -> None:
+        with self._drafts_lock:
+            drafts = self._load_drafts()
+            active_mascot_id = self._get_active_mascot_id()
+            try:
+                cached_posts = json.loads(self.cache_file.read_text(encoding="utf-8")).get("own_posts", [])
+            except Exception:
+                cached_posts = []
+            post_mascots = {
+                str(post.get("id")): str(post.get("mascot_id"))
+                for post in cached_posts
+                if post.get("id") and post.get("mascot_id")
+            }
+            changed = False
+            for draft in drafts.values():
+                if not draft.get("mascot_id"):
+                    draft["mascot_id"] = post_mascots.get(
+                        str(draft.get("server_post_id") or ""), active_mascot_id,
+                    )
+                    changed = True
+            if changed:
+                self._save_drafts(drafts)
+
     def create_draft(self, body: str) -> Dict[str, Any]:
         body = body.strip()
         if not body:
@@ -450,6 +518,7 @@ class SocialBroker:
             now = datetime.now(timezone.utc).isoformat()
             draft = {
                 "id": draft_id,
+                "mascot_id": self._get_active_mascot_id(),
                 "body": body,
                 "status": "draft",
                 "server_post_id": None,
@@ -463,12 +532,18 @@ class SocialBroker:
 
     def list_drafts(self) -> list[Dict[str, Any]]:
         with self._drafts_lock:
-            drafts = list(self._load_drafts().values())
+            active_mascot_id = self._get_active_mascot_id()
+            drafts = [
+                draft for draft in self._load_drafts().values()
+                if self._draft_mascot_id(draft) == active_mascot_id
+            ]
         return sorted(drafts, key=lambda item: item.get("created_at", ""), reverse=True)
 
     def draft_has_remote_post(self, draft_id: str) -> bool:
         with self._drafts_lock:
             draft = self._load_drafts().get(draft_id, {})
+            if draft and self._draft_mascot_id(draft) != self._get_active_mascot_id():
+                return False
             return bool(draft.get("status") == "published" and draft.get("server_post_id"))
 
     def delete_draft(self, draft_id: str) -> bool:
@@ -476,6 +551,8 @@ class SocialBroker:
             drafts = self._load_drafts()
             draft = drafts.get(draft_id)
             if not draft:
+                return False
+            if self._draft_mascot_id(draft) != self._get_active_mascot_id():
                 return False
             server_post_id = draft.get("server_post_id")
             if draft.get("status") == "published" and server_post_id:
@@ -556,17 +633,12 @@ class SocialBroker:
             if draft["status"] == "published":
                 raise ValueError("Already published")
 
+            mascot_id = self._draft_mascot_id(draft)
+            if mascot_id != self._get_active_mascot_id():
+                raise ValueError("Draft belongs to another mascot")
+
             import uuid
             idempotency_key = uuid.uuid4().hex
-
-            # Determine active mascot_id
-            mascot_id = "tikta"
-            try:
-                if self.mascot_config.exists():
-                    data = json.loads(self.mascot_config.read_text(encoding="utf-8"))
-                    mascot_id = data.get("selected", "tikta")
-            except Exception as e:
-                logger.warning(f"Failed to read mascot_id for post: {e}")
 
             res = self._api_post("/v1/posts", role="owner", json_data={"body": draft["body"], "mascot_id": mascot_id}, headers={"Idempotency-Key": idempotency_key})
             res.raise_for_status()
@@ -586,6 +658,8 @@ class SocialBroker:
                 raise ValueError("Draft not found")
 
             draft = drafts[draft_id]
+            if self._draft_mascot_id(draft) != self._get_active_mascot_id():
+                raise ValueError("Draft belongs to another mascot")
             if draft["status"] != "published" or not draft["server_post_id"]:
                 return False
 
@@ -606,7 +680,8 @@ class SocialBroker:
         return res.json()
 
     def get_own_posts(self) -> list[Dict[str, Any]]:
-        res = self._api_get("/v1/posts/mine", role="owner")
+        mascot_id = quote(self._get_active_mascot_id(), safe="")
+        res = self._api_get(f"/v1/posts/mine?mascot_id={mascot_id}", role="owner")
         res.raise_for_status()
         return res.json()
 
@@ -639,6 +714,7 @@ class SocialBroker:
 
         with self._cache_lock:
             previous = self._load_cache()
+            active_mascot_id = self._get_active_mascot_id()
             previous_likes = {
                 self._record_id(post): int(post.get("like_count", 0) or 0)
                 for post in previous["own_posts"]
@@ -668,6 +744,12 @@ class SocialBroker:
                 section: int(previous["unread"].get(section, 0) or 0) + changes[section]
                 for section in changes
             }
+            own_posts_by_mascot = dict(previous["own_posts_by_mascot"])
+            own_posts_by_mascot[active_mascot_id] = own_posts
+            unread_tweets_by_mascot = dict(previous["unread_tweets_by_mascot"])
+            unread_tweets_by_mascot[active_mascot_id] = unread["tweets"]
+            last_tweet_changes_by_mascot = dict(previous["last_tweet_changes_by_mascot"])
+            last_tweet_changes_by_mascot[active_mascot_id] = changes["tweets"]
             fresh_posts = {
                 self._record_id(post): post
                 for post in feed
@@ -682,14 +764,17 @@ class SocialBroker:
                 if self._record_id(post)
             ]
             cache = {
-                "version": 2,
+                "version": 3,
                 "feed": feed,
                 "own_posts": own_posts,
+                "own_posts_by_mascot": own_posts_by_mascot,
                 "liked_posts": liked_posts,
                 "following": following,
                 "followers": followers,
                 "unread": unread,
+                "unread_tweets_by_mascot": unread_tweets_by_mascot,
                 "last_changes": changes,
+                "last_tweet_changes_by_mascot": last_tweet_changes_by_mascot,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
             self._save_cache(cache)

@@ -257,7 +257,7 @@ class WebChatState:
     agent_mode: bool
 
     def __post_init__(self) -> None:
-        self.chat_history: list[dict[str, Any]] = []
+        self.chat_histories: dict[str, list[dict[str, Any]]] = {}
         self.lock = threading.Lock()
         self._activity_lock = threading.Lock()
         self._directory_dialog_lock = threading.Lock()
@@ -269,6 +269,27 @@ class WebChatState:
         self.rag_jobs = RAGIndexJobManager(self.rag_service, self.generation_config)
         self.social_broker = SocialBroker(CLI_DIR / "data" / "social")
 
+    @staticmethod
+    def _active_mascot_id() -> str:
+        return str(_load_store().get("selected", "tikta"))
+
+    def _mascot_chat_history(self, mascot_id: str | None = None) -> list[dict[str, Any]]:
+        key = mascot_id or self._active_mascot_id()
+        return self.chat_histories.setdefault(key, [])
+
+    def _public_chat_history(self, mascot_id: str | None = None) -> list[dict[str, str]]:
+        public = []
+        for message in self._mascot_chat_history(mascot_id):
+            role = str(message.get("role", ""))
+            if role == "model":
+                role = "assistant"
+            if role not in {"user", "assistant"} or message.get("tool_calls"):
+                continue
+            content = message.get("content", "")
+            if isinstance(content, str) and content:
+                public.append({"role": role, "content": content})
+        return public
+
     def public_config(self) -> dict[str, Any]:
         store = _load_store()
         return {
@@ -277,6 +298,7 @@ class WebChatState:
             "agentMode": self.agent_mode,
             "selectedMascot": store.get("selected", "tikta"),
             "mascots": store.get("mascots", []),
+            "chatHistory": self._public_chat_history(str(store.get("selected", "tikta"))),
             "frame": CODEX_FRAME,
             "animations": CODEX_ANIMATIONS,
         }
@@ -284,7 +306,7 @@ class WebChatState:
     def reset(self) -> None:
         self.approvals.cancel_all("new_chat")
         with self.lock:
-            self.chat_history.clear()
+            self._mascot_chat_history().clear()
 
     @staticmethod
     def _validate_chat_request(prompt: str, client_id: str) -> None:
@@ -446,7 +468,7 @@ class WebChatState:
                     followers=changes["followers"],
                 )
                 message = f"{visit_message} {activity_message}"
-                self.chat_history.append({"role": "assistant", "content": message})
+                self._mascot_chat_history().append({"role": "assistant", "content": message})
                 append_session_event(self.session_log_path, {
                     "type": "message",
                     "role": "assistant",
@@ -470,6 +492,8 @@ class WebChatState:
 
         import queue
         q = queue.Queue()
+        mascot_id = self._active_mascot_id()
+        chat_history = self._mascot_chat_history(mascot_id)
 
         def worker():
             with self.lock:
@@ -479,7 +503,7 @@ class WebChatState:
                         raise ValueError("Message exceeds the configured context limit")
 
                     store = _load_store()
-                    selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
+                    selected = next((m for m in store["mascots"] if m.get("id") == mascot_id), None)
                     personality = (selected or {}).get("personality", "").strip()
                     system_context = (
                         get_agent_system_prompt()
@@ -492,7 +516,7 @@ class WebChatState:
                     config["system_context"] = system_context
                     config["suppress_response_header"] = True
 
-                    self.chat_history.append({"role": "user", "content": prompt})
+                    chat_history.append({"role": "user", "content": prompt})
                     append_session_event(self.session_log_path, {
                         "type": "message", "role": "user", "content": prompt,
                         "input_tokens_estimate": input_tokens, "backend": self.backend_mode, "interface": "web",
@@ -507,9 +531,11 @@ class WebChatState:
                         interface="web",
                         session_log_path=self.session_log_path,
                     ):
-                        result = self._run_agent_turn(config, chunk_callback=on_chunk)
+                        result = self._run_agent_turn(
+                            config, chunk_callback=on_chunk, chat_history=chat_history,
+                        )
                     if not result:
-                        self.chat_history.pop()
+                        chat_history.pop()
                         q.put({"type": "error", "error": "The model did not return a response"})
                         return
                     tool_result = result.get("toolResult")
@@ -520,8 +546,8 @@ class WebChatState:
                         q.put({"type": "tool_result", **tool_result})
                     q.put({"type": "done"})
                 except Exception as e:
-                    if self.chat_history and self.chat_history[-1].get("role") == "user":
-                        self.chat_history.pop()
+                    if chat_history and chat_history[-1].get("role") == "user":
+                        chat_history.pop()
                     q.put({"type": "error", "error": str(e)})
                 finally:
                     with self._activity_lock:
@@ -541,7 +567,7 @@ class WebChatState:
                         chat_history: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
         from backend.agent_loop import run_agent_loop
 
-        active_history = self.chat_history if chat_history is None else chat_history
+        active_history = self._mascot_chat_history() if chat_history is None else chat_history
 
         if self.backend_mode == "enchan":
             from backend.cancellable_backends import generate_enchan_llama_response
