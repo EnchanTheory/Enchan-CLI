@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import uuid
 from contextlib import contextmanager
@@ -42,6 +43,48 @@ ApprovalHandler = Callable[[ApprovalRequest], bool | ApprovalDecision]
 _handler: ContextVar[ApprovalHandler | None] = ContextVar("approval_handler", default=None)
 _interface: ContextVar[str] = ContextVar("approval_interface", default="cui")
 _session_log_path: ContextVar[Path | None] = ContextVar("approval_session_log_path", default=None)
+
+
+_COMMAND_BOUNDARY = r"(?:^|(?<=[;&|(){}\r\n]))\s*"
+_DESTRUCTIVE_COMMAND_PATTERNS = (
+    re.compile(
+        _COMMAND_BOUNDARY
+        + r"(?:sudo\s+)?(?:rm|unlink|shred|rmdir|rd|del|erase|remove-item|clear-content|ri)(?=\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        _COMMAND_BOUNDARY + r"git\b[^;&|(){}\r\n]*?\s(?:rm|clean)(?=\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        _COMMAND_BOUNDARY + r"git\b[^;&|(){}\r\n]*?\sreset\b[^;&|(){}\r\n]*?--hard(?=\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        _COMMAND_BOUNDARY + r"git\b[^;&|(){}\r\n]*?\scheckout\s+--(?=\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        _COMMAND_BOUNDARY + r"git\b[^;&|(){}\r\n]*?\srestore(?=\s|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        _COMMAND_BOUNDARY
+        + r"cmd(?:\.exe)?\s+/(?:c|k)\s+(?:del|erase|rd|rmdir)(?=\s|$)",
+        re.IGNORECASE,
+    ),
+)
+
+
+def destructive_command_reason(command: object) -> str | None:
+    """Reject direct destructive shell operations before approval or execution."""
+    text = str(command or "").strip()
+    if any(pattern.search(text) for pattern in _DESTRUCTIVE_COMMAND_PATTERNS):
+        return (
+            "Destructive shell commands are disabled. Move targets to a quarantine or backup "
+            "directory instead of deleting them, and do not discard Git working-tree changes."
+        )
+    return None
 
 
 def _safe_text(value: object, *, limit: int = 20_000) -> str:
@@ -109,12 +152,20 @@ def request_approval(tool: str, summary: str, details: Mapping[str, object], cap
         details=sanitize_details(details),
         capability=_safe_text(capability, limit=120),
     )
-    active_handler = _handler.get() or terminal_approval_handler
-    try:
-        raw_decision = active_handler(request)
-        decision = raw_decision if isinstance(raw_decision, ApprovalDecision) else ApprovalDecision(bool(raw_decision), "user_approved" if raw_decision else "user_denied")
-    except Exception:
-        decision = ApprovalDecision(False, "handler_error")
+    block_reason = (
+        destructive_command_reason(details.get("command") or details.get("cmd"))
+        if tool in {"run_command", "execute_command"}
+        else None
+    )
+    if block_reason:
+        decision = ApprovalDecision(False, "policy_denied_destructive_command")
+    else:
+        active_handler = _handler.get() or terminal_approval_handler
+        try:
+            raw_decision = active_handler(request)
+            decision = raw_decision if isinstance(raw_decision, ApprovalDecision) else ApprovalDecision(bool(raw_decision), "user_approved" if raw_decision else "user_denied")
+        except Exception:
+            decision = ApprovalDecision(False, "handler_error")
 
     log_path = _session_log_path.get()
     if log_path is not None:

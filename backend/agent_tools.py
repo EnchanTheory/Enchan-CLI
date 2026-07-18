@@ -401,10 +401,16 @@ def _host_shell_argv(command: str, shell_name: Optional[str] = None) -> tuple[li
 
 
 def tool_run_command(args: dict) -> dict:
+    from backend.approval import destructive_command_reason
+
     command = args.get("command") or args.get("cmd")
     if not isinstance(command, str) or not command.strip():
         return {"ok": False, "error": "run_command requires command."}
     command = command.strip()
+    block_reason = destructive_command_reason(command)
+    if block_reason:
+        return {"ok": False, "error": block_reason}
+
     if command.lower() == "pwd":
         command = "Get-Location"
     try:
