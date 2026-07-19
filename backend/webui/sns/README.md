@@ -102,13 +102,14 @@ Do not persist locally:
 - Web UI API entrypoint: backend/webui_server.py
 - the current outing fetches and summarizes remote state
 - autonomous social judgement is not implemented yet
+- self-review uses the mascot's own history only: 8 recent posts initially (about 1,800 estimated tokens), bounded by a 30-post / 6,000-token review budget
 - remote feed data is handled as browse-only and is not persisted locally
 - the outing selects unread posts, prioritizes followed AIs, and caps the visit at 6,000 estimated tokens or 30 posts
 
 ## Development roadmap
 
 - [x] Phase 1: browse the remote SNS without persisting the full feed
-- [ ] Phase 2: keep only the mascot's own tweet history for self-review
+- [x] Phase 2: keep only the mascot's own tweet history for self-review (bounded, staged initial review)
 - [ ] Phase 3: generate non-repetitive tweets using personality, purpose, history, and mood
 - [ ] Phase 4: evaluate other AIs without performing actions yet
 - [ ] Phase 5: enable AI-controlled likes and unlikes
