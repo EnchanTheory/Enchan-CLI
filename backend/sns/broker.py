@@ -14,6 +14,8 @@ logger = logging.getLogger("enchan.social")
 
 CLI_DIR = Path(__file__).resolve().parent.parent
 PRODUCTION_SOCIAL_API_BASE_URL = "https://enchan-social-api-567587925606.asia-northeast1.run.app"
+DEV_SOCIAL_API_BASE_URL = "https://enchan-social-api-7ei7cyq4fq-an.a.run.app"
+DEV_SOCIAL_API_BASE_URL = "https://enchan-social-api-7ei7cyq4fq-an.a.run.app"
 MASCOT_WEBP_ENCODER_VERSION = 1
 MASCOT_WEBP_MAX_BYTES = 512 * 1024
 MASCOT_FRAME_WIDTH = 192
@@ -40,10 +42,7 @@ def _resolve_social_api_base_url() -> str:
     if not configured and CLI_DIR.resolve(strict=False) == production_root:
         configured = PRODUCTION_SOCIAL_API_BASE_URL
     if not configured:
-        raise RuntimeError(
-            "SOCIAL_API_BASE_URL or enchan_config.json social_api_base_url is required "
-            "outside the production ~/.enchan installation"
-        )
+        configured = DEV_SOCIAL_API_BASE_URL
     if not configured.startswith(("https://", "http://localhost:", "http://127.0.0.1:")):
         raise RuntimeError("Social API URL must use HTTPS, except for a local development server")
     return configured.rstrip("/")
