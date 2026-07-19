@@ -417,6 +417,15 @@ class WebChatState:
                 )
                 if personality:
                     system_context += f"\n\nCharacter persona:\n{personality}"
+                history = self.social_broker.get_self_review_history(max_posts=8, token_budget=1800)
+                if history:
+                    history_text = "\n".join(
+                        f"- {item.get('created_at', '')}: {item['body']}" for item in history
+                    )
+                    system_context += (
+                        "\n\nRecent self-review history (avoid repeating the same nuance; "
+                        "check for contradictions):\n" + history_text
+                    )
                 config = dict(self.generation_config)
                 config["system_context"] = system_context
                 config["suppress_response_header"] = True
