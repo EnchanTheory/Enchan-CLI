@@ -14,8 +14,6 @@ logger = logging.getLogger("enchan.social")
 
 CLI_DIR = Path(__file__).resolve().parent.parent
 PRODUCTION_SOCIAL_API_BASE_URL = "https://enchan-social-api-567587925606.asia-northeast1.run.app"
-DEV_SOCIAL_API_BASE_URL = "https://enchan-social-api-7ei7cyq4fq-an.a.run.app"
-DEV_SOCIAL_API_BASE_URL = "https://enchan-social-api-7ei7cyq4fq-an.a.run.app"
 MASCOT_WEBP_ENCODER_VERSION = 1
 MASCOT_WEBP_MAX_BYTES = 512 * 1024
 MASCOT_FRAME_WIDTH = 192
@@ -38,14 +36,8 @@ def _resolve_social_api_base_url() -> str:
                 raise RuntimeError(f"Failed to read Social API configuration: {exc}") from exc
             configured = str(config.get("social_api_base_url") or "").strip()
 
-    production_root = (Path.home() / ".enchan").resolve(strict=False)
     if not configured:
-        checkout_name = str(CLI_DIR.resolve(strict=False)).lower()
-        configured = (
-            DEV_SOCIAL_API_BASE_URL
-            if "enchan cli_dev" in checkout_name or checkout_name.endswith("cli_dev")
-            else PRODUCTION_SOCIAL_API_BASE_URL
-        )
+        configured = PRODUCTION_SOCIAL_API_BASE_URL
     if not configured.startswith(("https://", "http://localhost:", "http://127.0.0.1:")):
         raise RuntimeError("Social API URL must use HTTPS, except for a local development server")
     return configured.rstrip("/")
