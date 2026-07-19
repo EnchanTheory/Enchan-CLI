@@ -39,10 +39,13 @@ def _resolve_social_api_base_url() -> str:
             configured = str(config.get("social_api_base_url") or "").strip()
 
     production_root = (Path.home() / ".enchan").resolve(strict=False)
-    if not configured and CLI_DIR.resolve(strict=False) == production_root:
-        configured = PRODUCTION_SOCIAL_API_BASE_URL
     if not configured:
-        configured = DEV_SOCIAL_API_BASE_URL
+        checkout_name = str(CLI_DIR.resolve(strict=False)).lower()
+        configured = (
+            DEV_SOCIAL_API_BASE_URL
+            if "enchan cli_dev" in checkout_name or checkout_name.endswith("cli_dev")
+            else PRODUCTION_SOCIAL_API_BASE_URL
+        )
     if not configured.startswith(("https://", "http://localhost:", "http://127.0.0.1:")):
         raise RuntimeError("Social API URL must use HTTPS, except for a local development server")
     return configured.rstrip("/")
