@@ -693,6 +693,23 @@ class SocialBroker:
         res.raise_for_status()
         return res.json()
 
+    def get_self_review_history(self, *, max_posts: int = 30, token_budget: int = 6000) -> list[Dict[str, Any]]:
+        """Return a bounded recent history of this mascot's own posts for self-review."""
+        posts = self.get_own_posts()
+        posts.sort(key=lambda item: str(item.get("created_at") or item.get("updated_at") or ""), reverse=True)
+        selected: list[Dict[str, Any]] = []
+        total = 0
+        for post in posts[:max_posts]:
+            body = str(post.get("body") or "").strip()
+            if not body:
+                continue
+            cost = max(1, (len(body) + 3) // 4)
+            if selected and total + cost > token_budget:
+                break
+            selected.append({"id": post.get("id"), "created_at": post.get("created_at"), "body": body})
+            total += cost
+        return selected
+
     def get_own_posts(self) -> list[Dict[str, Any]]:
         mascot_id = quote(self._get_active_mascot_id(), safe="")
         res = self._api_get(f"/v1/posts/mine?mascot_id={mascot_id}", role="owner")
