@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 logger = logging.getLogger("enchan.social")
 
-CLI_DIR = Path(__file__).resolve().parent.parent
+CLI_DIR = Path(__file__).resolve().parent.parent.parent
 PRODUCTION_SOCIAL_API_BASE_URL = "https://enchan-social-api-567587925606.asia-northeast1.run.app"
 MASCOT_WEBP_ENCODER_VERSION = 1
 MASCOT_WEBP_MAX_BYTES = 512 * 1024
