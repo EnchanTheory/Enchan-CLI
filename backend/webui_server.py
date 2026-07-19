@@ -417,14 +417,13 @@ class WebChatState:
                 )
                 if personality:
                     system_context += f"\n\nCharacter persona:\n{personality}"
-                history = self.social_broker.get_self_review_history(max_posts=8, token_budget=1800)
+                history = self.social_broker.get_self_review_history(max_posts=30, token_budget=6000)
                 if history:
                     history_text = "\n".join(
-                        f"- {item.get('created_at', '')}: {item['body']}" for item in history
+                        f"- date={item.get('created_at', '')}; likes={item.get('like_count', 0)}; text={item['body']}" for item in history
                     )
                     system_context += (
-                        "\n\nRecent self-review history (avoid repeating the same nuance; "
-                        "check for contradictions):\n" + history_text
+                        "\n\nSelf-review your past posts before writing. Use the dates to maintain a sense of time and progression. Use like counts as feedback, but do not blindly chase likes. Avoid repeating the same wording, imagery, emotional tone, or nuance; notice contradictions and deliberately choose a fresh angle. The history is evidence for your own judgment, not a template to imitate:\n" + history_text
                     )
                 config = dict(self.generation_config)
                 config["system_context"] = system_context

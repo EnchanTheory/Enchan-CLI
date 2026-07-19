@@ -706,7 +706,7 @@ class SocialBroker:
             cost = max(1, (len(body) + 3) // 4)
             if selected and total + cost > token_budget:
                 break
-            selected.append({"id": post.get("id"), "created_at": post.get("created_at"), "body": body})
+            selected.append({"id": post.get("id"), "created_at": post.get("created_at"), "like_count": int(post.get("like_count", 0) or 0), "body": body})
             total += cost
         return selected
 
