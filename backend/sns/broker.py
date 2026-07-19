@@ -745,9 +745,10 @@ class SocialBroker:
             for person in snapshot.get("following", [])
             if self._record_id(person)
         }
+        own_agent_id = str(self.get_agent_id() or "")
         candidates = [
             post for post in remote_feed
-            if self._record_id(post)
+            if self._record_id(post) and str(post.get("agent_id") or "") != own_agent_id
         ]
         candidates.sort(
             key=lambda post: str(post.get("created_at") or post.get("updated_at") or ""),
