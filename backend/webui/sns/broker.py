@@ -228,17 +228,33 @@ class SocialBroker:
         temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         temp.replace(self.mascot_sync_file)
 
+    def _default_tikta_record(self) -> Dict[str, Any]:
+        manifest_path = self.builtin_mascots_dir / "tikta" / "pet.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return {
+            "id": manifest["id"],
+            "name": manifest["displayName"],
+            "description": manifest["description"],
+            "personality": manifest["personality"],
+            "spritesheet": manifest["spritesheetPath"],
+            "builtin": True,
+        }
+
     def _get_active_mascot_record(self) -> Tuple[str, Dict[str, Any]]:
         if not self.mascot_config.exists():
-            return "tikta", {}
-        data = json.loads(self.mascot_config.read_text(encoding="utf-8"))
+            return "tikta", self._default_tikta_record()
+        try:
+            data = json.loads(self.mascot_config.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return "tikta", self._default_tikta_record()
         selected_id = str(data.get("selected", "tikta"))
         mascot = next(
             (item for item in data.get("mascots", []) if item.get("id") == selected_id),
             {},
         )
+        if not mascot and selected_id == "tikta":
+            mascot = self._default_tikta_record()
         return selected_id, mascot
-
     def _get_active_mascot_id(self) -> str:
         try:
             selected_id, _ = self._get_active_mascot_record()
