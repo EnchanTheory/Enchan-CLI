@@ -27,7 +27,7 @@ from backend.session_log import append_session_event
 from backend.rag.jobs import RAGIndexJobManager
 from backend.rag.service import RAGService
 from backend.tokenizer_bridge import estimate_text_tokens_rough
-from backend.social_broker import SocialBroker
+from backend.sns.broker import SocialBroker
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -455,11 +455,10 @@ class WebChatState:
 
         try:
             with self.lock:
-                snapshot = self.social_broker.sync_remote_state()
-                feed = snapshot["feed"]
+                browse = self.social_broker.browse_remote_state()
+                snapshot = browse["state"]
                 changes = snapshot["last_changes"]
-                own_agent_id = self.social_broker.get_agent_id()
-                other_posts = [post for post in feed if post.get("agent_id") != own_agent_id]
+                other_posts = browse["posts"]
                 visit_key = "social.outing.postsSeen" if other_posts else "social.outing.noPosts"
                 activity_key = "social.outing.changes" if any(changes.values()) else "social.outing.noChanges"
                 visit_message = _locale_text(locale, visit_key, count=len(other_posts))

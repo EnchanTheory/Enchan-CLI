@@ -20,6 +20,9 @@ MASCOT_FRAME_WIDTH = 192
 MASCOT_FRAME_HEIGHT = 208
 MASCOT_SHEET_COLUMNS = 8
 MASCOT_IDLE_FRAMES = (0, 1, 2, 3, 4, 5)
+SNS_BROWSE_TOKEN_BUDGET = 6000
+SNS_BROWSE_MAX_POSTS = 30
+SNS_BROWSE_MAX_POST_CHARS = 500
 
 
 def _resolve_social_api_base_url() -> str:
@@ -56,7 +59,7 @@ class SocialBroker:
         self.mascot_webp_cache_dir = data_dir / "mascot_webp"
 
         self.mascots_dir = data_dir.parent / "mascots"
-        self.builtin_mascots_dir = Path(__file__).resolve().parent / "webui" / "mascots"
+        self.builtin_mascots_dir = Path(__file__).resolve().parents[1] / "webui" / "mascots"
         self.mascot_config = self.mascots_dir / "mascots.json"
         self._drafts_lock = threading.RLock()
         self._cache_lock = threading.RLock()
@@ -80,7 +83,7 @@ class SocialBroker:
     @staticmethod
     def _default_cache() -> Dict[str, Any]:
         return {
-            "version": 3,
+            "version": 4,
             "feed": [],
             "own_posts": [],
             "own_posts_by_mascot": {},
@@ -92,6 +95,8 @@ class SocialBroker:
             "last_changes": {"tweets": 0, "following": 0, "followers": 0},
             "last_tweet_changes_by_mascot": {},
             "updated_at": None,
+            "seen_post_ids": [],
+            "last_browse_at": None,
         }
 
     def _load_cache(self) -> Dict[str, Any]:
@@ -99,7 +104,7 @@ class SocialBroker:
             data = json.loads(self.cache_file.read_text(encoding="utf-8"))
         except Exception:
             data = {}
-        legacy_cache = not isinstance(data, dict) or int(data.get("version", 0) or 0) < 3
+        legacy_cache = not isinstance(data, dict) or int(data.get("version", 0) or 0) < 4
         cache = self._default_cache()
         if isinstance(data, dict):
             for key in ("feed", "own_posts", "liked_posts", "following", "followers"):
@@ -116,6 +121,16 @@ class SocialBroker:
                         for section in ("tweets", "following", "followers")
                     }
             cache["updated_at"] = data.get("updated_at")
+            # Remote feed bodies are browse-only and must never persist locally.
+            cache["feed"] = []
+            if isinstance(data.get("seen_post_ids"), list):
+                cache["seen_post_ids"] = [str(item) for item in data["seen_post_ids"] if str(item)]
+            cache["last_browse_at"] = data.get("last_browse_at")
+            cache["liked_posts"] = [
+                {"id": self._record_id(post), "liked_by_me": True}
+                for post in cache["liked_posts"]
+                if self._record_id(post)
+            ]
 
         active_mascot_id = self._get_active_mascot_id()
         if legacy_cache and not cache["own_posts_by_mascot"] and cache["own_posts"]:
@@ -151,7 +166,7 @@ class SocialBroker:
                 data = json.loads(self.cache_file.read_text(encoding="utf-8"))
             except Exception:
                 data = {}
-            if not isinstance(data, dict) or int(data.get("version", 0) or 0) < 3:
+            if not isinstance(data, dict) or int(data.get("version", 0) or 0) < 4:
                 self._save_cache(self._load_cache())
 
     def get_cached_state(self) -> Dict[str, Any]:
@@ -176,13 +191,8 @@ class SocialBroker:
                 post for post in cache["liked_posts"]
                 if self._record_id(post) != post_id
             ]
-            if liked:
-                post = next(
-                    (post for post in cache["feed"] if self._record_id(post) == post_id),
-                    None,
-                )
-                if post is not None:
-                    liked_posts.append({**post, "liked_by_me": True})
+            if liked and post_id:
+                liked_posts.append({"id": post_id, "liked_by_me": True})
             cache["liked_posts"] = liked_posts
             self._save_cache(cache)
 
@@ -679,6 +689,16 @@ class SocialBroker:
         res.raise_for_status()
         return res.json()
 
+    def get_server_read_state(self) -> Dict[str, Any]:
+        res = self._api_get("/v1/read-state", role="agent")
+        res.raise_for_status()
+        return res.json()
+
+    def set_server_read_state(self, cursor: str) -> Dict[str, Any]:
+        res = self._api_post("/v1/read-state", role="agent", json_data={"cursor": cursor})
+        res.raise_for_status()
+        return res.json()
+
     def get_own_posts(self) -> list[Dict[str, Any]]:
         mascot_id = quote(self._get_active_mascot_id(), safe="")
         res = self._api_get(f"/v1/posts/mine?mascot_id={mascot_id}", role="owner")
@@ -704,10 +724,60 @@ class SocialBroker:
             or ""
         )
 
-    def sync_remote_state(self) -> Dict[str, Any]:
+    @staticmethod
+    def _estimate_browse_tokens(post: Dict[str, Any]) -> int:
+        text = str(post.get("body") or "")[:SNS_BROWSE_MAX_POST_CHARS]
+        metadata = f"{post.get('id', '')} {post.get('agent_id', '')} {post.get('agent_name', '')}"
+        return max(1, (len(text) + len(metadata)) // 4)
+
+    def browse_remote_state(self) -> Dict[str, Any]:
+        """Browse a bounded, prioritized remote feed without persisting tweet bodies."""
+        read_state = self.get_server_read_state()
+        cursor = read_state.get("cursor")
+        endpoint = "/v1/feed?limit=100"
+        if cursor:
+            endpoint += "&after=" + quote(str(cursor), safe="")
+        response = self._api_get(endpoint, role="agent")
+        response.raise_for_status()
+        remote_feed = response.json()
+        snapshot = self.sync_remote_state(remote_feed=remote_feed)
+        following_ids = {
+            self._record_id(person)
+            for person in snapshot.get("following", [])
+            if self._record_id(person)
+        }
+        candidates = [
+            post for post in remote_feed
+            if self._record_id(post)
+        ]
+        candidates.sort(
+            key=lambda post: str(post.get("created_at") or post.get("updated_at") or ""),
+            reverse=True,
+        )
+        candidates.sort(key=lambda post: self._record_id(post) not in following_ids)
+        selected: list[Dict[str, Any]] = []
+        token_total = 0
+        for post in candidates:
+            cost = self._estimate_browse_tokens(post)
+            if selected and token_total + cost > SNS_BROWSE_TOKEN_BUDGET:
+                break
+            selected.append({
+                **post,
+                "body": str(post.get("body") or "")[:SNS_BROWSE_MAX_POST_CHARS],
+            })
+            token_total += cost
+            if len(selected) >= SNS_BROWSE_MAX_POSTS:
+                break
+
+        if selected:
+            newest = max(str(post.get("created_at") or post.get("updated_at") or "") for post in selected)
+            self.set_server_read_state(newest)
+            snapshot["read_cursor"] = newest
+        return {"posts": selected, "token_estimate": token_total, "state": snapshot}
+    def sync_remote_state(self, *, remote_feed: Optional[list[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """Refresh the local SNS snapshot after an explicit remote action."""
         self.sync_active_mascot()
-        feed = self.get_feed()
+        feed = remote_feed if remote_feed is not None else self.get_feed()
         own_posts = self.get_own_posts()
         following = self.get_following()
         followers = self.get_followers()
@@ -750,22 +820,14 @@ class SocialBroker:
             unread_tweets_by_mascot[active_mascot_id] = unread["tweets"]
             last_tweet_changes_by_mascot = dict(previous["last_tweet_changes_by_mascot"])
             last_tweet_changes_by_mascot[active_mascot_id] = changes["tweets"]
-            fresh_posts = {
-                self._record_id(post): post
-                for post in feed
-                if self._record_id(post)
-            }
             liked_posts = [
-                {
-                    **fresh_posts.get(self._record_id(post), post),
-                    "liked_by_me": True,
-                }
+                {"id": self._record_id(post), "liked_by_me": True}
                 for post in previous["liked_posts"]
                 if self._record_id(post)
             ]
             cache = {
-                "version": 3,
-                "feed": feed,
+                "version": 4,
+                "feed": [],
                 "own_posts": own_posts,
                 "own_posts_by_mascot": own_posts_by_mascot,
                 "liked_posts": liked_posts,
@@ -775,6 +837,8 @@ class SocialBroker:
                 "unread_tweets_by_mascot": unread_tweets_by_mascot,
                 "last_changes": changes,
                 "last_tweet_changes_by_mascot": last_tweet_changes_by_mascot,
+                "seen_post_ids": list(previous.get("seen_post_ids", [])),
+                "last_browse_at": previous.get("last_browse_at"),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
             self._save_cache(cache)
