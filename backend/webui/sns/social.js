@@ -138,7 +138,13 @@ document.addEventListener('DOMContentLoaded', () => {
         socialGenerationStatus.hidden = false;
         socialGenerationStatus.textContent = t('social.generating', 'AI is thinking...');
         try {
-            await api('/api/social/drafts/generate', { method: 'POST', body: { locale: window.EnchanI18n.locale } });
+            await api('/api/social/drafts/generate', {
+                method: 'POST',
+                body: {
+                    locale: window.EnchanI18n.locale,
+                    system_locale: preferredSystemLocale()
+                }
+            });
             selectTab('tweets', { markRead: true });
         } catch (error) {
             showError(error);
@@ -495,6 +501,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!value) return '';
         const date = new Date(value);
         return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(window.EnchanI18n.locale);
+    }
+
+    function preferredSystemLocale() {
+        const browserLocales = Array.isArray(navigator.languages) ? navigator.languages : [];
+        return browserLocales.find(locale => typeof locale === 'string' && locale.trim())
+            || navigator.language
+            || window.EnchanI18n.locale
+            || 'en-US';
     }
 
     function dateValue(value) {
