@@ -1148,7 +1148,7 @@ def generate_enchan_llama_response(
         "top_k": int(generation_config.get("top_k", 20)),
         "presence_penalty": float(generation_config.get("presence_penalty", 1.5)),
         "max_tokens": int(generation_config.get("max_new_tokens", -1)),
-        "tools": get_agent_tools_schema(),
+        "tools": generation_config.get("tools_schema") or get_agent_tools_schema(),
     }
 
     # Qwen3.6 chat_template_kwargs handling

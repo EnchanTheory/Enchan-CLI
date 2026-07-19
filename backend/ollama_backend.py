@@ -187,7 +187,7 @@ def generate_ollama_response(
             "num_predict": int(generation_config["max_new_tokens"]),
             "num_ctx": int(generation_config["max_input_tokens"]),
         },
-        "tools": get_agent_tools_schema(),
+        "tools": generation_config.get("tools_schema") or get_agent_tools_schema(),
     }
     if generation_config.get("disable_tools"):
         payload.pop("tools", None)

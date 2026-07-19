@@ -12,7 +12,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const activateSocialBtn = document.getElementById('activateSocialBtn');
     const createSocialDraft = document.getElementById('createSocialDraft');
     const socialOuting = document.getElementById('socialOuting');
+    const socialGenerationStatus = document.getElementById('socialGenerationStatus');
     const socialContent = document.getElementById('socialContent');
+    const socialScrollArea = socialContent.closest('.social-scroll-area');
     const socialError = document.getElementById('socialError');
     const socialBadge = document.getElementById('socialBadge');
     const tabs = {
@@ -133,12 +135,15 @@ document.addEventListener('DOMContentLoaded', () => {
         clearError();
         createSocialDraft.disabled = true;
         createSocialDraft.textContent = t('social.generating', 'AI is thinking...');
+        socialGenerationStatus.hidden = false;
+        socialGenerationStatus.textContent = t('social.generating', 'AI is thinking...');
         try {
             await api('/api/social/drafts/generate', { method: 'POST', body: { locale: window.EnchanI18n.locale } });
             selectTab('tweets', { markRead: true });
         } catch (error) {
             showError(error);
         } finally {
+            socialGenerationStatus.hidden = true;
             createSocialDraft.disabled = false;
             createSocialDraft.textContent = t('social.create', 'Post something');
         }
@@ -359,6 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         button.disabled = true;
         clearError();
+        const preservedScrollTop = action === 'delete' ? socialScrollArea?.scrollTop ?? 0 : null;
         try {
             let response = null;
             if (action === 'publish') response = await api(`/api/social/drafts/${encodeURIComponent(id)}/push`, { method: 'POST', body: {} });
@@ -372,6 +378,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderBadges();
             }
             await loadCurrentTab({ markRead: true });
+            if (preservedScrollTop !== null && socialScrollArea) {
+                socialScrollArea.scrollTop = preservedScrollTop;
+                requestAnimationFrame(() => { socialScrollArea.scrollTop = preservedScrollTop; });
+            }
         } catch (error) {
             button.disabled = false;
             showError(error);

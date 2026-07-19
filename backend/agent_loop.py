@@ -84,6 +84,7 @@ def _run_tool_observation(
     plain: bool,
     print_before_action_newline: bool,
     append_tool_result_event: Callable[[Path, dict, int, str], None],
+    tool_executor: Callable[[dict, object], dict] | None = None,
 ) -> str:
     if not plain:
         if print_before_action_newline:
@@ -105,7 +106,7 @@ def _run_tool_observation(
         from backend.approval import approval_scope
 
         with approval_scope(session_log_path=session_log_path):
-            result = execute_agent_tool(call, tokenizer=tokenizer)
+            result = (tool_executor(call, tokenizer) if tool_executor else execute_agent_tool(call, tokenizer=tokenizer))
     except Exception as e:
         result = {
             "tool": call.get("tool"),
@@ -167,6 +168,7 @@ def run_agent_loop(
     strip_final_thoughts: bool = True,
     print_plain_final: bool = False,
     print_before_action_newline: bool = False,
+    tool_executor: Callable[[dict, object], dict] | None = None,
 ) -> None:
     for iteration in range(1, AGENT_MAX_ITERATIONS + 1):
         generation = generate_response()
@@ -223,6 +225,7 @@ def run_agent_loop(
                 plain=plain,
                 print_before_action_newline=print_before_action_newline,
                 append_tool_result_event=append_tool_result_event,
+                tool_executor=tool_executor,
             )
 
             if index == len(tool_calls) - 1:

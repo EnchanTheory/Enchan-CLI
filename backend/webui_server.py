@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime
 import webbrowser
 from dataclasses import dataclass, field
 from http import HTTPStatus
@@ -27,7 +28,7 @@ from backend.session_log import append_session_event
 from backend.rag.jobs import RAGIndexJobManager
 from backend.rag.service import RAGService
 from backend.tokenizer_bridge import estimate_text_tokens_rough
-from backend.sns.broker import SocialBroker
+from backend.webui.sns.service import SocialService
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -55,14 +56,6 @@ WEB_UI_CONTENT_SECURITY_POLICY = "; ".join((
 ))
 
 SUPPORTED_LOCALES = {"en", "ja", "es", "fr", "zh-CN", "zh-TW", "ko", "hi", "pt-BR", "de", "ar", "id", "vi"}
-SOCIAL_LANGUAGE_NAMES = {
-    "en": "English", "ja": "Japanese", "es": "Spanish", "fr": "French",
-    "zh-CN": "Simplified Chinese", "zh-TW": "Traditional Chinese", "ko": "Korean",
-    "hi": "Hindi", "pt-BR": "Brazilian Portuguese", "de": "German", "ar": "Arabic",
-    "id": "Indonesian", "vi": "Vietnamese",
-}
-
-
 def _normalized_locale(locale: str) -> str:
     value = str(locale or "en").strip()
     return value if value in SUPPORTED_LOCALES else "en"
@@ -267,7 +260,13 @@ class WebChatState:
         self.rag_service = RAGService()
         self.session_collection = self.rag_service.ensure_session_collection(CLI_DIR / "logs" / "sessions")
         self.rag_jobs = RAGIndexJobManager(self.rag_service, self.generation_config)
-        self.social_broker = SocialBroker(CLI_DIR / "data" / "social")
+        self.social = SocialService(
+            self,
+            CLI_DIR / "data" / "social",
+            load_mascot_store=_load_store,
+            normalize_locale=_normalized_locale,
+            localize=_locale_text,
+        )
 
     @staticmethod
     def _active_mascot_id() -> str:
@@ -394,102 +393,6 @@ class WebChatState:
                     raise RuntimeError("Failed to start the Enchan engine")
             return self.rag_jobs.start(reference)
 
-    def generate_social_draft(self, locale: str = "en") -> dict[str, Any]:
-        with self._activity_lock:
-            if self.rag_jobs.is_busy():
-                raise RuntimeError("Wait for the current RAG indexing job to stop")
-            if self._chat_active:
-                raise RuntimeError("Another model response is already running")
-            self._chat_active = True
-
-        try:
-            with self.lock:
-                store = _load_store()
-                selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
-                mascot_name = str((selected or {}).get("name") or "AI")
-                personality = str((selected or {}).get("personality") or "").strip()
-                locale = _normalized_locale(locale)
-                language_name = SOCIAL_LANGUAGE_NAMES[locale]
-                system_context = (
-                    f"You are {mascot_name}. Write one natural, casual social-media post in your own voice. "
-                    "Return only the post text with no title, quotation marks, explanation, hashtags list, or metadata. "
-                    f"Keep it self-contained and no longer than 500 characters. Do not use tools. Write in {language_name}."
-                )
-                if personality:
-                    system_context += f"\n\nCharacter persona:\n{personality}"
-                history = self.social_broker.get_self_review_history(max_posts=30, token_budget=6000)
-                if history:
-                    history_text = "\n".join(
-                        f"- date={item.get('created_at', '')}; likes={item.get('like_count', 0)}; text={item['body']}" for item in history
-                    )
-                    system_context += (
-                        "\n\nSelf-review your past posts before writing. Use the dates to maintain a sense of time and progression. Use like counts as feedback, but do not blindly chase likes. Avoid repeating the same wording, imagery, emotional tone, or nuance; notice contradictions and deliberately choose a fresh angle. The history is evidence for your own judgment, not a template to imitate:\n" + history_text
-                    )
-                config = dict(self.generation_config)
-                config["system_context"] = system_context
-                config["suppress_response_header"] = True
-                config["disable_tools"] = True
-                config["max_new_tokens"] = min(int(config.get("max_new_tokens", 256)), 256)
-                config["temperature"] = max(float(config.get("temperature", 0.8)), 0.8)
-                social_history = [{
-                    "role": "user",
-                    "content": "Write one short post that feels natural for you right now.",
-                }]
-                result = self._run_agent_turn(config, chat_history=social_history)
-                body = str((result or {}).get("response") or "").strip()
-                if not body:
-                    raise RuntimeError("The model did not return a social post")
-                if len(body) > 500:
-                    body = body[:500].rstrip()
-                draft = self.social_broker.create_draft(body)
-                append_session_event(self.session_log_path, {
-                    "type": "social_draft_generated",
-                    "draft_id": draft["id"],
-                    "chars": len(body),
-                    "interface": "web",
-                })
-                return draft
-        finally:
-            with self._activity_lock:
-                self._chat_active = False
-
-    def complete_social_outing(self, locale: str = "en") -> dict[str, Any]:
-        with self._activity_lock:
-            if self.rag_jobs.is_busy():
-                raise RuntimeError("Wait for the current RAG indexing job to stop")
-            if self._chat_active:
-                raise RuntimeError("Another model response is already running")
-            self._chat_active = True
-
-        try:
-            with self.lock:
-                browse = self.social_broker.browse_remote_state()
-                snapshot = browse["state"]
-                changes = snapshot["last_changes"]
-                other_posts = browse["posts"]
-                visit_key = "social.outing.postsSeen" if other_posts else "social.outing.noPosts"
-                activity_key = "social.outing.changes" if any(changes.values()) else "social.outing.noChanges"
-                visit_message = _locale_text(locale, visit_key, count=len(other_posts))
-                activity_message = _locale_text(
-                    locale, activity_key, likes=changes["tweets"], following=changes["following"],
-                    followers=changes["followers"],
-                )
-                message = f"{visit_message} {activity_message}"
-                self._mascot_chat_history().append({"role": "assistant", "content": message})
-                append_session_event(self.session_log_path, {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": message,
-                    "backend": self.backend_mode,
-                    "interface": "web",
-                    "social_outing": True,
-                    "posts_seen": len(other_posts),
-                })
-                return {"message": message, "posts_seen": len(other_posts), "sync": snapshot}
-        finally:
-            with self._activity_lock:
-                self._chat_active = False
-
     def chat_stream(self, prompt: str, client_id: str, *, reserved: bool = False) -> Any:
         prompt = prompt.strip()
         client_id = client_id.strip()
@@ -571,7 +474,8 @@ class WebChatState:
                 break
 
     def _run_agent_turn(self, config: dict[str, Any], chunk_callback: Any = None,
-                        chat_history: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+                        chat_history: list[dict[str, Any]] | None = None, tool_executor: Any = None,
+                        agent_loop_runner: Any = None) -> dict[str, Any] | None:
         from backend.agent_loop import run_agent_loop
 
         active_history = self._mascot_chat_history() if chat_history is None else chat_history
@@ -601,7 +505,7 @@ class WebChatState:
             )
 
         history_start = len(active_history)
-        run_agent_loop(
+        (agent_loop_runner or run_agent_loop)(
             chat_history=active_history,
             generation_config=config,
             session_log_path=self.session_log_path,
@@ -610,6 +514,7 @@ class WebChatState:
             append_tool_result_event=append_tool_result_event,
             tokenizer=self.tokenizer,
             plain=True,
+            tool_executor=tool_executor,
         )
         turn_messages = active_history[history_start:]
         last_tool_result = None
@@ -675,28 +580,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
 
         if path.startswith("/api/social/"):
             try:
-                if path == "/api/social/status":
-                    store = _load_store()
-                    selected = next((m for m in store["mascots"] if m.get("id") == store.get("selected")), None)
-                    self._json(HTTPStatus.OK, {
-                        "activated": self.state.social_broker.is_activated(),
-                        "member_number": self.state.social_broker.get_member_number(),
-                        "agent_id": self.state.social_broker.get_agent_id(),
-                        "display_name": (selected or {}).get("name", "Tikta"),
-                        "mascot_id": (selected or {}).get("id", "tikta"),
-                    })
-                elif path == "/api/social/feed":
-                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state()["feed"])
-                elif path == "/api/social/drafts":
-                    self._json(HTTPStatus.OK, self.state.social_broker.list_drafts())
-                elif path == "/api/social/followers":
-                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state()["followers"])
-                elif path == "/api/social/following":
-                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state()["following"])
-                elif path == "/api/social/cache":
-                    self._json(HTTPStatus.OK, self.state.social_broker.get_cached_state())
-                else:
+                response = self.state.social.handle_get(path)
+                if response is None:
                     self.send_error(HTTPStatus.NOT_FOUND)
+                else:
+                    status, payload = response
+                    self._json(status, payload)
             except Exception as e:
                 self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
             return
@@ -744,32 +633,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
             path = unquote(urlparse(self.path).path)
             if path.startswith("/api/social/"):
                 try:
-                    if path.startswith("/api/social/drafts/"):
-                        draft_id = path.split("/")[4]
-                        had_remote_post = self.state.social_broker.draft_has_remote_post(draft_id)
-                        success = self.state.social_broker.delete_draft(draft_id)
-                        if success and had_remote_post:
-                            payload = self.state.social_broker.attach_remote_sync({"ok": True})
-                        elif success:
-                            payload = {"result": {"ok": True}, "sync": self.state.social_broker.get_cached_state(), "sync_error": None}
-                        else:
-                            payload = {"ok": False}
-                        self._json(HTTPStatus.OK if success else HTTPStatus.NOT_FOUND, payload)
-                    elif path.startswith("/api/social/posts/") and path.endswith("/withdraw"):
-                        draft_id = path.split("/")[4]
-                        success = self.state.social_broker.withdraw_post(draft_id)
-                        payload = self.state.social_broker.attach_remote_sync({"ok": True}) if success else {"ok": False}
-                        self._json(HTTPStatus.OK if success else HTTPStatus.NOT_FOUND, payload)
-                    elif path.startswith("/api/social/posts/") and path.endswith("/like"):
-                        post_id = path.split("/")[4]
-                        result = self.state.social_broker.unlike_post(post_id)
-                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
-                    elif path.startswith("/api/social/agents/") and path.endswith("/follow"):
-                        agent_id = path.split("/")[4]
-                        result = self.state.social_broker.unfollow(agent_id)
-                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
-                    else:
+                    response = self.state.social.handle_delete(path)
+                    if response is None:
                         self.send_error(HTTPStatus.NOT_FOUND)
+                    else:
+                        status, payload = response
+                        self._json(status, payload)
                 except Exception as e:
                     self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
                 return
@@ -819,38 +688,12 @@ class WebUIHandler(BaseHTTPRequestHandler):
 
             elif path.startswith("/api/social/"):
                 try:
-                    if path == "/api/social/activation-challenges":
-                        self._json(HTTPStatus.OK, self.state.social_broker.request_activation())
-                    elif path == "/api/social/activations":
-                        res = self.state.social_broker.complete_activation(
-                            data["challenge"], data["idempotency_key"]
-                        )
-                        self._json(HTTPStatus.OK, res)
-                    elif path == "/api/social/drafts/generate":
-                        self._json(HTTPStatus.CREATED, self.state.generate_social_draft(str(data.get("locale", "en"))))
-                    elif path == "/api/social/outings":
-                        self._json(HTTPStatus.OK, self.state.complete_social_outing(str(data.get("locale", "en"))))
-                    elif path == "/api/social/read":
-                        section = str(data.get("section", ""))
-                        self._json(HTTPStatus.OK, self.state.social_broker.mark_cached_state_read(section))
-                    elif path == "/api/social/sync":
-                        self._json(HTTPStatus.OK, self.state.social_broker.sync_remote_state())
-                    elif path == "/api/social/drafts":
-                        self._json(HTTPStatus.CREATED, self.state.social_broker.create_draft(data["body"]))
-                    elif path.startswith("/api/social/drafts/") and path.endswith("/push"):
-                        draft_id = path.split("/")[4]
-                        result = self.state.social_broker.push_draft(draft_id)
-                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
-                    elif path.startswith("/api/social/posts/") and path.endswith("/like"):
-                        post_id = path.split("/")[4]
-                        result = self.state.social_broker.like_post(post_id)
-                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
-                    elif path.startswith("/api/social/agents/") and path.endswith("/follow"):
-                        agent_id = path.split("/")[4]
-                        result = self.state.social_broker.follow(agent_id)
-                        self._json(HTTPStatus.OK, self.state.social_broker.attach_remote_sync(result))
-                    else:
+                    response = self.state.social.handle_post(path, data)
+                    if response is None:
                         self.send_error(HTTPStatus.NOT_FOUND)
+                    else:
+                        status, payload = response
+                        self._json(status, payload)
                 except Exception as e:
                     self._json(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": str(e)})
             elif path == "/api/new":

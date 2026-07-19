@@ -12,7 +12,7 @@ from urllib.parse import quote
 
 logger = logging.getLogger("enchan.social")
 
-CLI_DIR = Path(__file__).resolve().parent.parent.parent
+CLI_DIR = Path(__file__).resolve().parents[3]
 PRODUCTION_SOCIAL_API_BASE_URL = "https://enchan-social-api-567587925606.asia-northeast1.run.app"
 MASCOT_WEBP_ENCODER_VERSION = 1
 MASCOT_WEBP_MAX_BYTES = 512 * 1024
@@ -53,7 +53,7 @@ class SocialBroker:
         self.mascot_webp_cache_dir = data_dir / "mascot_webp"
 
         self.mascots_dir = data_dir.parent / "mascots"
-        self.builtin_mascots_dir = Path(__file__).resolve().parents[1] / "webui" / "mascots"
+        self.builtin_mascots_dir = Path(__file__).resolve().parents[1] / "mascots"
         self.mascot_config = self.mascots_dir / "mascots.json"
         self._drafts_lock = threading.RLock()
         self._cache_lock = threading.RLock()
