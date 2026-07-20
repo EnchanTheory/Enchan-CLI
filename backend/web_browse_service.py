@@ -132,9 +132,26 @@ def _decode_response(raw: bytes, content_type: str) -> str:
 
 
 def _normalized_url(url: str) -> str:
-    parsed = urllib.parse.urlparse(url)
-    cleaned = parsed._replace(fragment="")
-    return urllib.parse.urlunparse(cleaned)
+    parsed = urllib.parse.urlsplit(url.strip())
+    host = parsed.hostname or ""
+    ascii_host = host.encode("idna").decode("ascii")
+    if ":" in ascii_host and not ascii_host.startswith("["):
+        ascii_host = f"[{ascii_host}]"
+
+    userinfo = ""
+    if parsed.username is not None:
+        userinfo = urllib.parse.quote(parsed.username, safe="-._~")
+        if parsed.password is not None:
+            userinfo += ":" + urllib.parse.quote(parsed.password, safe="-._~")
+        userinfo += "@"
+
+    netloc = userinfo + ascii_host
+    if parsed.port is not None:
+        netloc += f":{parsed.port}"
+
+    path = urllib.parse.quote(parsed.path, safe="/%:@-._~!$&'()*+,;=")
+    query = urllib.parse.quote(parsed.query, safe="=&?/:;+,%@-._~!$'()*[]")
+    return urllib.parse.urlunsplit((parsed.scheme.lower(), netloc, path, query, ""))
 
 
 def _host(url: str) -> str:
@@ -213,7 +230,12 @@ def _rank_links(query: str, page: dict) -> list[dict]:
 
 
 def fetch_url(url: str, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, max_chars: int = DEFAULT_MAX_CHARS) -> dict:
-    parsed = urllib.parse.urlparse(url)
+    original_url = url
+    try:
+        url = _normalized_url(url)
+        parsed = urllib.parse.urlparse(url)
+    except (UnicodeError, ValueError) as e:
+        return {"ok": False, "error": f"Invalid URL: {e}", "url": original_url}
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return {"ok": False, "error": "web_browse requires an http(s) URL."}
 
@@ -236,6 +258,8 @@ def fetch_url(url: str, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, max_c
         return {"ok": False, "error": f"Network error: {e.reason}", "url": url}
     except TimeoutError:
         return {"ok": False, "error": "Request timed out.", "url": url}
+    except UnicodeError as e:
+        return {"ok": False, "error": f"Invalid URL encoding: {e}", "url": original_url}
 
     decoded = _decode_response(raw, content_type)
     links: list[tuple[str, str]] = []
