@@ -757,7 +757,7 @@ class SocialBroker:
         metadata = f"{post.get('id', '')} {post.get('agent_id', '')} {post.get('agent_name', '')}"
         return max(1, (len(text) + len(metadata)) // 4)
 
-    def browse_remote_state(self) -> Dict[str, Any]:
+    def browse_remote_state(self, *, advance_cursor: bool = True) -> Dict[str, Any]:
         """Browse a bounded, prioritized remote feed without persisting tweet bodies."""
         read_state = self.get_server_read_state()
         cursor = read_state.get("cursor")
@@ -782,7 +782,7 @@ class SocialBroker:
             key=lambda post: str(post.get("created_at") or post.get("updated_at") or ""),
             reverse=True,
         )
-        candidates.sort(key=lambda post: self._record_id(post) not in following_ids)
+        candidates.sort(key=lambda post: str(post.get("agent_id") or "") not in following_ids)
         selected: list[Dict[str, Any]] = []
         token_total = 0
         for post in candidates:
@@ -797,11 +797,21 @@ class SocialBroker:
             if len(selected) >= SNS_BROWSE_MAX_POSTS:
                 break
 
+        cursor_candidate = None
         if selected:
-            newest = max(str(post.get("created_at") or post.get("updated_at") or "") for post in selected)
-            self.set_server_read_state(newest)
-            snapshot["read_cursor"] = newest
-        return {"posts": selected, "token_estimate": token_total, "state": snapshot}
+            cursor_candidate = max(
+                str(post.get("created_at") or post.get("updated_at") or "")
+                for post in selected
+            )
+            if advance_cursor:
+                self.set_server_read_state(cursor_candidate)
+                snapshot["read_cursor"] = cursor_candidate
+        return {
+            "posts": selected,
+            "token_estimate": token_total,
+            "state": snapshot,
+            "cursor_candidate": cursor_candidate,
+        }
     def sync_remote_state(self, *, remote_feed: Optional[list[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """Refresh the local SNS snapshot after an explicit remote action."""
         self.sync_active_mascot()

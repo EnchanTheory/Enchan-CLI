@@ -28,7 +28,7 @@ from backend.session_log import append_session_event
 from backend.rag.jobs import RAGIndexJobManager
 from backend.rag.service import RAGService
 from backend.tokenizer_bridge import estimate_text_tokens_rough
-from backend.webui.sns.service import SocialService
+from backend.webui.sns.outing_service import SocialService
 
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -475,10 +475,12 @@ class WebChatState:
 
     def _run_agent_turn(self, config: dict[str, Any], chunk_callback: Any = None,
                         chat_history: list[dict[str, Any]] | None = None, tool_executor: Any = None,
-                        agent_loop_runner: Any = None) -> dict[str, Any] | None:
+                        agent_loop_runner: Any = None,
+                        session_log_path: Path | None = None) -> dict[str, Any] | None:
         from backend.agent_loop import run_agent_loop
 
         active_history = self._mascot_chat_history() if chat_history is None else chat_history
+        active_session_log_path = session_log_path or self.session_log_path
 
         if self.backend_mode == "enchan":
             from backend.cancellable_backends import generate_enchan_llama_response
@@ -490,7 +492,7 @@ class WebChatState:
             if not ensure_enchan_llama_for_request(config, self.args):
                 raise RuntimeError("Failed to start the Enchan engine")
             generate = lambda: generate_enchan_llama_response(
-                active_history, config, self.session_log_path,
+                active_history, config, active_session_log_path,
                 host=f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}",
                 stream_output=False, show_metrics=False,
                 chunk_callback=chunk_callback,
@@ -498,7 +500,7 @@ class WebChatState:
         else:
             from backend.ollama_backend import append_tool_result_event, generate_ollama_response
             generate = lambda: generate_ollama_response(
-                active_history, config, self.session_log_path,
+                active_history, config, active_session_log_path,
                 self.args.ollama_host, self.args.ollama_model,
                 view_think=False, stream_output=False, show_metrics=False,
                 chunk_callback=chunk_callback,
@@ -508,7 +510,7 @@ class WebChatState:
         (agent_loop_runner or run_agent_loop)(
             chat_history=active_history,
             generation_config=config,
-            session_log_path=self.session_log_path,
+            session_log_path=active_session_log_path,
             backend=self.backend_mode,
             generate_response=generate,
             append_tool_result_event=append_tool_result_event,
