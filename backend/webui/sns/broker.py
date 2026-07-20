@@ -23,6 +23,11 @@ MASCOT_IDLE_FRAMES = (0, 1, 2, 3, 4, 5)
 SNS_BROWSE_TOKEN_BUDGET = 6000
 SNS_BROWSE_MAX_POSTS = 30
 SNS_BROWSE_MAX_POST_CHARS = 500
+LIKED_POST_CACHE_FIELDS = (
+    "id", "agent_id", "agent_name", "member_number", "mascot", "mascot_id",
+    "mascot_name", "mascot_hash", "mascot_url", "body", "status",
+    "like_count", "created_at", "updated_at", "published_at",
+)
 
 
 def _resolve_social_api_base_url() -> str:
@@ -77,7 +82,7 @@ class SocialBroker:
     @staticmethod
     def _default_cache() -> Dict[str, Any]:
         return {
-            "version": 4,
+            "version": 5,
             "feed": [],
             "own_posts": [],
             "own_posts_by_mascot": {},
@@ -93,12 +98,29 @@ class SocialBroker:
             "last_browse_at": None,
         }
 
+    @staticmethod
+    def _normalize_liked_post(post: Any) -> Dict[str, Any]:
+        if not isinstance(post, dict):
+            return {}
+        post_id = str(post.get("id") or "").strip()
+        if not post_id:
+            return {}
+        normalized = {
+            field: post[field]
+            for field in LIKED_POST_CACHE_FIELDS
+            if field in post
+        }
+        normalized["id"] = post_id
+        normalized["body"] = str(post.get("body") or "")[:SNS_BROWSE_MAX_POST_CHARS]
+        normalized["liked_by_me"] = True
+        return normalized
+
     def _load_cache(self) -> Dict[str, Any]:
         try:
             data = json.loads(self.cache_file.read_text(encoding="utf-8"))
         except Exception:
             data = {}
-        legacy_cache = not isinstance(data, dict) or int(data.get("version", 0) or 0) < 4
+        legacy_cache = not isinstance(data, dict) or int(data.get("version", 0) or 0) < 5
         cache = self._default_cache()
         if isinstance(data, dict):
             for key in ("feed", "own_posts", "liked_posts", "following", "followers"):
@@ -121,9 +143,9 @@ class SocialBroker:
                 cache["seen_post_ids"] = [str(item) for item in data["seen_post_ids"] if str(item)]
             cache["last_browse_at"] = data.get("last_browse_at")
             cache["liked_posts"] = [
-                {"id": self._record_id(post), "liked_by_me": True}
+                normalized
                 for post in cache["liked_posts"]
-                if self._record_id(post)
+                if (normalized := self._normalize_liked_post(post))
             ]
 
         active_mascot_id = self._get_active_mascot_id()
@@ -160,7 +182,7 @@ class SocialBroker:
                 data = json.loads(self.cache_file.read_text(encoding="utf-8"))
             except Exception:
                 data = {}
-            if not isinstance(data, dict) or int(data.get("version", 0) or 0) < 4:
+            if not isinstance(data, dict) or int(data.get("version", 0) or 0) < 5:
                 self._save_cache(self._load_cache())
 
     def get_cached_state(self) -> Dict[str, Any]:
@@ -737,6 +759,11 @@ class SocialBroker:
         res.raise_for_status()
         return res.json()
 
+    def get_liked_posts(self) -> list[Dict[str, Any]]:
+        res = self._api_get("/v1/likes?limit=100", role="agent")
+        res.raise_for_status()
+        return res.json()
+
     def get_following(self) -> list[Dict[str, Any]]:
         res = self._api_get("/v1/following", role="agent")
         res.raise_for_status()
@@ -817,6 +844,11 @@ class SocialBroker:
         self.sync_active_mascot()
         feed = remote_feed if remote_feed is not None else self.get_feed()
         own_posts = self.get_own_posts()
+        liked_posts = [
+            normalized
+            for post in self.get_liked_posts()
+            if (normalized := self._normalize_liked_post(post))
+        ]
         following = self.get_following()
         followers = self.get_followers()
 
@@ -858,13 +890,8 @@ class SocialBroker:
             unread_tweets_by_mascot[active_mascot_id] = unread["tweets"]
             last_tweet_changes_by_mascot = dict(previous["last_tweet_changes_by_mascot"])
             last_tweet_changes_by_mascot[active_mascot_id] = changes["tweets"]
-            liked_posts = [
-                {"id": self._record_id(post), "liked_by_me": True}
-                for post in previous["liked_posts"]
-                if self._record_id(post)
-            ]
             cache = {
-                "version": 4,
+                "version": 5,
                 "feed": [],
                 "own_posts": own_posts,
                 "own_posts_by_mascot": own_posts_by_mascot,
