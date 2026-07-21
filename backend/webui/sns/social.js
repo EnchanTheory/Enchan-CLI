@@ -98,6 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 socialActiveView.style.display = 'flex';
                 if (document.body.classList.contains('social-open')) {
                     await loadCurrentTab({ markRead });
+                    startSocialMascotAnimations();
                 }
             } else {
                 socialActivationView.style.display = 'block';
