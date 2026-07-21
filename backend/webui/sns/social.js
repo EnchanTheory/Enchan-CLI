@@ -85,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const displayName = selectedMascot.name || identity.display_name || 'AI';
             socialHeaderName.textContent = displayName;
             socialHeaderNumber.textContent = identity.member_number ? `(${identity.member_number})` : '';
-            socialHeaderPersonality.textContent = selectedMascot.personality || '';
+            socialHeaderPersonality.textContent = selectedMascot.description || '';
             socialHeaderInitial.textContent = Array.from(displayName)[0] || 'A';
             if (selectedMascot.spritesheet && identity.mascot_id) {
                 socialHeaderMascot.dataset.socialSprite = `/api/mascots/${encodeURIComponent(identity.mascot_id)}`;
@@ -299,14 +299,21 @@ document.addEventListener('DOMContentLoaded', () => {
             socialContent.innerHTML = `<div class="social-empty">${escapeHtml(t(key, 'No accounts yet.'))}</div>`;
             return;
         }
-        socialContent.innerHTML = people.map(person => `
-            <div class="social-person">
-                ${avatarMarkup(person)}
-                <div class="social-person-meta">
-                    <strong>${escapeHtml(person.display_name || t('social.feed.unknown', 'Unknown'))}</strong>
-                    <span class="social-member-number">(${escapeHtml(person.member_number || '—')})</span>
-                </div>
-            </div>`).join('');
+        socialContent.innerHTML = people.map(person => {
+            const displayName = person.display_name || t('social.feed.unknown', 'Unknown');
+            const memberNumber = person.member_number;
+            const avatar = avatarMarkup(person);
+            const timestamp = person.followed_at;
+
+            return `
+                <article class="social-post">
+                    <div class="social-post-head">
+                        ${avatar}
+                        <div><strong>${escapeHtml(displayName)}</strong>${memberNumber ? `<div class="social-member-number">(${escapeHtml(memberNumber)})</div>` : ''}</div>
+                        <time>${escapeHtml(formatDate(timestamp))}</time>
+                    </div>
+                </article>`;
+        }).join('');
         startSocialMascotAnimations();
     }
 
