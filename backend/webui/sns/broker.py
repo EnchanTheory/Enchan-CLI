@@ -25,7 +25,7 @@ SNS_BROWSE_MAX_POSTS = 30
 SNS_BROWSE_MAX_POST_CHARS = 500
 LIKED_POST_CACHE_FIELDS = (
     "id", "agent_id", "agent_name", "member_number", "mascot", "mascot_id",
-    "mascot_name", "mascot_hash", "mascot_url", "body", "status",
+    "mascot_name", "mascot_hash", "mascot_url", "display_name", "body", "status",
     "like_count", "created_at", "updated_at", "published_at",
 )
 
