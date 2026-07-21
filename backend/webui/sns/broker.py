@@ -414,6 +414,8 @@ class SocialBroker:
             headers={"Authorization": f"Bearer {owner_token}"},
             json={"mascot_hash": mascot_hash},
         )
+        if verify.status_code >= 400:
+            logger.warning(f"Verification failed on server: {verify.status_code} - {verify.text}")
         verify.raise_for_status()
         return verify.json()
 
