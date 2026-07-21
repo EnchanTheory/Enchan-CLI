@@ -37,6 +37,7 @@ class SocialService(BaseSocialService):
                     self.broker, other_posts, snapshot,
                 )
 
+                social_history = []
                 if other_posts:
                     mascot = self._selected_mascot()
                     personality = str(mascot.get('personality') or '').strip()
@@ -81,28 +82,36 @@ class SocialService(BaseSocialService):
                 if controller.evaluated and cursor_candidate:
                     self.broker.set_server_read_state(cursor_candidate)
                     snapshot['read_cursor'] = cursor_candidate
-
-                visit_key = (
-                    'social.outing.postsSeen'
-                    if other_posts
-                    else 'social.outing.noPosts'
-                )
-                activity_key = (
-                    'social.outing.changes'
-                    if any(changes.values())
-                    else 'social.outing.noChanges'
-                )
-                visit_message = self._localize(
-                    locale, visit_key, count=len(other_posts),
-                )
-                activity_message = self._localize(
-                    locale,
-                    activity_key,
-                    likes=changes['tweets'],
-                    following=changes['following'],
-                    followers=changes['followers'],
-                )
-                message = f'{visit_message} {activity_message}'
+                    
+                message = ""
+                for msg in reversed(social_history):
+                    if msg.get('role') == 'assistant' and msg.get('content'):
+                        message = str(msg['content']).strip()
+                        break
+                        
+                if not message:
+                    visit_key = (
+                        'social.outing.postsSeen'
+                        if other_posts
+                        else 'social.outing.noPosts'
+                    )
+                    activity_key = (
+                        'social.outing.changes'
+                        if any(changes.values())
+                        else 'social.outing.noChanges'
+                    )
+                    visit_message = self._localize(
+                        locale, visit_key, count=len(other_posts),
+                    )
+                    activity_message = self._localize(
+                        locale,
+                        activity_key,
+                        likes=changes['tweets'],
+                        following=changes['following'],
+                        followers=changes['followers'],
+                    )
+                    message = f'{visit_message} {activity_message}'
+                
                 action_summary = controller.public_summary()
                 state._mascot_chat_history().append({
                     'role': 'assistant',

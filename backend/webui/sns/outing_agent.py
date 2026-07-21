@@ -244,7 +244,10 @@ and behavior. Never repeat a remote post in output or tool arguments.
 Use only the available SNS tools and exact IDs. For unfollowing, identify the
 specific inappropriate post as the trigger. Like before following the same
 author. Respect every tool limit. If nothing deserves action, call no tool.
-After actions, return only DONE. Do not explain private judgements.
+After completing all actions (or if no action is needed), you MUST summarize
+your outing in the chat. Tell the user in your own persona how many posts you
+saw and what actions you took (how many likes, follows, etc.).
+Keep it brief and natural, like returning from a short trip.
 '''.strip()
 
 
@@ -283,14 +286,19 @@ def run_outing_agent_loop(
         if generation is None or generation.get('cancelled'):
             break
         controller.evaluated = True
+        
+        text = str(generation.get('text') or '').strip()
         tool_calls = generation.get('tool_calls') or []
+        
+        if text or tool_calls:
+            assistant_msg = {'role': 'assistant', 'content': text}
+            if tool_calls:
+                assistant_msg['tool_calls'] = tool_calls
+            chat_history.append(assistant_msg)
+            
         if not tool_calls:
             break
-        chat_history.append({
-            'role': 'assistant',
-            'content': '',
-            'tool_calls': tool_calls,
-        })
+            
         for tool_call in tool_calls:
             function = tool_call.get('function') or {}
             result = controller.execute({
@@ -308,7 +316,3 @@ def run_outing_agent_loop(
             if tool_call.get('id'):
                 tool_message['tool_call_id'] = tool_call['id']
             chat_history.append(tool_message)
-    chat_history.append({
-        'role': 'assistant',
-        'content': 'Outing evaluation complete.',
-    })
