@@ -273,12 +273,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions += actionButton('publish', item.id, t('social.action.publish', 'Publish'), 'primary');
             }
             actions += actionButton('delete', item.id, t('social.action.delete', 'Delete'), 'secondary');
-        } else {
-            if (item.liked_by_me) actions += actionButton('unlike', item.id, t('social.action.unlike', 'Unlike'), 'secondary');
-            else actions += actionButton('like', item.id, t('social.action.like', 'Like'), 'secondary');
-            if (item.agent_id && item.agent_id !== identity.agent_id) {
-                actions += actionButton('follow', item.agent_id, t('social.action.follow', 'Follow'), 'secondary');
-            }
         }
 
         return `
