@@ -13,6 +13,7 @@ memory/guidelines/*
 memory/knowledge/*
 !memory/guidelines/.gitkeep
 !memory/knowledge/.gitkeep
+!memory/knowledge/ai_social_network.md
 .codex/
 .agents/
 _archive/
