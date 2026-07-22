@@ -90,7 +90,7 @@ chmod +x ./install.sh
 ./install.sh
 ```
 
-The installer downloads the Enchan CLI runtime from this repository's release `llamacpp-b9888-enchan-20260713`, extracts it into `backend/bin/<platform>/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
+The installer downloads the Enchan CLI runtime from this repository's release `llamacpp-b10069-enchan-20260722`, extracts it into `backend/bin/<platform>/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
 
 ---
 
@@ -249,7 +249,7 @@ git pull --ff-only
 Runtime assets are published in the Enchan CLI release:
 
 - **Repo:** `EnchanTheory/Enchan-CLI`
-- **Tag:** `llamacpp-b9888-enchan-20260713`
+- **Tag:** `llamacpp-b10069-enchan-20260722`
 - **Windows asset:** `enchan-cli-runtime-win-x64.zip`
 - **macOS asset:** `enchan-cli-runtime-macos-arm64.zip`
 
