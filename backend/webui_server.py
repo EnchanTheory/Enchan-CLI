@@ -477,10 +477,40 @@ class WebChatState:
                         chat_history: list[dict[str, Any]] | None = None, tool_executor: Any = None,
                         agent_loop_runner: Any = None,
                         session_log_path: Path | None = None) -> dict[str, Any] | None:
-        from backend.agent_loop import run_agent_loop
+        from backend.agent_loop import parse_text_tool_calls, run_agent_loop
 
         active_history = self._mascot_chat_history() if chat_history is None else chat_history
         active_session_log_path = session_log_path or self.session_log_path
+
+        def generate_with_text_tool_fallback(generate_call: Any) -> dict[str, Any] | None:
+            held_chunks: list[str] = []
+            forwarding = False
+
+            def filtered_chunk(chunk: str) -> None:
+                nonlocal forwarding
+                if chunk_callback is None:
+                    return
+                if forwarding:
+                    chunk_callback(chunk)
+                    return
+                held_chunks.append(chunk)
+                candidate = "".join(held_chunks).lstrip()
+                if candidate and not (candidate.startswith("{") or candidate.startswith("```")):
+                    forwarding = True
+                    chunk_callback("".join(held_chunks))
+                    held_chunks.clear()
+
+            result = generate_call(filtered_chunk)
+            if result and not result.get("tool_calls"):
+                text_tool_calls = parse_text_tool_calls(str(result.get("response", "")))
+                if text_tool_calls:
+                    result["tool_calls"] = text_tool_calls
+                    result["response"] = ""
+                    held_chunks.clear()
+                    return result
+            if chunk_callback is not None and held_chunks:
+                chunk_callback("".join(held_chunks))
+            return result
 
         if self.backend_mode == "enchan":
             from backend.cancellable_backends import generate_enchan_llama_response
@@ -491,19 +521,23 @@ class WebChatState:
             )
             if not ensure_enchan_llama_for_request(config, self.args):
                 raise RuntimeError("Failed to start the Enchan engine")
-            generate = lambda: generate_enchan_llama_response(
-                active_history, config, active_session_log_path,
-                host=f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}",
-                stream_output=False, show_metrics=False,
-                chunk_callback=chunk_callback,
+            generate = lambda: generate_with_text_tool_fallback(
+                lambda filtered_chunk: generate_enchan_llama_response(
+                    active_history, config, active_session_log_path,
+                    host=f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}",
+                    stream_output=False, show_metrics=False,
+                    chunk_callback=filtered_chunk,
+                )
             )
         else:
             from backend.ollama_backend import append_tool_result_event, generate_ollama_response
-            generate = lambda: generate_ollama_response(
-                active_history, config, active_session_log_path,
-                self.args.ollama_host, self.args.ollama_model,
-                view_think=False, stream_output=False, show_metrics=False,
-                chunk_callback=chunk_callback,
+            generate = lambda: generate_with_text_tool_fallback(
+                lambda filtered_chunk: generate_ollama_response(
+                    active_history, config, active_session_log_path,
+                    self.args.ollama_host, self.args.ollama_model,
+                    view_think=False, stream_output=False, show_metrics=False,
+                    chunk_callback=filtered_chunk,
+                )
             )
 
         history_start = len(active_history)

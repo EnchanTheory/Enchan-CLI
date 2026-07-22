@@ -1,5 +1,7 @@
 from pathlib import Path
 from backend.thinking import strip_thought_blocks
+import json
+import re
 import sys
 from typing import Callable
 
@@ -22,6 +24,30 @@ SENSITIVE_SPINNER_TOOLS = {
     "run_command",
     "delegate_agent",
 }
+
+
+def parse_text_tool_calls(response_text: str) -> list[dict]:
+    """Normalize a standalone legacy tool-call JSON emitted as message text."""
+    text = strip_thought_blocks(str(response_text or "")).strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    if not text.startswith("{") or not text.endswith("}"):
+        return []
+    try:
+        payload = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    tool_name = payload.get("tool_name")
+    parameters = payload.get("parameters")
+    if not isinstance(tool_name, str) or not tool_name.strip() or not isinstance(parameters, dict):
+        return []
+    return [{
+        "type": "function",
+        "function": {"name": tool_name.strip(), "arguments": parameters},
+    }]
 
 
 def _is_compress_call(call: dict) -> bool:
@@ -176,7 +202,11 @@ def run_agent_loop(
             return
 
         response_text = generation["response"]
-        tool_calls = generation.get("tool_calls")
+        tool_calls = generation.get("tool_calls") or parse_text_tool_calls(response_text)
+        if tool_calls and not generation.get("tool_calls"):
+            generation["tool_calls"] = tool_calls
+            response_text = ""
+            generation["response"] = ""
 
         if not tool_calls:
             chat_history.append(
