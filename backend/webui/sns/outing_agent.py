@@ -10,6 +10,7 @@ MAX_LIKES_PER_OUTING = 3
 MAX_FOLLOWS_PER_OUTING = 1
 MAX_UNFOLLOWS_PER_OUTING = 1
 MAX_OUTING_AGENT_ITERATIONS = 6
+MAX_OUTING_REFLECTION_ATTEMPTS = 2
 
 
 def _record_id(record: Any) -> str:
@@ -29,6 +30,14 @@ def _tool_args(call: dict) -> dict:
         except json.JSONDecodeError:
             return {}
     return {}
+
+
+def _generation_text(generation: Any) -> str:
+    if not isinstance(generation, dict):
+        return ""
+    return str(
+        generation.get("response") or generation.get("text") or ""
+    ).strip()
 
 
 class OutingActionController:
@@ -286,6 +295,7 @@ def run_outing_agent_loop(
     controller: OutingActionController,
     chat_history: list[dict],
     generate_response: Any,
+    generation_config: dict[str, Any],
     **_kwargs: Any,
 ) -> None:
     for _iteration in range(MAX_OUTING_AGENT_ITERATIONS):
@@ -294,7 +304,7 @@ def run_outing_agent_loop(
             break
         controller.evaluated = True
         
-        text = str(generation.get('text') or '').strip()
+        text = _generation_text(generation)
         tool_calls = generation.get('tool_calls') or []
         
         if text or tool_calls:
@@ -304,6 +314,8 @@ def run_outing_agent_loop(
             chat_history.append(assistant_msg)
             
         if not tool_calls:
+            if text:
+                return
             break
             
         for tool_call in tool_calls:
@@ -323,3 +335,29 @@ def run_outing_agent_loop(
             if tool_call.get('id'):
                 tool_message['tool_call_id'] = tool_call['id']
             chat_history.append(tool_message)
+
+    chat_history.append({
+        'role': 'user',
+        'content': (
+            'All SNS actions are finished. Do not call any more tools. '
+            'Now talk to the user naturally in your persona about what this '
+            'outing meant to you, following the system instructions.'
+        ),
+    })
+    original_disable_tools = generation_config.get('disable_tools', False)
+    original_tools_schema = generation_config.get('tools_schema', [])
+    try:
+        generation_config['disable_tools'] = True
+        generation_config['tools_schema'] = []
+        for _attempt in range(MAX_OUTING_REFLECTION_ATTEMPTS):
+            generation = generate_response()
+            if generation is None or generation.get('cancelled'):
+                return
+            controller.evaluated = True
+            text = _generation_text(generation)
+            if text:
+                chat_history.append({'role': 'assistant', 'content': text})
+                return
+    finally:
+        generation_config['disable_tools'] = original_disable_tools
+        generation_config['tools_schema'] = original_tools_schema
