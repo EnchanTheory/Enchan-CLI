@@ -2,7 +2,7 @@
 set -euo pipefail
 
 runtime_repo="EnchanTheory/Enchan-CLI"
-runtime_tag="llamacpp-b10069-enchan-20260721"
+runtime_tag="llamacpp-b10069-enchan-20260722"
 runtime_asset="enchan-cli-runtime-macos-arm64.zip"
 runtime_asset_url="https://github.com/$runtime_repo/releases/download/$runtime_tag/$runtime_asset"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
