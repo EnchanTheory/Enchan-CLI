@@ -228,6 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ...(feedById.get(draft.server_post_id) || {}),
                 id: draft.id,
                 server_post_id: draft.server_post_id,
+                created_at: draft.created_at || feedById.get(draft.server_post_id)?.created_at,
                 local: true
             })),
             ...feed.filter(post => !ownedServerIds.has(post.id)).map(post => ({
@@ -235,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 local: false,
                 liked_by_me: likedIds.has(post.id)
             }))
-        ].sort((left, right) => dateValue(right.updated_at || right.created_at) - dateValue(left.updated_at || left.created_at));
+        ].sort((left, right) => dateValue(postTimestamp(right)) - dateValue(postTimestamp(left)));
 
         if (!items.length) {
             socialContent.innerHTML = `<div class="social-empty">${escapeHtml(t('social.tweets.empty', 'No posts yet.'))}</div>`;
@@ -247,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function loadLikedPosts() {
         const items = Array.isArray(socialCache.liked_posts)
-            ? [...socialCache.liked_posts].sort((left, right) => dateValue(right.updated_at || right.created_at) - dateValue(left.updated_at || left.created_at))
+            ? [...socialCache.liked_posts].sort((left, right) => dateValue(postTimestamp(right)) - dateValue(postTimestamp(left)))
             : [];
         if (!items.length) {
             socialContent.innerHTML = `<div class="social-empty">${escapeHtml(t('social.likes.empty', 'No liked posts yet.'))}</div>`;
@@ -264,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const avatar = item.local
             ? avatarMarkup({ display_name: displayName, mascot_id: identity.mascot_id })
             : avatarMarkup(item);
-        const timestamp = item.updated_at || item.created_at;
+        const timestamp = postTimestamp(item);
         let actions = '';
 
         if (item.local) {
@@ -503,6 +504,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!value) return '';
         const date = new Date(value);
         return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(window.EnchanI18n.locale);
+    }
+
+    function postTimestamp(item) {
+        return item?.created_at || item?.published_at || item?.updated_at;
     }
 
     function preferredSystemLocale() {

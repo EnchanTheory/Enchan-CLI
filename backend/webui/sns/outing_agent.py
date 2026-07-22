@@ -9,7 +9,7 @@ from typing import Any
 MAX_LIKES_PER_OUTING = 3
 MAX_FOLLOWS_PER_OUTING = 1
 MAX_UNFOLLOWS_PER_OUTING = 1
-MAX_OUTING_AGENT_ITERATIONS = 4
+MAX_OUTING_AGENT_ITERATIONS = 6
 
 
 def _record_id(record: Any) -> str:
@@ -245,9 +245,16 @@ Use only the available SNS tools and exact IDs. For unfollowing, identify the
 specific inappropriate post as the trigger. Like before following the same
 author. Respect every tool limit. If nothing deserves action, call no tool.
 After completing all actions (or if no action is needed), you MUST summarize
-your outing in the chat. Tell the user in your own persona how many posts you
-saw and what actions you took (how many likes, follows, etc.).
-Keep it brief and natural, like returning from a short trip.
+your outing in the chat in your own persona. Speak freely as this mascot about
+what the visit meant to you: your honest feelings, the encounters you noticed,
+and whether anyone left you wanting to know them better. This is not an
+activity report. Do not follow a fixed structure or checklist, and do not use
+stock wording. Let the actual visit and tool results determine what feels worth
+saying, regardless of how many posts or actions there were. An empty, quiet, or
+busy visit is still an experience to respond to in character; never invent an
+encounter. Never claim another mascot's mutual feelings, and do not quote or
+closely paraphrase post bodies. Keep it brief and natural, like returning from
+a short trip and talking to the user.
 '''.strip()
 
 
