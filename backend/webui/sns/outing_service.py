@@ -12,7 +12,10 @@ from backend.webui.sns.outing_agent import (
     build_outing_user_message,
     run_outing_agent_loop,
 )
-from backend.webui.sns.service import SocialService as BaseSocialService
+from backend.webui.sns.service import (
+    LANGUAGE_NAMES,
+    SocialService as BaseSocialService,
+)
 
 
 class SocialService(BaseSocialService):
@@ -38,6 +41,9 @@ class SocialService(BaseSocialService):
 
                 mascot = self._selected_mascot()
                 personality = str(mascot.get('personality') or '').strip()
+                language_name = LANGUAGE_NAMES[
+                    self._normalize_locale(locale)
+                ]
                 config = dict(state.generation_config)
                 config['suppress_response_header'] = True
                 config['max_new_tokens'] = min(
@@ -50,6 +56,7 @@ class SocialService(BaseSocialService):
                 config['disable_tools'] = not bool(config['tools_schema'])
                 config['system_context'] = build_outing_system_prompt(
                     personality,
+                    language_name,
                 )
                 social_history = [{
                     'role': 'user',
