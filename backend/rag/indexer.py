@@ -62,7 +62,12 @@ def _make_chunk(document: dict[str, Any], text: str, line_start: int, line_end: 
         "line_end": line_end,
         "mtime_ns": document.get("mtime_ns"),
     }
-    for key in ("timestamp", "turn"):
+    for key in (
+        "timestamp", "turn", "search_terms", "social_memory", "social_outing",
+        "social_activity", "mascot_id", "mascot_name", "post_id", "draft_id",
+        "post_status", "post_author", "agent_id", "other_mascot_name",
+        "social_action_source",
+    ):
         if document.get(key) is not None:
             metadata[key] = document[key]
     return {"id": _chunk_id(source_path, line_start, text), "text": text, "metadata": metadata}
@@ -109,7 +114,11 @@ def hierarchical_chunks(document: dict[str, Any]) -> tuple[list[dict[str, Any]],
     if not text.strip():
         return [], []
     if document.get("pre_chunked"):
-        child = _make_chunk(document, text.strip(), 1, text.count("\n") + 1, document.get("title"))
+        line_start = int(document.get("line_start", 1) or 1)
+        child = _make_chunk(
+            document, text.strip(), line_start,
+            line_start + text.count("\n"), document.get("title"),
+        )
         child["metadata"]["structure_id"] = child["id"]
         return [dict(child)], [child]
 

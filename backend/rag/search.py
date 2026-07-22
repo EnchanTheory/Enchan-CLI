@@ -46,7 +46,11 @@ def lexical_features(text: str) -> list[str]:
 def _metadata_text(chunk: dict[str, Any]) -> str:
     metadata = chunk.get("metadata", {})
     values: list[str] = []
-    for key in ("source_path", "title", "heading"):
+    for key in (
+        "source_path", "title", "heading", "search_terms", "social_activity",
+        "mascot_id", "mascot_name", "post_id", "draft_id", "post_status",
+        "post_author", "agent_id", "other_mascot_name", "social_action_source",
+    ):
         value = metadata.get(key)
         if value:
             values.append(str(value))

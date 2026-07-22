@@ -5,7 +5,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from backend.session_log import append_session_event
 from backend.webui.sns.outing_agent import (
     OutingActionController,
     build_outing_system_prompt,
@@ -131,16 +130,12 @@ class SocialService(BaseSocialService):
                     'role': 'assistant',
                     'content': message,
                 })
-                append_session_event(state.session_log_path, {
-                    'type': 'message',
-                    'role': 'assistant',
-                    'content': message,
-                    'backend': state.backend_mode,
-                    'interface': 'web',
-                    'social_outing': True,
-                    'posts_seen': len(other_posts),
-                    'social_actions': action_summary,
-                })
+                self._append_social_memory(
+                    'social_outing', message,
+                    social_outing=True,
+                    posts_seen=len(other_posts),
+                    social_actions=action_summary,
+                )
                 return {
                     'message': message,
                     'posts_seen': len(other_posts),

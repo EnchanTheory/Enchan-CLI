@@ -256,15 +256,11 @@ class SocialService:
                 )
                 message = f"{visit_message} {activity_message}"
                 state._mascot_chat_history().append({"role": "assistant", "content": message})
-                append_session_event(state.session_log_path, {
-                    "type": "message",
-                    "role": "assistant",
-                    "content": message,
-                    "backend": state.backend_mode,
-                    "interface": "web",
-                    "social_outing": True,
-                    "posts_seen": len(other_posts),
-                })
+                self._append_social_memory(
+                    "social_outing", message,
+                    social_outing=True,
+                    posts_seen=len(other_posts),
+                )
                 return {"message": message, "posts_seen": len(other_posts), "sync": snapshot}
         finally:
             with state._activity_lock:

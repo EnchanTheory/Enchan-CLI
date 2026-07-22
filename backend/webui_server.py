@@ -603,7 +603,10 @@ class WebUIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
@@ -662,7 +665,10 @@ class WebUIHandler(BaseHTTPRequestHandler):
         if no_cache:
             self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
     def do_DELETE(self) -> None:
         try:
@@ -719,7 +725,7 @@ class WebUIHandler(BaseHTTPRequestHandler):
                         self.wfile.flush()
                     self.wfile.write(b"data: [DONE]\n\n")
                     self.wfile.flush()
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     self.state.approvals.cancel_client(client_id)
 
             elif path.startswith("/api/social/"):
