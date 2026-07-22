@@ -30,10 +30,11 @@ window.EnchanI18n.ready.then(()=>{
   let backgroundUrl="";
   let backgroundSettings=loadBackgroundSettings();
 
+  function numberOrDefault(value,fallback){const number=Number(value);return Number.isFinite(number)?number:fallback}
   function loadBackgroundSettings(){
     try{
       const data=JSON.parse(localStorage.getItem(BACKGROUND_SETTINGS_KEY)||"{}");
-      return {darkness:clamp(Number(data.darkness)||55,30,85),blur:clamp(Number(data.blur)||2,0,12),position:["center","top","bottom","left","right"].includes(data.position)?data.position:"center"};
+      return {darkness:clamp(numberOrDefault(data.darkness,55),30,85),blur:clamp(numberOrDefault(data.blur,2),0,12),position:["center","top","bottom","left","right"].includes(data.position)?data.position:"center"};
     }catch(_){return {darkness:55,blur:2,position:"center"}}
   }
   function clamp(value,min,max){return Math.min(max,Math.max(min,value))}
