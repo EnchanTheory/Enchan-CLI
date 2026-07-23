@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const tabBadges = {
         tweets: document.getElementById('tweetsBadge'),
+        likes: document.getElementById('likesBadge'),
         following: document.getElementById('followingBadge'),
         followers: document.getElementById('followersBadge')
     };
@@ -176,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             socialCache = result.sync || socialCache;
             renderBadges();
-            await loadCurrentTab({ markRead: true });
+            await loadCurrentTab({ markRead: false });
             window.dispatchEvent(new CustomEvent('enchan:social-outing-complete', {
                 detail: { message: result.message, postsSeen: result.posts_seen }
             }));
@@ -321,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function emptySocialCache() {
         return {
             feed: [], own_posts: [], liked_posts: [], following: [], followers: [],
-            unread: { tweets: 0, following: 0, followers: 0 }
+            unread: { tweets: 0, likes: 0, following: 0, followers: 0 }
         };
     }
 
@@ -337,11 +338,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderBadges() {
         const counts = {
             tweets: unreadCount('tweets'),
+            likes: unreadCount('likes'),
             following: unreadCount('following'),
             followers: unreadCount('followers')
         };
         for (const [section, badge] of Object.entries(tabBadges)) setBadge(badge, counts[section]);
-        setBadge(socialBadge, counts.tweets + counts.following + counts.followers);
+        setBadge(socialBadge, counts.tweets + counts.likes + counts.following + counts.followers);
     }
 
     async function markTabRead(section) {

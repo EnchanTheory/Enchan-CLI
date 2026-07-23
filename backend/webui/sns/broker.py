@@ -89,9 +89,9 @@ class SocialBroker:
             "liked_posts": [],
             "following": [],
             "followers": [],
-            "unread": {"tweets": 0, "following": 0, "followers": 0},
+            "unread": {"tweets": 0, "likes": 0, "following": 0, "followers": 0},
             "unread_tweets_by_mascot": {},
-            "last_changes": {"tweets": 0, "following": 0, "followers": 0},
+            "last_changes": {"tweets": 0, "likes": 0, "following": 0, "followers": 0},
             "last_tweet_changes_by_mascot": {},
             "updated_at": None,
             "seen_post_ids": [],
@@ -134,7 +134,7 @@ class SocialBroker:
                 if isinstance(values, dict):
                     cache[key] = {
                         section: max(0, int(values.get(section, 0) or 0))
-                        for section in ("tweets", "following", "followers")
+                        for section in ("tweets", "likes", "following", "followers")
                     }
             cache["updated_at"] = data.get("updated_at")
             # Remote feed bodies are browse-only and must never persist locally.
@@ -190,7 +190,7 @@ class SocialBroker:
             return self._load_cache()
 
     def mark_cached_state_read(self, section: str) -> Dict[str, Any]:
-        if section not in {"tweets", "following", "followers"}:
+        if section not in {"tweets", "likes", "following", "followers"}:
             raise ValueError("Unknown social section")
         with self._cache_lock:
             cache = self._load_cache()
@@ -203,12 +203,21 @@ class SocialBroker:
     def _set_cached_post_liked(self, post_id: str, liked: bool) -> None:
         with self._cache_lock:
             cache = self._load_cache()
+            was_liked = any(
+                self._record_id(post) == post_id
+                for post in cache["liked_posts"]
+            )
             liked_posts = [
                 post for post in cache["liked_posts"]
                 if self._record_id(post) != post_id
             ]
             if liked and post_id:
                 liked_posts.append({"id": post_id, "liked_by_me": True})
+                if not was_liked:
+                    cache["unread"]["likes"] = (
+                        int(cache["unread"].get("likes", 0) or 0) + 1
+                    )
+                    cache["last_changes"]["likes"] = 1
             cache["liked_posts"] = liked_posts
             self._save_cache(cache)
 
@@ -867,6 +876,16 @@ class SocialBroker:
                 for post in own_posts
                 if self._record_id(post)
             )
+            previous_liked_ids = {
+                self._record_id(post)
+                for post in previous["liked_posts"]
+                if self._record_id(post)
+            }
+            new_liked_posts = sum(
+                1 for post in liked_posts
+                if self._record_id(post)
+                and self._record_id(post) not in previous_liked_ids
+            )
             previous_following = {self._record_id(person) for person in previous["following"]}
             previous_followers = {self._record_id(person) for person in previous["followers"]}
             new_following = sum(
@@ -879,6 +898,7 @@ class SocialBroker:
             )
             changes = {
                 "tweets": new_likes,
+                "likes": new_liked_posts,
                 "following": new_following,
                 "followers": new_followers,
             }
