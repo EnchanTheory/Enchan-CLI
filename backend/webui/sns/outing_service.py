@@ -144,10 +144,13 @@ class SocialService(BaseSocialService):
                 action_summary = controller.public_summary()
                 relationship_summary = summarize_outing_social_state(
                     snapshot,
+                    new_follows=outing_changes['following'],
                     new_followers=outing_changes['followers'],
                 )
                 social_summary = {
                     **action_summary,
+                    'follows': relationship_summary['follows'],
+                    'new_follows': relationship_summary['new_follows'],
                     'followers': relationship_summary['followers'],
                     'new_followers': relationship_summary['new_followers'],
                 }

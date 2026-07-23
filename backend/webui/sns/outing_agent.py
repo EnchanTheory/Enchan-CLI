@@ -41,7 +41,9 @@ def _generation_text(generation: Any) -> str:
 
 
 def summarize_outing_social_state(
-    snapshot: dict, *, new_followers: int | None = None,
+    snapshot: dict, *,
+    new_follows: int | None = None,
+    new_followers: int | None = None,
 ) -> dict[str, int]:
     """Return relationship facts that are safe to expose in outing results."""
     following_ids = {
@@ -54,16 +56,19 @@ def summarize_outing_social_state(
         for item in snapshot.get("followers", [])
         if _record_id(item)
     }
+    changes = snapshot.get("last_changes", {})
+    if not isinstance(changes, dict):
+        changes = {}
+    if new_follows is None:
+        new_follows = int(changes.get("following", 0) or 0)
     if new_followers is None:
-        changes = snapshot.get("last_changes", {})
-        if not isinstance(changes, dict):
-            changes = {}
         new_followers = int(changes.get("followers", 0) or 0)
     return {
-        "following": len(following_ids),
+        "follows": len(following_ids),
+        "new_follows": max(0, int(new_follows or 0)),
         "followers": len(follower_ids),
-        "mutual_connections": len(following_ids & follower_ids),
         "new_followers": max(0, int(new_followers or 0)),
+        "mutual_connections": len(following_ids & follower_ids),
     }
 
 
@@ -238,7 +243,7 @@ class OutingActionController:
     def public_summary(self) -> dict:
         return {
             "likes": self.counts["like"],
-            "follows": self.counts["follow"],
+            "follow_actions": self.counts["follow"],
             "unfollows": self.counts["unfollow"],
         }
 
