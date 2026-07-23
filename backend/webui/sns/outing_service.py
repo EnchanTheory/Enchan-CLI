@@ -10,6 +10,7 @@ from backend.webui.sns.outing_agent import (
     build_outing_system_prompt,
     build_outing_user_message,
     run_outing_agent_loop,
+    summarize_outing_social_state,
 )
 from backend.webui.sns.service import (
     LANGUAGE_NAMES,
@@ -33,6 +34,14 @@ class SocialService(BaseSocialService):
             with state.lock:
                 browse = self.broker.browse_remote_state(advance_cursor=False)
                 snapshot = browse['state']
+                initial_changes = {
+                    section: max(
+                        0,
+                        int(snapshot.get('last_changes', {}).get(section, 0) or 0),
+                    )
+                    for section in ('tweets', 'following', 'followers')
+                }
+                outing_changes = dict(initial_changes)
                 other_posts = browse['posts']
                 controller = OutingActionController(
                     self.broker, other_posts, snapshot,
@@ -81,6 +90,13 @@ class SocialService(BaseSocialService):
 
                 if controller.actions:
                     snapshot = self.broker.sync_remote_state()
+                    refreshed_changes = snapshot.get('last_changes', {})
+                    outing_changes = {
+                        section: initial_changes[section] + max(
+                            0, int(refreshed_changes.get(section, 0) or 0),
+                        )
+                        for section in initial_changes
+                    }
                     posts_by_id = {
                         str(post.get('id') or ''): post
                         for post in other_posts
@@ -126,6 +142,15 @@ class SocialService(BaseSocialService):
                     )
                 
                 action_summary = controller.public_summary()
+                relationship_summary = summarize_outing_social_state(
+                    snapshot,
+                    new_followers=outing_changes['followers'],
+                )
+                social_summary = {
+                    **action_summary,
+                    'followers': relationship_summary['followers'],
+                    'new_followers': relationship_summary['new_followers'],
+                }
                 state._mascot_chat_history().append({
                     'role': 'assistant',
                     'content': message,
@@ -134,13 +159,15 @@ class SocialService(BaseSocialService):
                     'social_outing', message,
                     social_outing=True,
                     posts_seen=len(other_posts),
-                    social_actions=action_summary,
+                    social_actions=social_summary,
+                    social_relationships=relationship_summary,
                 )
                 return {
                     'message': message,
                     'posts_seen': len(other_posts),
                     'sync': snapshot,
-                    'actions': action_summary,
+                    'actions': social_summary,
+                    'relationships': relationship_summary,
                 }
         finally:
             with state._activity_lock:
