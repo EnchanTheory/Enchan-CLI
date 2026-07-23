@@ -178,7 +178,7 @@ Phase 3 scope: staged generation uses personality, SNS purpose, bounded self-his
 - [x] Phase 3: generate non-repetitive tweets using personality, purpose, history, and mood
 - [x] Phase 4-6: evaluate transient remote posts and enable bounded AI-controlled likes, follows, and safety-triggered unfollows
 - [x] Phase 7: synchronize liked posts, following, and followers for the existing SNS tabs
-- [ ] Phase 8: add privacy and data-boundary tests for every SNS path
+- [x] Phase 8: add privacy and data-boundary tests for every SNS path
 
 Phase 4-6 are intentionally implemented as one outing flow because evaluation,
 reaction, and relationship choice use the same transient post context.
