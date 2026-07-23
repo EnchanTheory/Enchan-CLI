@@ -92,6 +92,7 @@ class SocialBroker:
             "unread": {"tweets": 0, "likes": 0, "following": 0, "followers": 0},
             "unread_tweets_by_mascot": {},
             "last_changes": {"tweets": 0, "likes": 0, "following": 0, "followers": 0},
+            "last_received_likes": [],
             "last_tweet_changes_by_mascot": {},
             "updated_at": None,
             "seen_post_ids": [],
@@ -123,7 +124,10 @@ class SocialBroker:
         legacy_cache = not isinstance(data, dict) or int(data.get("version", 0) or 0) < 5
         cache = self._default_cache()
         if isinstance(data, dict):
-            for key in ("feed", "own_posts", "liked_posts", "following", "followers"):
+            for key in (
+                "feed", "own_posts", "liked_posts", "following", "followers",
+                "last_received_likes",
+            ):
                 if isinstance(data.get(key), list):
                     cache[key] = data[key]
             for key in ("own_posts_by_mascot", "unread_tweets_by_mascot", "last_tweet_changes_by_mascot"):
@@ -871,10 +875,24 @@ class SocialBroker:
                 for post in previous["own_posts"]
                 if self._record_id(post)
             }
+            received_likes = []
+            for post in own_posts:
+                post_id = self._record_id(post)
+                if not post_id:
+                    continue
+                like_count = int(post.get("like_count", 0) or 0)
+                new_like_count = max(
+                    0, like_count - previous_likes.get(post_id, 0),
+                )
+                if new_like_count:
+                    received_likes.append({
+                        "post_id": post_id,
+                        "body": str(post.get("body") or "")[:SNS_BROWSE_MAX_POST_CHARS],
+                        "new_like_count": new_like_count,
+                        "like_count": like_count,
+                    })
             new_likes = sum(
-                max(0, int(post.get("like_count", 0) or 0) - previous_likes.get(self._record_id(post), 0))
-                for post in own_posts
-                if self._record_id(post)
+                event["new_like_count"] for event in received_likes
             )
             previous_liked_ids = {
                 self._record_id(post)
@@ -923,6 +941,7 @@ class SocialBroker:
                 "unread": unread,
                 "unread_tweets_by_mascot": unread_tweets_by_mascot,
                 "last_changes": changes,
+                "last_received_likes": received_likes,
                 "last_tweet_changes_by_mascot": last_tweet_changes_by_mascot,
                 "seen_post_ids": list(previous.get("seen_post_ids", [])),
                 "last_browse_at": previous.get("last_browse_at"),

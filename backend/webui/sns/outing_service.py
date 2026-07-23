@@ -18,6 +18,32 @@ from backend.webui.sns.service import (
 )
 
 
+def _merge_received_like_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for group in groups:
+        for event in group:
+            if not isinstance(event, dict):
+                continue
+            post_id = str(event.get('post_id') or '')
+            if not post_id:
+                continue
+            existing = merged.get(post_id)
+            if existing is None:
+                merged[post_id] = dict(event)
+                continue
+            existing['new_like_count'] = (
+                max(0, int(existing.get('new_like_count', 0) or 0))
+                + max(0, int(event.get('new_like_count', 0) or 0))
+            )
+            existing['like_count'] = max(
+                int(existing.get('like_count', 0) or 0),
+                int(event.get('like_count', 0) or 0),
+            )
+            if event.get('body'):
+                existing['body'] = event['body']
+    return list(merged.values())
+
+
 class SocialService(BaseSocialService):
     """Add private AI judgement and bounded actions to an SNS outing."""
 
@@ -42,6 +68,9 @@ class SocialService(BaseSocialService):
                     for section in ('tweets', 'following', 'followers')
                 }
                 outing_changes = dict(initial_changes)
+                received_like_events = _merge_received_like_events(
+                    snapshot.get('last_received_likes', []),
+                )
                 other_posts = browse['posts']
                 controller = OutingActionController(
                     self.broker, other_posts, snapshot,
@@ -97,6 +126,10 @@ class SocialService(BaseSocialService):
                         )
                         for section in initial_changes
                     }
+                    received_like_events = _merge_received_like_events(
+                        received_like_events,
+                        snapshot.get('last_received_likes', []),
+                    )
                     posts_by_id = {
                         str(post.get('id') or ''): post
                         for post in other_posts
@@ -142,6 +175,8 @@ class SocialService(BaseSocialService):
                     )
                 
                 action_summary = controller.public_summary()
+                for event in received_like_events:
+                    self._remember_received_likes(event)
                 relationship_summary = summarize_outing_social_state(
                     snapshot,
                     new_follows=outing_changes['following'],
@@ -149,6 +184,10 @@ class SocialService(BaseSocialService):
                 )
                 social_summary = {
                     **action_summary,
+                    'received_likes': sum(
+                        int(event.get('new_like_count', 0) or 0)
+                        for event in received_like_events
+                    ),
                     'follows': relationship_summary['follows'],
                     'new_follows': relationship_summary['new_follows'],
                     'followers': relationship_summary['followers'],
@@ -164,6 +203,7 @@ class SocialService(BaseSocialService):
                     posts_seen=len(other_posts),
                     social_actions=social_summary,
                     social_relationships=relationship_summary,
+                    received_like_events=received_like_events,
                 )
                 return {
                     'message': message,

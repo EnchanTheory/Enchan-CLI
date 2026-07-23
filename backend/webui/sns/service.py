@@ -137,6 +137,26 @@ class SocialService:
             social_action_source=source,
         )
 
+    def _remember_received_likes(self, event: dict[str, Any]) -> None:
+        mascot = self._selected_mascot()
+        mascot_name = str(mascot.get("name") or mascot.get("id") or "AI")
+        body = str(event.get("body") or "").strip()[:500]
+        new_like_count = max(0, int(event.get("new_like_count", 0) or 0))
+        like_count = max(0, int(event.get("like_count", 0) or 0))
+        content = (
+            f"[SNS activity memory]\n{mascot_name}'s SNS post received "
+            f"{new_like_count} new like(s), for {like_count} total."
+        )
+        if body:
+            content += "\nPost:\n" + body
+        self._append_social_memory(
+            "post_received_likes",
+            content,
+            post_id=str(event.get("post_id") or ""),
+            new_like_count=new_like_count,
+            like_count=like_count,
+        )
+
     def _remember_relationship(
         self, person: dict[str, Any], *, followed: bool, source: str,
     ) -> None:
