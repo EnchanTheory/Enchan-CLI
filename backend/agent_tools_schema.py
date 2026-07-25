@@ -97,14 +97,16 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "web_browse",
-            "description": "Searches for relevant pages or opens a URL, then returns readable page content. Use opened page content as evidence; titles and snippets are discovery hints only.",
+            "description": "Primary web research and browsing tool. Searches and opens pages, follows relevant in-site links, or opens a chosen URL and returns ranked links for the next call. Use it for current or external facts and continue browsing until opened page content supports the answer; snippets are discovery hints only.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "url": {"type": "string", "description": "HTTP(S) URL to open directly (optional if query is provided)"},
-                    "query": {"type": "string", "description": "Research query. The tool searches and opens relevant pages automatically (optional if url is provided)"},
+                    "url": {"type": "string", "description": "HTTP(S) URL to open directly. May be combined with query so returned links are ranked for the research goal."},
+                    "query": {"type": "string", "description": "Research goal. Without url, searches, opens, and follows relevant pages automatically; with url, ranks that page's links for deeper browsing."},
                     "max_pages": {"type": "integer", "description": "Maximum readable pages for a query; default 3, max 5"},
-                    "max_chars_per_page": {"type": "integer", "description": "Maximum readable characters per page; default 12000, range 2000-30000"}
+                    "max_chars_per_page": {"type": "integer", "description": "Maximum readable characters per page; default 12000, range 2000-30000"},
+                    "max_depth": {"type": "integer", "description": "Automatic link-follow depth for query browsing; default 1, range 0-2"},
+                    "same_site_only": {"type": "boolean", "description": "When following or suggesting links, stay on each opened site's host; default true. Set false only when relevant cross-site links are needed."}
                 },
                 "required": []
             }

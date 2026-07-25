@@ -154,7 +154,13 @@ def _run_tool_observation(
         else observation
     )
     if not plain and not result.get("displayed"):
-        print_agent_observation(result["tool"], result["ok"], visible_observation)
+        terminal_observation = visible_observation
+        if result["tool"] == "web_browse" and result["ok"]:
+            terminal_observation = (
+                f"Web content retrieved for agent analysis "
+                f"({len(observation):,} chars; hidden from terminal)."
+            )
+        print_agent_observation(result["tool"], result["ok"], terminal_observation)
     elif hide_observation:
         print(f"Observation: [{result['tool']}] ok={result['ok']}\n{visible_observation}")
 

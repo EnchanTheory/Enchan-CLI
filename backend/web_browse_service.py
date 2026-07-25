@@ -209,8 +209,9 @@ def _link_score(query: str, source_url: str, target_url: str, anchor_text: str) 
     return score
 
 
-def _rank_links(query: str, page: dict) -> list[dict]:
+def _rank_links(query: str, page: dict, *, same_site_only: bool = False) -> list[dict]:
     source_url = str(page.get("url") or "")
+    source_host = _host(source_url)
     ranked: list[dict] = []
     seen: set[str] = set()
     for raw_url, anchor_text in page.get("links") or []:
@@ -220,6 +221,8 @@ def _rank_links(query: str, page: dict) -> list[dict]:
         seen.add(target)
         if not _is_public_discovered_url(target) or _is_search_result_page(target):
             continue
+        if same_site_only and _host(target) != source_host:
+            continue
         ranked.append({
             "url": target,
             "anchor_text": anchor_text,
@@ -227,6 +230,18 @@ def _rank_links(query: str, page: dict) -> list[dict]:
         })
     ranked.sort(key=lambda item: (item["score"], len(item["anchor_text"])), reverse=True)
     return ranked
+
+
+def relevant_links(
+    page: dict,
+    query: str = "",
+    *,
+    max_links: int = 12,
+    same_site_only: bool = False,
+) -> list[dict]:
+    """Return safe, ranked navigation choices from an already fetched page."""
+    max_links = max(1, min(int(max_links), 30))
+    return _rank_links(query, page, same_site_only=same_site_only)[:max_links]
 
 
 def fetch_url(url: str, *, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, max_chars: int = DEFAULT_MAX_CHARS) -> dict:
@@ -291,16 +306,40 @@ def browse_query(
     max_pages: int = 3,
     max_chars_per_page: int = DEFAULT_MAX_CHARS,
     max_depth: int = DEFAULT_MAX_DEPTH,
+    same_site_only: bool = True,
 ) -> list[dict]:
     from backend.web_search_service import perform_web_search
 
     max_depth = max(0, min(int(max_depth), 2))
     candidate_limit = max(8, max_pages * 4)
     search_results = perform_web_search(query, max_results=candidate_limit)
+    if not search_results:
+        return [{
+            "ok": False,
+            "url": "",
+            "search_title": "",
+            "error": "Web search returned no results.",
+        }]
+    search_error = next(
+        (
+            str(item.get("error"))
+            for item in search_results
+            if isinstance(item, dict) and item.get("error")
+        ),
+        "",
+    )
+    if search_error:
+        return [{
+            "ok": False,
+            "url": "",
+            "search_title": "",
+            "error": search_error,
+        }]
     pages: list[dict] = []
     seen_urls: set[str] = set()
     queued_urls: set[str] = set()
     domain_counts: dict[str, int] = {}
+    domain_page_limit = max_pages if same_site_only else MAX_RESULTS_PER_DOMAIN
     queue: deque[dict] = deque()
 
     seed_budget = max(1, min(max_pages, (max_pages + 1) // 2 if max_depth else max_pages))
@@ -330,7 +369,7 @@ def browse_query(
             continue
         seen_urls.add(url)
         host = _host(url)
-        if domain_counts.get(host, 0) >= MAX_RESULTS_PER_DOMAIN:
+        if domain_counts.get(host, 0) >= domain_page_limit:
             continue
 
         page = fetch_url(url, max_chars=max_chars_per_page)
@@ -351,12 +390,12 @@ def browse_query(
 
         if item["depth"] >= max_depth:
             continue
-        for link in _rank_links(query, page):
+        for link in _rank_links(query, page, same_site_only=same_site_only):
             target = link["url"]
             if target in seen_urls or target in queued_urls:
                 continue
             target_host = _host(target)
-            if domain_counts.get(target_host, 0) >= MAX_RESULTS_PER_DOMAIN:
+            if domain_counts.get(target_host, 0) >= domain_page_limit:
                 continue
             queued_urls.add(target)
             queue.append({

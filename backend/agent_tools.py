@@ -41,6 +41,8 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - Prefer action over narration. When action is required, emit the appropriate tool call instead of saying that you will act, asking the user to wait, or describing internal preparation.
 - Do not claim that a capability is unavailable before checking the registered tools and skills that could satisfy the request.
 - If one capability is insufficient, combine available capabilities or create and execute an appropriate local script when possible.
+- Current, changing, or externally verifiable facts require retrieval. Use web_browse before answering requests about current conditions, news, schedules, live services, or other time-sensitive information.
+- Deep web research is iterative: search with web_browse, read opened page content, follow the most relevant returned page link when the first page is insufficient, and repeat until the answer is supported or a concrete access failure is verified. Search snippets are discovery hints, never final evidence.
 
 ## Interaction & Decision Loop
 - Tool calls are the primary action primitives. If a tool call is executed, wait for the Observation before answering. Do not emit more than one tool call per turn.
@@ -483,29 +485,93 @@ def tool_web_search(args: dict) -> dict:
 
 
 def tool_web_browse(args: dict) -> dict:
-    from backend.web_browse_service import browse_query, fetch_url
+    from backend.web_browse_service import browse_query, fetch_url, relevant_links
     url = args.get("url")
     query = args.get("query")
     max_pages = max(1, min(int(args.get("max_pages", 3) or 3), 5))
     max_chars = max(2000, min(int(args.get("max_chars_per_page", 12000) or 12000), 30000))
+    max_depth = max(0, min(int(args.get("max_depth", 1) or 0), 2))
+    same_site_only = args.get("same_site_only", True) is not False
     if isinstance(url, str) and url.strip():
         page = fetch_url(url.strip(), max_chars=max_chars)
         if not page.get("ok"):
             return {"ok": False, "error": page.get("error", "web_browse failed."), "content": str(page)}
-        content = f"Opened URL: {page.get('url')}\nTitle: {page.get('title') or '(no title)'}\nContent-Type: {page.get('content_type')}\n\n{page.get('text', '')}"
-        return {"ok": True, "content": truncate_observation(content, max_chars=max_chars + 2000)}
+        research_query = query.strip() if isinstance(query, str) else ""
+        links = relevant_links(
+            page,
+            research_query,
+            max_links=12,
+            same_site_only=same_site_only,
+        )
+        navigation = "\n".join(
+            f"- {item.get('anchor_text') or '(untitled link)'}: {item.get('url')}"
+            for item in links
+        ) or "(no safe relevant links found)"
+        content = (
+            f"Opened URL: {page.get('url')}\n"
+            f"Title: {page.get('title') or '(no title)'}\n"
+            f"Content-Type: {page.get('content_type')}\n\n"
+            f"{page.get('text', '')}\n\n"
+            f"Relevant links available for the next web_browse call:\n{navigation}"
+        )
+        return {
+            "ok": True,
+            "content": truncate_observation(content, max_chars=max_chars + 5000),
+        }
     if isinstance(query, str) and query.strip():
-        pages = browse_query(query.strip(), max_pages=max_pages, max_chars_per_page=max_chars)
+        pages = browse_query(
+            query.strip(),
+            max_pages=max_pages,
+            max_chars_per_page=max_chars,
+            max_depth=max_depth,
+            same_site_only=same_site_only,
+        )
         chunks = [f"Browse query: {query.strip()}"]
         ok_count = 0
         for index, page in enumerate(pages, 1):
             if page.get("ok"):
                 ok_count += 1
-                chunks.append(f"\n--- Page {index} ---\nURL: {page.get('url')}\nTitle: {page.get('title') or page.get('search_title') or '(no title)'}\nSearch snippet: {page.get('search_snippet') or ''}\n\n{page.get('text', '')}")
+                trail = ""
+                if page.get("parent_url"):
+                    trail = (
+                        f"\nReached from: {page.get('parent_url')}"
+                        f"\nFollowed link: {page.get('link_text') or '(untitled link)'}"
+                    )
+                chunks.append(
+                    f"\n--- Page {index} (depth {page.get('depth', 0)}) ---"
+                    f"\nURL: {page.get('url')}"
+                    f"\nTitle: {page.get('title') or page.get('search_title') or '(no title)'}"
+                    f"\nSearch snippet: {page.get('search_snippet') or ''}"
+                    f"{trail}\n\n{page.get('text', '')}"
+                )
             else:
                 chunks.append(f"\n--- Page {index} failed ---\nURL: {page.get('url') or ''}\nSearch title: {page.get('search_title') or ''}\nError: {page.get('error') or 'unknown error'}")
         if ok_count == 0:
             return {"ok": False, "error": "Search found pages, but none could be opened.", "content": "\n".join(chunks)}
+        navigation_seen: set[str] = set()
+        navigation_lines: list[str] = []
+        for page in pages:
+            for item in relevant_links(
+                page,
+                query.strip(),
+                max_links=8,
+                same_site_only=same_site_only,
+            ):
+                target = str(item.get("url") or "")
+                if not target or target in navigation_seen:
+                    continue
+                navigation_seen.add(target)
+                navigation_lines.append(
+                    f"- {item.get('anchor_text') or '(untitled link)'}: {target}"
+                )
+                if len(navigation_lines) >= 12:
+                    break
+            if len(navigation_lines) >= 12:
+                break
+        chunks.append(
+            "\n--- Navigation for deeper follow-up ---\n"
+            + ("\n".join(navigation_lines) or "(no additional safe relevant links found)")
+        )
         return {"ok": True, "content": truncate_observation("\n".join(chunks), max_chars=max_chars * max_pages + 4000)}
     return {"ok": False, "error": "web_browse requires either 'url' or 'query'."}
 
