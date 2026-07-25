@@ -83,51 +83,13 @@ def _run_private_stage(
 
 def run_sns_agent_loop(
     *, broker, chat_history, session_log_path, backend, system_locale="en-US",
-    history_system_context, selection_system_context, generation_config,
-    generate_response, **kwargs,
+    selection_system_context, generation_config, generate_response, **kwargs,
 ):
-    """Run history review, topic selection, and writing in one SNS session."""
-    history_observation = _attach_required_tool(
-        tool_name="sns_get_own_tweet_history",
-        tool_args={"max_posts": 30, "token_budget": 6000},
-        iteration=1,
-        broker=broker,
-        chat_history=chat_history,
-        session_log_path=session_log_path,
-        backend=backend,
-    )
-    history_review = _run_private_stage(
-        system_context=history_system_context,
-        generation_config=generation_config,
-        generate_response=generate_response,
-    )
-    append_session_event(session_log_path, {
-        "type": "sns_history_review",
-        "content": history_review,
-        "backend": backend,
-    })
-    # Keep the AI's comparison, but remove the source prose that would prime copying.
-    history_observation["content"] = (
-        "Observation: [sns_get_own_tweet_history] ok=True\n"
-        "The raw posts were reviewed and removed from working context. "
-        "Use the internal novelty guard instead."
-    )
-    chat_history.append({
-        "role": "assistant",
-        "content": f"[INTERNAL NOVELTY GUARD]\n{history_review}",
-    })
-    chat_history.append({
-        "role": "user",
-        "content": (
-            "Now choose exactly one trend using the persona and the internal "
-            "novelty guard. Do not write the post yet."
-        ),
-    })
-
+    """Run current-topic selection and writing without loading past posts."""
     trends_observation = _attach_required_tool(
         tool_name="sns_get_regional_trends",
         tool_args={"locale": system_locale},
-        iteration=2,
+        iteration=1,
         broker=broker,
         chat_history=chat_history,
         session_log_path=session_log_path,
@@ -157,7 +119,7 @@ def run_sns_agent_loop(
     _attach_required_tool(
         tool_name="sns_get_current_context",
         tool_args={},
-        iteration=3,
+        iteration=2,
         broker=broker,
         chat_history=chat_history,
         session_log_path=session_log_path,
@@ -166,8 +128,8 @@ def run_sns_agent_loop(
     chat_history.append({
         "role": "user",
         "content": (
-            "Use the internal novelty guard and topic selection above. Now write "
-            "only the final SNS post, following the system instructions."
+            "Use the internal topic selection above. Now write only the final "
+            "SNS post, following the system instructions."
         ),
     })
 

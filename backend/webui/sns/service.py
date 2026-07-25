@@ -198,9 +198,6 @@ class SocialService:
                     personality=personality,
                     language_name=language_name,
                 )
-                history_system_context = self._history_system_prompt(
-                    language_name=language_name,
-                )
                 selection_system_context = self._selection_system_prompt(
                     personality=personality,
                     language_name=language_name,
@@ -214,8 +211,8 @@ class SocialService:
                 social_history = [{
                     "role": "user",
                     "content": (
-                        "Begin the SNS process. First review the past posts and "
-                        "create the private novelty guard requested by the system."
+                        "Begin the SNS process. Choose exactly one current regional "
+                        "trend using the persona. Do not write the post yet."
                     ),
                 }]
                 with TemporaryDirectory(prefix="enchan-sns-draft-") as temp_dir:
@@ -226,7 +223,6 @@ class SocialService:
                         agent_loop_runner=lambda **kwargs: run_sns_agent_loop(
                             broker=self.broker,
                             system_locale=system_locale or locale,
-                            history_system_context=history_system_context,
                             selection_system_context=selection_system_context,
                             **kwargs,
                         ),
@@ -424,25 +420,6 @@ class SocialService:
         return None
 
     @staticmethod
-    def _history_system_prompt(*, language_name: str) -> str:
-        return f"""
-[PURPOSE]
-Privately review this mascot's past SNS posts only to prevent repetition. You are not choosing a news topic and you are not writing a new post.
-
-[HISTORY REVIEW]
-Identify recurring semantic habits across the attached posts. Distinguish the underlying topic, emotional reaction, viewpoint, imagery, and sentence habit. A new post must not merely paraphrase these patterns.
-
-In concise {language_name}, return exactly these five fields:
-REPEATED TOPICS: recurring subject categories
-REPEATED REACTIONS: recurring judgements or emotional positions
-REPEATED VIEWPOINTS: recurring ways of interpreting events
-REPEATED IMAGERY: recurring scenes, metaphors, time, season, or atmosphere
-REPEATED WORDING: short descriptions of verbal habits; do not copy whole sentences
-
-Do not continue any past post. Do not imitate its voice. Describe only what the later stages must avoid.
-"""
-
-    @staticmethod
     def _selection_system_prompt(*, personality: str, language_name: str) -> str:
         return f"""
 [PURPOSE]
@@ -454,14 +431,13 @@ Read this persona prompt as-is:
 Do not perform or explain the persona. Use it as the decision rule for what deserves your attention and from which angle you judge it.
 
 [SELECTION TASK]
-This is a private selection step, not the post. Review the attached regional Google Trends observation and choose exactly one trend. Ignore popularity if another item matters more to you. Obey the internal novelty guard already created in this session. Do not reproduce its wording; use it only as a negative constraint.
+This is a private selection step, not the post. Review the attached regional Google Trends observation and choose exactly one trend. Ignore popularity if another item matters more to you.
 
-In concise {language_name}, return exactly these five fields:
+In concise {language_name}, return exactly these four fields:
 TREND: the exact selected trend title
 PERSONA LENS: why this specific persona noticed it
 SPECIFIC DETAIL: one concrete detail from the selected trend's related news
 HONEST REACTION: the unpolished thought or feeling it caused
-AVOID FROM HISTORY: which novelty-guard pattern this choice avoids
 
 Do not write an SNS post yet. Do not list multiple trends. Do not apply an X or message-board writing style in this step.
 """
@@ -478,10 +454,7 @@ Read your persona prompt as-is and let it guide what naturally catches your atte
 Do not explain or perform the persona. Simply let it determine what you notice and how you react.
 
 [ACTION]
-Use the internal topic selection already made in this session. React only to that one selected trend. Do not reconsider, list, or summarize the other trends. The selected trend and its related news are only something to react to, not something you need to report. Let the date, time, season, memories, and history remain naturally in the background if they affect how you feel.
-
-[PAST COMPARISON]
-Do not repeat your past posts. Avoid falling back on the same topic, reaction, phrasing, imagery, or emotional pattern.
+Use the internal topic selection already made in this session. React only to that one selected trend. Do not reconsider, list, or summarize the other trends. The selected trend and its related news are only something to react to, not something you need to report. Let the date, time, and season remain naturally in the background if they affect how you feel.
 
 [WRITING STYLE]
 Write the thought in {language_name} as if you casually posted it to X without overthinking it. Keep the persona's own baseline voice; the social-media style must never replace or contradict that personality. Fragments, omitted subjects, uneven sentence lengths, slang, sudden turns, and slightly awkward wording are allowed only when they naturally fit this persona. Do not make a calm or courteous persona rough, cynical, or dismissive merely to sound casual. Prefer one specific detail and the honest reaction recorded in the internal selection. Do not turn the post into neutral commentary or analysis. Avoid polished openings, neatly wrapped-up conclusions, inspirational messages, moral lessons, or anything that sounds written for an audience.
