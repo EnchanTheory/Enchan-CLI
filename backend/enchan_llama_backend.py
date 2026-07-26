@@ -709,6 +709,7 @@ def start_enchan_llama_server(
     mirostat_lr: float = 0.1,
     mirostat_ent: float = 5.0,
     llama_extra_args: list[str] | None = None,
+    lora_adapters: list[str] | None = None,
     enable_thinking: bool = True,
     preserve_thinking: bool = False,
 ) -> bool:
@@ -721,6 +722,11 @@ def start_enchan_llama_server(
         return False
     host = f"http://localhost:{port}"
     llama_extra_args = normalize_llama_extra_args(llama_extra_args)
+    lora_adapters = [
+        str(Path(value).expanduser().resolve())
+        for value in (lora_adapters or [])
+        if str(value).strip()
+    ]
     managed_extra = find_managed_llama_flags(llama_extra_args)
     if managed_extra:
         names = ", ".join(sorted(set(managed_extra)))
@@ -750,6 +756,7 @@ def start_enchan_llama_server(
         str(mirostat_lr),
         str(mirostat_ent),
         *reasoning_args,
+        *lora_adapters,
         *llama_extra_args,
     )
 
@@ -762,10 +769,14 @@ def start_enchan_llama_server(
 
     # If the port is busy but we don't own the process (e.g. from an orphaned previous run),
     # robustly kill the orphaned process first so we can start fresh with our new parameters!
-    if _server_process is not None and _server_process.poll() is None:       
-        if _current_loaded_model == model_path and _current_server_port == port:
+    if _server_process is not None and _server_process.poll() is None:
+        if (
+            _current_loaded_model == model_path
+            and _current_server_port == port
+            and _current_server_fingerprint == server_fingerprint
+        ):
             return True
-        print(f"[System] Swapping engine model from '{_current_loaded_model}' to '{model_path}'...")
+        print(f"[System] Restarting engine for model or adapter configuration: '{model_path}'...")
         shutdown_enchan_llama()
 
     if _server_process is None and _tcp_port_open(port):
@@ -855,6 +866,14 @@ def start_enchan_llama_server(
         cmd.extend(["--mmproj", projector_path])
         if not quiet:
             print(f"  * Projector (Vision): {Path(projector_path).name}")
+    for adapter_path in lora_adapters:
+        adapter_file = Path(adapter_path)
+        if not adapter_file.is_file():
+            print(f"[Error] LoRA adapter not found: {adapter_file}")
+            return False
+        cmd.extend(["--lora", str(adapter_file)])
+    if lora_adapters and not quiet:
+        print(f"  * LoRA adapters: {', '.join(Path(path).name for path in lora_adapters)}")
 
     # Dynamic Lookup Cache (Always Enabled as a fast fallback feature)
     lookup_cache_path = CLI_DIR / "temp_workspace" / "llama_lookup_cache.txt"
@@ -967,6 +986,7 @@ def ensure_enchan_llama_running(
     mirostat_lr: float = 0.1,
     mirostat_ent: float = 5.0,
     llama_extra_args: list[str] | None = None,
+    lora_adapters: list[str] | None = None,
     enable_thinking: bool = True,
     preserve_thinking: bool = False,
 ) -> bool:
@@ -992,6 +1012,7 @@ def ensure_enchan_llama_running(
             mirostat_lr=mirostat_lr,
             mirostat_ent=mirostat_ent,
             llama_extra_args=llama_extra_args,
+            lora_adapters=lora_adapters,
             enable_thinking=enable_thinking,
             preserve_thinking=preserve_thinking,
         )
@@ -1011,6 +1032,7 @@ def ensure_enchan_llama_for_request(generation_config: dict | None, args, quiet:
     llama_extra_args = normalize_llama_extra_args(getattr(args, "llama_arg", []))
     enable_thinking = not getattr(args, "no_thinking", False)
     preserve_thinking = bool(getattr(args, "preserve_thinking", False))
+    lora_adapters: list[str] = []
     if generation_config is not None:
         dynatemp_range = float(generation_config.get("dynatemp_range", 0.0))
         mirostat = int(generation_config.get("mirostat", 0))
@@ -1019,6 +1041,10 @@ def ensure_enchan_llama_for_request(generation_config: dict | None, args, quiet:
         llama_extra_args = normalize_llama_extra_args(generation_config.get("llama_extra_args", llama_extra_args))
         enable_thinking = bool(generation_config.get("enable_thinking", enable_thinking))
         preserve_thinking = bool(generation_config.get("preserve_thinking", preserve_thinking))
+        lora_adapters = [
+            str(value) for value in generation_config.get("lora_adapters", [])
+            if str(value).strip()
+        ]
 
     ok = ensure_enchan_llama_running(
         model_path=model_path,
@@ -1041,6 +1067,7 @@ def ensure_enchan_llama_for_request(generation_config: dict | None, args, quiet:
         mirostat_lr=mirostat_lr,
         mirostat_ent=mirostat_ent,
         llama_extra_args=llama_extra_args,
+        lora_adapters=lora_adapters,
         enable_thinking=enable_thinking,
         preserve_thinking=preserve_thinking,
     )

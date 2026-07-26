@@ -124,7 +124,7 @@
         <label><span data-i18n="rag.titleLabel"></span><input id="ragTitle" required maxlength="120" autofocus data-i18n-placeholder="rag.titlePlaceholder"></label>
         <label><span data-i18n="rag.descriptionLabel"></span><textarea id="ragDescription" required maxlength="500" rows="4" data-i18n-placeholder="rag.descriptionPlaceholder"></textarea></label>
         <label><span data-i18n="rag.directoryLabel"></span></label>
-        <div class="rag-directory-row"><input id="ragDirectory" readonly required data-i18n-placeholder="rag.noDirectory"><button id="ragBrowse" class="secondary" type="button" data-i18n="rag.selectDirectory"></button></div>
+        <div class="directory-picker-row rag-directory-row"><input id="ragDirectory" readonly required data-i18n-placeholder="rag.noDirectory"><button id="ragBrowse" class="secondary" type="button" data-i18n="rag.selectDirectory"></button></div>
         <p id="ragRegisterError" class="rag-error" role="alert"></p>
       </form>
     </div>
@@ -148,7 +148,7 @@
       </section>
       <section class="appearance-section background-settings">
         <div class="appearance-section-head"><div><h3 data-i18n="appearance.background.title"></h3><p data-i18n="appearance.background.storage"></p></div><button id="removeBackground" class="secondary compact" type="button" disabled data-i18n="common.remove"></button></div>
-        <label class="background-picker"><span data-i18n="appearance.background.choose"></span><input id="backgroundImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
+        <label class="file-picker background-picker"><span data-i18n="appearance.background.choose"></span><input id="backgroundImage" type="file" accept="image/png,image/jpeg,image/webp"></label>
         <div id="backgroundPreview" class="background-preview" aria-live="polite"><span id="backgroundPreviewText" data-i18n="appearance.background.none"></span></div>
         <div class="background-controls">
           <label><span><span data-i18n="appearance.background.darkness"></span> <output id="backgroundDarknessValue">55%</output></span><input id="backgroundDarkness" type="range" min="30" max="85" step="5" value="55" disabled></label>
@@ -178,21 +178,22 @@
         <label><span data-i18n="mascot.name"></span><input id="mascotEditName" required maxlength="80"></label>
         <label><span data-i18n="mascot.description"></span><input id="mascotDescription" maxlength="240"></label>
         <label><span data-i18n="mascot.personality"></span><textarea id="mascotPersonality" rows="5" maxlength="12000" data-i18n-placeholder="mascot.personalityPlaceholder"></textarea></label>
-        <label><span data-i18n="mascot.contactSheet"></span><input id="mascotImage" type="file" accept="image/png, image/webp"><small data-i18n="mascot.sheetRequirement"></small></label>
+
+        <label class="file-picker mascot-image-picker"><span data-i18n="mascot.contactSheet"></span><small data-i18n="mascot.sheetRequirement"></small><input id="mascotImage" type="file" accept="image/png, image/webp"></label>
         <div id="sheetPreview" class="mascot-preview">
           <div class="mascot-preview-head">
             <span data-i18n="mascot.animationPreview"></span>
-            <select id="previewAnimSelect" hidden>
-              <option value="idle" data-i18n="mascot.animation.idle"></option>
-              <option value="running-right" data-i18n="mascot.animation.runningRight"></option>
-              <option value="running-left" data-i18n="mascot.animation.runningLeft"></option>
-              <option value="waving" data-i18n="mascot.animation.waving"></option>
-              <option value="jumping" data-i18n="mascot.animation.jumping"></option>
-              <option value="failed" data-i18n="mascot.animation.failed"></option>
-              <option value="waiting" data-i18n="mascot.animation.waiting"></option>
-              <option value="running" data-i18n="mascot.animation.running"></option>
-              <option value="review" data-i18n="mascot.animation.review"></option>
-            </select>
+            <wa-select id="previewAnimSelect" class="enchan-select mascot-animation-select" size="small" value="idle" hidden>
+              <wa-option value="idle" data-i18n="mascot.animation.idle"></wa-option>
+              <wa-option value="running-right" data-i18n="mascot.animation.runningRight"></wa-option>
+              <wa-option value="running-left" data-i18n="mascot.animation.runningLeft"></wa-option>
+              <wa-option value="waving" data-i18n="mascot.animation.waving"></wa-option>
+              <wa-option value="jumping" data-i18n="mascot.animation.jumping"></wa-option>
+              <wa-option value="failed" data-i18n="mascot.animation.failed"></wa-option>
+              <wa-option value="waiting" data-i18n="mascot.animation.waiting"></wa-option>
+              <wa-option value="running" data-i18n="mascot.animation.running"></wa-option>
+              <wa-option value="review" data-i18n="mascot.animation.review"></wa-option>
+            </wa-select>
           </div>
           <div class="mascot-preview-viewport">
             <canvas id="livePreviewCanvas" width="192" height="208" hidden></canvas>
@@ -200,6 +201,18 @@
           </div>
         </div>
         <div id="sheetError" class="sheet-error" role="alert"></div>
+        <section class="lora-training" aria-labelledby="loraTrainingTitle">
+          <div class="lora-training-head">
+            <div class="lora-training-title"><div><h3 id="loraTrainingTitle" data-i18n="lora.title"></h3><span class="beta-badge" data-i18n="lora.betaBadge"></span></div><p data-i18n="lora.description"></p></div>
+            <span id="loraState" class="lora-state"></span>
+          </div>
+          <label><span data-i18n="lora.directory"></span></label>
+          <div class="directory-picker-row lora-directory-row"><input id="loraDirectory" readonly data-i18n-placeholder="lora.noDirectory"><button id="loraBrowse" class="secondary" type="button" data-i18n="lora.browse"></button></div>
+          <progress id="loraProgress" max="100" value="0"></progress>
+          <p id="loraMessage" class="lora-message"></p>
+          <div class="lora-actions"><button id="loraTrain" class="primary" type="button" data-i18n="lora.train"></button><button id="loraCancel" class="secondary" type="button" data-i18n="lora.cancel" hidden></button></div>
+          <p id="loraError" class="sheet-error" role="alert"></p>
+        </section>
         </form>
       </div>
     </div>

@@ -206,6 +206,8 @@ The Web UI supports animated custom mascots. From the settings screen, you can r
 
 Mascot sheets use a `1536x1872` contact sheet with an `8x9` grid and `192x208` pixels per frame. User-created mascot data is stored locally under `data/mascots/` and is not tracked by Git.
 
+With the Enchan backend on Windows, **Mascot training** accepts a local directory containing `.txt`, `.md`, or `.markdown` files. Enchan combines the readable files, trains a GGUF LoRA adapter locally, validates it, and attaches it automatically to that mascot when the exact same base model is selected. Training artifacts and manifests remain local under `data/lora/mascots/`; model changes do not cross-attach an incompatible adapter. Chat and SNS model calls pause while training is active.
+
 TIKTA is included as the default mascot. Its spritesheet, manifest, personality, and reproducible generation prompt are stored under `backend/webui/mascots/tikta/`.
 
 ### One-shot Mode

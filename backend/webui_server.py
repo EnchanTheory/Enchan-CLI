@@ -27,6 +27,7 @@ from backend.approval import ApprovalDecision, ApprovalRequest, approval_scope
 from backend.session_log import append_session_event
 from backend.rag.jobs import RAGIndexJobManager
 from backend.rag.service import RAGService
+from backend.lora_manager import MascotLoraManager
 from backend.tokenizer_bridge import estimate_text_tokens_rough
 from backend.webui.sns.outing_service import SocialService
 
@@ -89,10 +90,10 @@ CODEX_ANIMATIONS = {
 }
 
 
-def _select_directory_dialog(locale: str = "en") -> str | None:
+def _select_directory_dialog(locale: str = "en", title_key: str = "rag.directoryPickerTitle") -> str | None:
     """Open the host OS directory picker and return an absolute local path."""
     if sys.platform == "darwin":
-        prompt = _locale_text(locale, "rag.directoryPickerTitle").replace('"', '\\"')
+        prompt = _locale_text(locale, title_key).replace('"', '\\"')
         script = f'POSIX path of (choose folder with prompt "{prompt}")'
         result = subprocess.run(
             ["osascript", "-e", script],
@@ -116,7 +117,7 @@ def _select_directory_dialog(locale: str = "en") -> str | None:
     root.withdraw()
     root.attributes("-topmost", True)
     try:
-        selected = filedialog.askdirectory(parent=root, mustexist=True, title=_locale_text(locale, "rag.directoryPickerTitle"))
+        selected = filedialog.askdirectory(parent=root, mustexist=True, title=_locale_text(locale, title_key))
         return str(Path(selected).resolve()) if selected else None
     finally:
         root.destroy()
@@ -260,6 +261,12 @@ class WebChatState:
         self.rag_service = RAGService()
         self.session_collection = self.rag_service.ensure_session_collection(CLI_DIR / "logs" / "sessions")
         self.rag_jobs = RAGIndexJobManager(self.rag_service, self.generation_config)
+        self.lora = MascotLoraManager(
+            backend_mode=self.backend_mode,
+            args=self.args,
+            generation_config=self.generation_config,
+            active_mascot=self._active_mascot_id,
+        )
         self.social = SocialService(
             self,
             CLI_DIR / "data" / "social",
@@ -298,6 +305,7 @@ class WebChatState:
             "selectedMascot": store.get("selected", "tikta"),
             "mascots": store.get("mascots", []),
             "chatHistory": self._public_chat_history(str(store.get("selected", "tikta"))),
+            "loraTraining": self.lora.status(str(store.get("selected", "tikta"))),
             "frame": CODEX_FRAME,
             "animations": CODEX_ANIMATIONS,
         }
@@ -321,6 +329,8 @@ class WebChatState:
         with self._activity_lock:
             if self.rag_jobs.is_busy():
                 raise RuntimeError("RAG indexing is running. Chat is available again after completion or interruption.")
+            if self.lora.is_busy():
+                raise RuntimeError("Mascot training is running. Chat is available again after completion or interruption.")
             if self._chat_active:
                 raise RuntimeError("Another chat response is already running")
             self._chat_active = True
@@ -341,6 +351,24 @@ class WebChatState:
             return _select_directory_dialog(locale)
         finally:
             self._directory_dialog_lock.release()
+    def select_lora_directory(self, locale: str = "en") -> str | None:
+        if not self._directory_dialog_lock.acquire(blocking=False):
+            raise RuntimeError("A directory picker is already open")
+        try:
+            return _select_directory_dialog(locale, "lora.directoryPickerTitle")
+        finally:
+            self._directory_dialog_lock.release()
+
+    def start_lora_training(self, mascot_id: str, source_path: str) -> dict[str, Any]:
+        store = _load_store()
+        if not any(str(item.get("id")) == mascot_id for item in store.get("mascots", [])):
+            raise ValueError("Save the mascot before training")
+        with self._activity_lock:
+            if self._chat_active:
+                raise RuntimeError("Wait for the current chat response to finish")
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("Wait for RAG indexing to stop")
+            return self.lora.start(mascot_id, source_path)
 
     @staticmethod
     def _validate_rag_metadata(title: str, description: str) -> tuple[str, str]:
@@ -513,6 +541,10 @@ class WebChatState:
             return result
 
         if self.backend_mode == "enchan":
+            model_ref = str(getattr(self.args, "gguf_model", "") or getattr(self.args, "ollama_model", ""))
+            adapter = self.lora.active_adapter(self._active_mascot_id(), model_ref)
+            config = dict(config)
+            config["lora_adapters"] = [str(adapter)] if adapter else []
             from backend.cancellable_backends import generate_enchan_llama_response
             from backend.enchan_llama_backend import (
                 DEFAULT_ENCHAN_LLAMA_PORT,
@@ -633,6 +665,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/rag/status":
             self._json(HTTPStatus.OK, self.state.rag_status())
+            return
+        if path == "/api/lora/status":
+            self._json(HTTPStatus.OK, self.state.lora.status())
             return
         if path.startswith("/api/mascots/"):
             self._serve_mascot(path.removeprefix("/api/mascots/"))
@@ -758,6 +793,22 @@ class WebUIHandler(BaseHTTPRequestHandler):
             elif path == "/api/rag/select-directory":
                 selected = self.state.select_rag_directory(str(data.get("locale", "en")))
                 self._json(HTTPStatus.OK, {"path": selected, "cancelled": selected is None})
+            elif path == "/api/lora/status":
+                self._json(
+                    HTTPStatus.OK,
+                    self.state.lora.status(str(data.get("mascotId", "")).strip() or None),
+                )
+            elif path == "/api/lora/select-directory":
+                selected = self.state.select_lora_directory(str(data.get("locale", "en")))
+                self._json(HTTPStatus.OK, {"path": selected, "cancelled": selected is None})
+            elif path == "/api/lora/start":
+                job = self.state.start_lora_training(
+                    str(data.get("mascotId", "" )).strip(),
+                    str(data.get("path", "" )).strip(),
+                )
+                self._json(HTTPStatus.ACCEPTED, {"job": job})
+            elif path == "/api/lora/cancel":
+                self._json(HTTPStatus.ACCEPTED, {"job": self.state.lora.cancel()})
             elif path == "/api/rag/start":
                 reference = str(data.get("collectionId", "sessions")).strip() or "sessions"
                 self._json(HTTPStatus.ACCEPTED, {"job": self.state.start_rag_indexing(reference)})

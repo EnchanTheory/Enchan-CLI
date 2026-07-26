@@ -2,7 +2,7 @@ window.EnchanI18n.ready.then(()=>{
 const $=id=>document.getElementById(id);
 const {t}=window.EnchanI18n;
 const dialogs=window.EnchanDialogs;
-const state={config:null,mascot:null,timer:null,frame:0,busy:false,ragBusy:false,ragStatus:null,imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null,pendingConfirmation:null};
+const state={config:null,mascot:null,timer:null,frame:0,busy:false,ragBusy:false,ragStatus:null,loraStatus:null,loraBusy:false,loraDirectory:"",imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null,pendingConfirmation:null};
 const messages=$("messages"),welcome=$("welcome"),prompt=$("prompt"),send=$("send");
 
 const clientId=crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -60,9 +60,9 @@ function resize(){
   const h=Math.min(Math.max(ghost.offsetHeight,40),180);
   prompt.style.height=h+"px";
   prompt.style.overflowY=ghost.offsetHeight>180?"auto":"hidden";
-  prompt.disabled=state.ragBusy;
-  prompt.placeholder=state.ragBusy?t("rag.chatDisabled"):t("composer.placeholder");
-  send.disabled=state.busy||state.ragBusy||!val.trim();
+  prompt.disabled=state.ragBusy||state.loraBusy;
+  prompt.placeholder=state.loraBusy?t("lora.chatDisabled"):(state.ragBusy?t("rag.chatDisabled"):t("composer.placeholder"));
+  send.disabled=state.busy||state.ragBusy||state.loraBusy||!val.trim();
 }
 function renderMarkdown(text){
   if(!text)return"";let html=text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -88,7 +88,7 @@ function renderChatHistory(history=[]){
   }
 }
 window.addEventListener("enchan:social-outing-start",event=>{
-  if(state.busy||state.ragBusy){event.preventDefault();return}
+  if(state.busy||state.ragBusy||state.loraBusy){event.preventDefault();return}
   state.busy=true;resize();play("running-right",{loop:true});
 });
 window.addEventListener("enchan:social-outing-complete",event=>{
@@ -116,7 +116,50 @@ function play(name,{loop=false,resume=true,restart=true}={}){
   if(anim.frames){frames=anim.frames;durations=anim.durations}else{const cycle=Array.from({length:anim.count},(_,i)=>anim.row*8+i);frames=Array.from({length:anim.repeats||1},()=>cycle).flat();durations=frames.map((_,i)=>i%anim.count===anim.count-1?anim.finalDuration:anim.frameDuration)}
   state.frame=0;const tick=()=>{const index=frames[state.frame];drawFrame(index);const duration=durations[state.frame]||140;state.frame++;if(state.frame>=frames.length){if(loop||name==="idle"){state.frame=0}else{state.timer=setTimeout(()=>{if(token===state.animationToken&&resume)play(restingAnimation(),{loop:state.busy})},duration);return}}state.timer=setTimeout(()=>{if(token===state.animationToken)tick()},duration)};tick();
 }
-async function loadConfig(){state.config=await api("/api/config");$("runtime").textContent=`${state.config.model} · ${state.config.backend}`;applyMascot();renderMascotList();renderChatHistory(state.config.chatHistory)}
+async function loadConfig(){state.config=await api("/api/config");$("runtime").textContent=`${state.config.model} · ${state.config.backend}`;applyMascot();renderMascotList();renderChatHistory(state.config.chatHistory);renderLoraStatus(state.config.loraTraining)}
+function loraStateLabel(value){return t(`lora.state.${value}`,{},value||t("lora.state.idle"))}
+function renderLoraStatus(data){
+  if(!data)return;
+  const wasBusy=state.loraBusy;
+  state.loraStatus=data;
+  state.loraBusy=["preparing","running","cancelling"].includes(data.state);
+  $("loraState").textContent=loraStateLabel(data.state);
+  $("loraProgress").value=Number(data.percent)||0;
+  $("loraMessage").textContent=data.messageKey?t(data.messageKey,data.messageValues||{},data.message||""):(data.message||"");
+  $("loraError").textContent=data.state==="failed"?(data.error||data.message||""):"";
+  const source=$("loraDirectory");
+  if(!state.loraDirectory&&data.sourcePath)state.loraDirectory=data.sourcePath;
+  source.value=state.loraDirectory;
+  source.placeholder=t("lora.noDirectory");
+  $("loraBrowse").disabled=state.loraBusy;
+  $("loraTrain").disabled=state.loraBusy||!state.loraDirectory||!$("mascotId").value;
+  $("loraCancel").hidden=!state.loraBusy;
+  $("loraCancel").disabled=data.state==="cancelling";
+  resize();
+  if(wasBusy&&!state.loraBusy&&data.state==="completed")play("waving");
+}
+let loraRequestActive=false;
+async function loadLoraStatus({showError=false}={}){
+  if(loraRequestActive)return;
+  loraRequestActive=true;
+  try{renderLoraStatus(await api("/api/lora/status",{mascotId:$("mascotId").value||state.config?.selectedMascot||""}));if(showError)$("loraError").textContent=""}
+  catch(error){if(showError)$("loraError").textContent=t("errors.request",{message:error.message})}
+  finally{loraRequestActive=false}
+}
+async function selectLoraDirectory(){
+  $("loraBrowse").disabled=true;$("loraError").textContent="";
+  try{const data=await api("/api/lora/select-directory",{});state.loraDirectory=data.path||"";$("loraDirectory").value=state.loraDirectory;renderLoraStatus(state.loraStatus||{state:"idle"})}
+  catch(error){$("loraError").textContent=t("errors.request",{message:error.message})}
+  finally{$("loraBrowse").disabled=state.loraBusy}
+}
+async function startLoraTraining(){
+  const mascotId=$("mascotId").value.trim();
+  if(!mascotId||!state.loraDirectory)return;
+  if(!await confirmAction({message:t("lora.confirm",{model:state.config.model})}))return;
+  $("loraError").textContent="";
+  try{const response=await api("/api/lora/start",{mascotId,path:state.loraDirectory});renderLoraStatus(response.job);play("waiting",{loop:true})}
+  catch(error){$("loraError").textContent=t("errors.request",{message:error.message})}
+}
 function formatDuration(value){
   if(value===null||value===undefined||!Number.isFinite(Number(value)))return t("rag.calculating");
   const seconds=Math.max(0,Math.round(Number(value)));if(seconds<60)return t("rag.seconds",{count:seconds});
@@ -202,6 +245,7 @@ function validatePetSheet(image){
 }
 function editMascot(m){
   $("mascotId").value=m?.id||"";$("mascotId").readOnly=!!m;$("mascotEditName").value=m?.name||"";$("mascotDescription").value=m?.description||"";$("mascotPersonality").value=m?.personality||"";$("mascotImage").value="";state.imageData="";$("sheetError").textContent="";previewImage=null;clearTimeout(state.previewTimer);
+  state.loraDirectory="";renderLoraStatus(m?.id===state.config?.selectedMascot?(state.loraStatus||state.config?.loraTraining):{state:"idle",percent:0,messageKey:"lora.notTrained"});
   const preview=$("sheetPreviewText"),cvs=$("livePreviewCanvas"),sel=$("previewAnimSelect");
   if(m?.spritesheet){preview.hidden=true;cvs.hidden=false;sel.hidden=false;previewImage=new Image();previewImage.onload=updatePreviewCanvas;previewImage.src=`/api/mascots/${encodeURIComponent(m.id)}?v=${Date.now()}`}else{preview.hidden=false;cvs.hidden=true;sel.hidden=true}
 }
@@ -280,6 +324,9 @@ $("confirmationAccept").onclick=()=>resolveConfirmation(true);
 $("confirmationCancel").onclick=()=>resolveConfirmation(false);
 $("confirmationDialog").addEventListener("wa-after-hide",()=>resolveConfirmation(false));
 $("ragBrowse").onclick=selectRagDirectory;
+$("loraBrowse").onclick=selectLoraDirectory;
+$("loraTrain").onclick=startLoraTraining;
+$("loraCancel").onclick=async()=>{try{const response=await api("/api/lora/cancel",{});renderLoraStatus(response.job)}catch(error){$("loraError").textContent=t("errors.request",{message:error.message})}};
 $("ragRegisterForm").onsubmit=async event=>{event.preventDefault();const collectionId=$("ragCollectionId").value.trim(),title=$("ragTitle").value.trim(),description=$("ragDescription").value.trim(),path=$("ragDirectory").value.trim();if(!title||!description||(!collectionId&&!path)){$("ragRegisterError").textContent=t("rag.registrationRequired");return}try{await api(collectionId?"/api/rag/update":"/api/rag/register",collectionId?{collectionId,title,description}:{title,description,path});dialogs.close("ragRegisterDialog");await loadRagStatus({showError:true})}catch(error){$("ragRegisterError").textContent=t("errors.request",{message:error.message})}};
 $("settings").onclick=()=>{dialogs.open("mascotDialog");editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};
 $("addMascot").onclick=()=>editMascot(null);
@@ -287,8 +334,8 @@ $("mascotImage").onchange=async e=>{const file=e.target.files[0];if(!file)return
 $("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textContent="";try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();renderChatHistory(state.config.chatHistory);window.dispatchEvent(new CustomEvent("enchan:mascot-change"));dialogs.close("mascotDialog");play("waving")}catch(error){$("sheetError").textContent=t("errors.request",{message:error.message})}};
 $("mascotDialog").addEventListener("wa-after-hide",()=>{clearTimeout(state.previewTimer);state.previewTimer=null});
 setRagPanel(localStorage.getItem("enchan.rag.open")==="1");
-window.EnchanI18n.onChange(()=>{if(state.ragStatus)renderRagStatus(state.ragStatus)});
-loadConfig().then(()=>loadRagStatus({showError:true})).catch(error=>addMessage("assistant",t("errors.init",{message:error.message}),true));setInterval(()=>loadRagStatus(),1500);resize();prompt.focus();
+window.EnchanI18n.onChange(()=>{if(state.ragStatus)renderRagStatus(state.ragStatus);if(state.loraStatus)renderLoraStatus(state.loraStatus)});
+loadConfig().then(()=>Promise.all([loadRagStatus({showError:true}),loadLoraStatus({showError:true})])).catch(error=>addMessage("assistant",t("errors.init",{message:error.message}),true));setInterval(()=>loadRagStatus(),1500);setInterval(()=>loadLoraStatus(),1200);resize();prompt.focus();
 
 const mascotStage=document.querySelector(".mascot-stage");const mascotTrack=document.querySelector(".mascot-track");let mascotDragging=false,mascotGrabOffset=0,mascotLastPointerX=0;const mascotPositionKey="enchan.mascot.position";
 function clampMascotPosition(value){return Math.max(0,Math.min(value,Math.max(0,mascotTrack.clientWidth-mascotStage.offsetWidth)))}
