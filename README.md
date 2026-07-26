@@ -92,6 +92,28 @@ chmod +x ./install.sh
 
 The installer downloads the Enchan CLI runtime from this repository's release `llamacpp-b10069-enchan-20260722`, extracts it into `backend/bin/<platform>/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
 
+### Uninstall
+
+Stop Enchan before uninstalling it. The commands below remove the global `enchan` command and the default installation directory.
+
+> **Warning:** Deleting `~/.enchan` also deletes local conversations, settings, RAG indexes, custom mascots, and other Enchan data. Back up anything you want to keep first.
+
+#### Windows PowerShell
+
+```powershell
+npm uninstall --global enchan-cli
+Remove-Item -LiteralPath "$env:USERPROFILE\.enchan" -Recurse -Force
+```
+
+#### Apple Silicon macOS
+
+```bash
+npm uninstall --global enchan-cli
+rm -rf "$HOME/.enchan"
+```
+
+If you installed Enchan with a custom `ENCHAN_INSTALL_DIR`, delete that directory instead of `~/.enchan`.
+
 ---
 
 ## Usage
