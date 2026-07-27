@@ -9,7 +9,14 @@ from typing import Any, Callable
 
 from backend.rag.search import INDEX_VERSION, build_lexical_index
 from backend.rag.store import RAGStore
-from backend.rag.structure import STRUCTURE_VERSION, build_semantic_graph
+from backend.rag.structure import (
+    STRUCTURE_VERSION,
+    StructureOutputError,
+    build_semantic_graph,
+    is_structure_cache_entry,
+    is_structure_failure,
+    structure_failure_marker,
+)
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -241,14 +248,15 @@ class RAGIndexer:
         pending_cache_updates = 0
         analysis_total = sum(
             1 for unit in structure_units
-            if analyzer is not None and not (isinstance(cached.get(unit["id"]), dict) and cached.get(unit["id"]))
+            if analyzer is not None and not is_structure_cache_entry(cached.get(unit["id"]))
         )
+        cache_entries: dict[str, Any] = {}
 
         def save_structure_checkpoint() -> None:
             self.store.save_json(
                 collection_id,
                 "structure_cache.json",
-                {"version": STRUCTURE_VERSION, "chunks": {**cached, **structures}},
+                {"version": STRUCTURE_VERSION, "chunks": {**cached, **cache_entries}},
             )
 
         def stop_if_requested(position: int) -> None:
@@ -273,9 +281,15 @@ class RAGIndexer:
         for position, unit in enumerate(structure_units, 1):
             stop_if_requested(position - 1)
             chunk_id = unit["id"]
-            structure = cached.get(chunk_id)
-            if isinstance(structure, dict) and structure:
+            cached_entry = cached.get(chunk_id)
+            if is_structure_failure(cached_entry):
                 reused_count += 1
+                structure = {}
+                cache_entries[chunk_id] = cached_entry
+            elif isinstance(cached_entry, dict) and cached_entry:
+                reused_count += 1
+                structure = cached_entry
+                cache_entries[chunk_id] = structure
             elif analyzer is not None:
                 analysis_attempted_count += 1
                 try:
@@ -285,11 +299,14 @@ class RAGIndexer:
                     analysis_failed_count += 1
                     diagnostics.append(f"Structure analysis failed for {chunk_id}: {exc}")
                     structure = {}
+                    if isinstance(exc, StructureOutputError):
+                        cache_entries[chunk_id] = structure_failure_marker()
             else:
                 structure = {}
             unit["structure"] = structure
             if structure:
                 structures[chunk_id] = structure
+                cache_entries[chunk_id] = structure
                 if analyzer is not None and chunk_id not in cached:
                     pending_cache_updates += 1
                     if pending_cache_updates >= STRUCTURE_CACHE_CHECKPOINT_INTERVAL:
@@ -336,7 +353,7 @@ class RAGIndexer:
         _emit_progress(progress, "save", 0, 1, 92.0, "Saving persistent index", "rag.progress.saving")
         self.store.save_chunks(collection_id, chunks)
         self.store.save_json(collection_id, "lexical_index.json", lexical_index)
-        self.store.save_json(collection_id, "structure_cache.json", {"version": STRUCTURE_VERSION, "chunks": structures})
+        self.store.save_json(collection_id, "structure_cache.json", {"version": STRUCTURE_VERSION, "chunks": cache_entries})
         self.store.save_json(collection_id, "semantic_graph.json", semantic_graph)
 
         self.store.save_json(collection_id, "file_state.json", snapshot)
