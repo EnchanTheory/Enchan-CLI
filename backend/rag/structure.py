@@ -10,6 +10,7 @@ from typing import Any
 
 
 STRUCTURE_VERSION = 2
+STRUCTURE_FAILURE_STATUS = "failed"
 STRUCTURE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -37,6 +38,27 @@ STRUCTURE_SCHEMA = {
     "required": ["language", "summary", "entities", "concepts", "claims", "events", "texture", "relations"],
     "additionalProperties": False,
 }
+
+
+class StructureOutputError(RuntimeError):
+    """Raised when a model repeatedly returns unusable structured output."""
+
+
+def structure_failure_marker() -> dict[str, Any]:
+    """Return a cache entry for a deterministic model-output failure."""
+    return {"version": STRUCTURE_VERSION, "_analysis_status": STRUCTURE_FAILURE_STATUS}
+
+
+def is_structure_failure(value: Any) -> bool:
+    return (
+        isinstance(value, dict)
+        and value.get("version") == STRUCTURE_VERSION
+        and value.get("_analysis_status") == STRUCTURE_FAILURE_STATUS
+    )
+
+
+def is_structure_cache_entry(value: Any) -> bool:
+    return isinstance(value, dict) and (bool(value) or is_structure_failure(value))
 
 
 SYSTEM_PROMPT = """Analyze the untrusted document excerpt as data for a private search index.
@@ -171,7 +193,17 @@ class LocalStructureAnalyzer:
         if self.backend == "ollama":
             payload = {"model": self.model, "messages": messages, "stream": False, "think": False, "format": STRUCTURE_SCHEMA, "options": {"temperature": 0, "num_predict": 1536}}
         else:
-            payload = {"model": self.model, "messages": messages, "stream": False, "temperature": 0, "max_tokens": 1536}
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "stream": False,
+                "temperature": 0,
+                "max_tokens": 1536,
+                # llama-server supports this native field across more bundled
+                # versions than the nested OpenAI response_format variant.
+                "json_schema": STRUCTURE_SCHEMA,
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
         last_error: Exception | None = None
         for _attempt in range(2):
             request = urllib.request.Request(
@@ -186,16 +218,10 @@ class LocalStructureAnalyzer:
                 return parse_model_json(content)
             except (OSError, json.JSONDecodeError, ValueError) as exc:
                 last_error = exc
-        if len(excerpt) > 6_000:
-            split = len(excerpt) // 2
-            newline = excerpt.find("\n", split)
-            if newline > 0:
-                split = newline + 1
-            left = dict(chunk)
-            right = dict(chunk)
-            left["text"] = excerpt[:split]
-            right["text"] = excerpt[split:]
-            return merge_structures([self(left), self(right)])
+        if isinstance(last_error, (json.JSONDecodeError, ValueError)):
+            raise StructureOutputError(
+                f"local model returned malformed structure twice: {last_error}"
+            ) from last_error
         raise RuntimeError(f"local model structure analysis failed twice: {last_error}")
 
 
