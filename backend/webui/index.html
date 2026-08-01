@@ -208,8 +208,10 @@
           </div>
           <label><span data-i18n="lora.directory"></span></label>
           <div class="directory-picker-row lora-directory-row"><input id="loraDirectory" readonly data-i18n-placeholder="lora.noDirectory"><button id="loraBrowse" class="secondary" type="button" data-i18n="lora.browse"></button></div>
+          <p class="lora-formats" data-i18n="lora.formats"></p>
           <progress id="loraProgress" max="100" value="0"></progress>
           <p id="loraMessage" class="lora-message"></p>
+          <dl id="loraArtifact" class="lora-artifact" hidden><div><dt data-i18n="lora.created"></dt><dd id="loraCreated"></dd></div><div><dt data-i18n="lora.file"></dt><dd id="loraFile"></dd></div><div><dt data-i18n="lora.loadStatus"></dt><dd id="loraLoadStatus"></dd></div></dl>
           <div class="lora-actions"><button id="loraTrain" class="primary" type="button" data-i18n="lora.train"></button><button id="loraCancel" class="secondary" type="button" data-i18n="lora.cancel" hidden></button></div>
           <p id="loraError" class="sheet-error" role="alert"></p>
         </section>

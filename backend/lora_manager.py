@@ -125,25 +125,49 @@ class MascotLoraManager:
             getattr(self.args, "gguf_model", "") or getattr(self.args, "ollama_model", "")
         ).strip()
         model_match = bool(manifest and manifest.get("modelRef") == current_model)
-        if manifest and job["state"] == "idle":
+        adapter_path = Path(str(manifest.get("adapterPath", ""))) if manifest else None
+        adapter_exists = bool(adapter_path and adapter_path.is_file())
+        runtime_loaded = False
+        if adapter_exists and model_match:
+            from backend.enchan_llama_backend import is_enchan_lora_adapter_loaded
+            runtime_loaded = is_enchan_lora_adapter_loaded(adapter_path)
+        if manifest and not job.get("sourcePath"):
+            job["sourcePath"] = str(manifest.get("sourcePath", ""))
+        if manifest and job["state"] in {"idle", "completed"}:
+            if not adapter_exists:
+                state = "missing"
+                message = f"Adapter file is missing: {adapter_path}"
+                message_key = "lora.status.missing"
+                message_values = {}
+            elif not model_match:
+                state = "saved"
+                message = f"Training is saved for {manifest.get('modelRef', 'another model')}"
+                message_key = "lora.status.savedFor"
+                message_values = {"model": str(manifest.get("modelRef", "another model"))}
+            elif runtime_loaded:
+                state = "attached"
+                message = f"Loaded by the running {current_model} engine"
+                message_key = "lora.status.attached"
+                message_values = {"model": current_model}
+            else:
+                state = "ready"
+                message = f"Generated for {current_model}; it will load on the next chat"
+                message_key = "lora.status.readyFor"
+                message_values = {"model": current_model}
             job.update({
-                "state": "ready" if model_match else "idle",
+                "state": state,
                 "percent": 100,
-                "message": (
-                    f"Attached to {current_model}"
-                    if model_match
-                    else f"Training is saved for {manifest.get('modelRef', 'another model')}"
-                ),
-                "messageKey": "lora.status.attached" if model_match else "lora.status.savedFor",
-                "messageValues": {
-                    "model": current_model if model_match else str(manifest.get("modelRef", "another model"))
-                },
+                "message": message,
+                "messageKey": message_key,
+                "messageValues": message_values,
             })
         return {
             **job,
             "available": _trainer_path().is_file(),
             "backendSupported": self.backend_mode == "enchan",
             "modelMatch": model_match,
+            "adapterExists": adapter_exists,
+            "runtimeLoaded": runtime_loaded,
             "mascotId": selected,
             "adapter": manifest,
         }
@@ -221,7 +245,7 @@ class MascotLoraManager:
                 raise ValueError("Training text exceeds the 32 MB local limit")
             files.append(path)
         if not files:
-            raise ValueError("No .txt or .md training files were found")
+            raise ValueError("No .txt, .md, or .markdown training files were found")
 
         sections = []
         relative_names = []

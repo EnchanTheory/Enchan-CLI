@@ -193,6 +193,17 @@ def is_server_responding(host: str) -> bool:
         return False
 
 
+def is_enchan_lora_adapter_loaded(adapter_path: str | Path) -> bool:
+    """Return whether the owned live llama-server was started with this adapter."""
+    resolved = str(Path(adapter_path).expanduser().resolve())
+    with _lifecycle_lock:
+        return bool(
+            _server_process is not None
+            and _server_process.poll() is None
+            and resolved in _current_server_fingerprint
+        )
+
+
 def _tcp_port_open(port: int, timeout: float = 0.1) -> bool:
     try:
         with socket.create_connection(("127.0.0.1", int(port)), timeout=timeout):

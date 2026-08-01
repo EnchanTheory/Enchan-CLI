@@ -118,6 +118,7 @@ function play(name,{loop=false,resume=true,restart=true}={}){
 }
 async function loadConfig(){state.config=await api("/api/config");$("runtime").textContent=`${state.config.model} · ${state.config.backend}`;applyMascot();renderMascotList();renderChatHistory(state.config.chatHistory);renderLoraStatus(state.config.loraTraining)}
 function loraStateLabel(value){return t(`lora.state.${value}`,{},value||t("lora.state.idle"))}
+function formatLoraDate(value){if(!value)return "";const date=new Date(value);return Number.isNaN(date.getTime())?value:new Intl.DateTimeFormat(undefined,{dateStyle:"medium",timeStyle:"short"}).format(date)}
 function renderLoraStatus(data){
   if(!data)return;
   const wasBusy=state.loraBusy;
@@ -131,6 +132,13 @@ function renderLoraStatus(data){
   if(!state.loraDirectory&&data.sourcePath)state.loraDirectory=data.sourcePath;
   source.value=state.loraDirectory;
   source.placeholder=t("lora.noDirectory");
+  const adapter=data.adapter||null,artifact=$("loraArtifact");
+  artifact.hidden=!adapter;
+  if(adapter){
+    $("loraCreated").textContent=formatLoraDate(adapter.createdAt)||t("lora.unknown");
+    $("loraFile").textContent=adapter.adapterPath||t("lora.unknown");
+    $("loraLoadStatus").textContent=!data.adapterExists?t("lora.loadMissing"):(data.runtimeLoaded?t("lora.loadLoaded"):t("lora.loadWaiting"));
+  }
   $("loraBrowse").disabled=state.loraBusy;
   $("loraTrain").disabled=state.loraBusy||!state.loraDirectory||!$("mascotId").value;
   $("loraCancel").hidden=!state.loraBusy;
@@ -142,7 +150,8 @@ let loraRequestActive=false;
 async function loadLoraStatus({showError=false}={}){
   if(loraRequestActive)return;
   loraRequestActive=true;
-  try{renderLoraStatus(await api("/api/lora/status",{mascotId:$("mascotId").value||state.config?.selectedMascot||""}));if(showError)$("loraError").textContent=""}
+  const mascotId=$("mascotId").value||state.config?.selectedMascot||"";
+  try{const data=await api("/api/lora/status",{mascotId});if(($("mascotId").value||state.config?.selectedMascot||"")===mascotId)renderLoraStatus(data);if(showError)$("loraError").textContent=""}
   catch(error){if(showError)$("loraError").textContent=t("errors.request",{message:error.message})}
   finally{loraRequestActive=false}
 }
@@ -245,7 +254,7 @@ function validatePetSheet(image){
 }
 function editMascot(m){
   $("mascotId").value=m?.id||"";$("mascotId").readOnly=!!m;$("mascotEditName").value=m?.name||"";$("mascotDescription").value=m?.description||"";$("mascotPersonality").value=m?.personality||"";$("mascotImage").value="";state.imageData="";$("sheetError").textContent="";previewImage=null;clearTimeout(state.previewTimer);
-  state.loraDirectory="";renderLoraStatus(m?.id===state.config?.selectedMascot?(state.loraStatus||state.config?.loraTraining):{state:"idle",percent:0,messageKey:"lora.notTrained"});
+  state.loraDirectory="";const cachedLora=state.loraStatus?.mascotId===m?.id?state.loraStatus:(state.config?.loraTraining?.mascotId===m?.id?state.config.loraTraining:null);renderLoraStatus(cachedLora||{state:"idle",percent:0,messageKey:"lora.notTrained",mascotId:m?.id||""});if(m?.id)loadLoraStatus({showError:true});
   const preview=$("sheetPreviewText"),cvs=$("livePreviewCanvas"),sel=$("previewAnimSelect");
   if(m?.spritesheet){preview.hidden=true;cvs.hidden=false;sel.hidden=false;previewImage=new Image();previewImage.onload=updatePreviewCanvas;previewImage.src=`/api/mascots/${encodeURIComponent(m.id)}?v=${Date.now()}`}else{preview.hidden=false;cvs.hidden=true;sel.hidden=true}
 }
@@ -331,7 +340,7 @@ $("ragRegisterForm").onsubmit=async event=>{event.preventDefault();const collect
 $("settings").onclick=()=>{dialogs.open("mascotDialog");editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};
 $("addMascot").onclick=()=>editMascot(null);
 $("mascotImage").onchange=async e=>{const file=e.target.files[0];if(!file)return;const url=URL.createObjectURL(file);previewImage=new Image();await new Promise((resolve,reject)=>{previewImage.onload=resolve;previewImage.onerror=reject;previewImage.src=url});URL.revokeObjectURL(url);const validationError=validatePetSheet(previewImage);$("sheetError").textContent=validationError;if(validationError){e.target.value="";state.imageData="";return}state.imageData=await new Promise(resolve=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(file)});$("sheetPreviewText").hidden=true;$("livePreviewCanvas").hidden=false;$("previewAnimSelect").hidden=false;clearTimeout(state.previewTimer);updatePreviewCanvas()};
-$("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textContent="";try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();renderChatHistory(state.config.chatHistory);window.dispatchEvent(new CustomEvent("enchan:mascot-change"));dialogs.close("mascotDialog");play("waving")}catch(error){$("sheetError").textContent=t("errors.request",{message:error.message})}};
+$("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textContent="";try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();renderChatHistory(state.config.chatHistory);renderLoraStatus(state.config.loraTraining);window.dispatchEvent(new CustomEvent("enchan:mascot-change"));dialogs.close("mascotDialog");play("waving")}catch(error){$("sheetError").textContent=t("errors.request",{message:error.message})}};
 $("mascotDialog").addEventListener("wa-after-hide",()=>{clearTimeout(state.previewTimer);state.previewTimer=null});
 setRagPanel(localStorage.getItem("enchan.rag.open")==="1");
 window.EnchanI18n.onChange(()=>{if(state.ragStatus)renderRagStatus(state.ragStatus);if(state.loraStatus)renderLoraStatus(state.loraStatus)});
