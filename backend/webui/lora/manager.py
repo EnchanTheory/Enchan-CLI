@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-BACKEND_DIR = Path(__file__).resolve().parent
+LORA_MODULE_DIR = Path(__file__).resolve().parent
+WEBUI_DIR = LORA_MODULE_DIR.parent
+BACKEND_DIR = WEBUI_DIR.parent
 CLI_DIR = BACKEND_DIR.parent
 LORA_DATA_DIR = CLI_DIR / "data" / "lora" / "mascots"
 LORA_WORK_DIR = CLI_DIR / "temp_workspace" / "lora"

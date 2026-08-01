@@ -27,7 +27,7 @@ from backend.approval import ApprovalDecision, ApprovalRequest, approval_scope
 from backend.session_log import append_session_event
 from backend.rag.jobs import RAGIndexJobManager
 from backend.rag.service import RAGService
-from backend.lora_manager import MascotLoraManager
+from backend.webui.lora.manager import MascotLoraManager
 from backend.tokenizer_bridge import estimate_text_tokens_rough
 from backend.webui.sns.outing_service import SocialService
 
