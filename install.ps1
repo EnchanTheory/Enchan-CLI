@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $RuntimeRepo = "EnchanTheory/Enchan-CLI"
-$RuntimeTag = "llamacpp-b10091-enchan-20260801"
+$RuntimeTag = "llamacpp-b10091-enchan-20260802"
 $RuntimeAsset = "enchan-cli-runtime-win-x64.zip"
 $RuntimeAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$RuntimeTag/$RuntimeAsset"
 $LoraAsset = "enchan-lora-runtime-win-x64.zip"
