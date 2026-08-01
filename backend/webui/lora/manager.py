@@ -27,6 +27,11 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_DATASET_BYTES = 32 * 1024 * 1024
 MIN_DATASET_CHARS = 2048
 MODEL_BLOB_PATTERN = re.compile(r"^sha256-([0-9a-f]{64})$")
+LORA_TARGET_PATTERN = "blk.*.attn_output.weight"
+LORA_RANK = 4
+LORA_ALPHA = 8
+LORA_EPOCHS = 2
+LORA_TRAINING_PRESET = "mascot-style-all-attention-output-v1"
 
 
 def _runtime_platform_dir() -> str:
@@ -66,6 +71,13 @@ def _model_identity(path: Path) -> str:
         while chunk := model_file.read(8 * 1024 * 1024):
             digest.update(chunk)
     return f"sha256:{digest.hexdigest()}"
+
+
+def _target_block_number(name: str) -> int:
+    match = re.fullmatch(r"blk\.(\d+)\.attn_output\.weight", name)
+    if not match:
+        raise ValueError(f"Unsupported LoRA target name: {name}")
+    return int(match.group(1))
 
 
 class MascotLoraManager:
@@ -312,13 +324,13 @@ class MascotLoraManager:
             raise FileNotFoundError(f"Could not resolve selected model: {model_ref}")
         return model_ref, Path(resolved).resolve()
 
-    def _list_target(self, model_path: Path) -> str:
+    def _list_targets(self, model_path: Path) -> list[str]:
         result = subprocess.run(
             [
                 str(_trainer_path()),
                 "--model", str(model_path),
                 "--list-targets",
-                "--target", "blk.*.attn_output.weight",
+                "--target", LORA_TARGET_PATTERN,
             ],
             cwd=str(_trainer_path().parent),
             capture_output=True,
@@ -337,7 +349,7 @@ class MascotLoraManager:
         ]
         if not targets:
             raise RuntimeError("The selected model has no supported attention output target")
-        return max(targets, key=lambda name: int(name.split(".", 2)[1]))
+        return sorted(set(targets), key=_target_block_number)
 
     def _run_process(self, command: list[str], *, phase: str, percent: int) -> subprocess.CompletedProcess[str]:
         self._set_job(state="running", phase=phase, percent=percent)
@@ -386,7 +398,8 @@ class MascotLoraManager:
             files = self._collect_dataset(source, dataset_path)
             self._set_job(phase="model", percent=8, message="Resolving the selected GGUF model", messageKey="lora.progress.resolvingModel")
             model_ref, model_path = self._resolve_model()
-            target = self._list_target(model_path)
+            targets = self._list_targets(model_path)
+            target_pattern = LORA_TARGET_PATTERN
             if self._cancel.is_set():
                 raise InterruptedError("Training was cancelled")
 
@@ -399,15 +412,15 @@ class MascotLoraManager:
                 "--data", str(dataset_path),
                 "--out", str(adapter_path),
                 "--work-dir", str(work_dir / "native"),
-                "--target", target,
-                "--rank", "2",
-                "--alpha", "4",
+                "--target", target_pattern,
+                "--rank", str(LORA_RANK),
+                "--alpha", str(LORA_ALPHA),
                 "--ctx", "256",
                 "--batch", "256",
                 "--ubatch", "32",
-                "--epochs", "1",
+                "--epochs", str(LORA_EPOCHS),
                 "--lr", "1e-4",
-                "--gpu-layers", "0",
+                "--gpu-layers", "999",
             ]
             result = self._run_process(command, phase="training", percent=20)
             if result.returncode != 0:
@@ -436,11 +449,16 @@ class MascotLoraManager:
                 "modelPath": str(model_path),
                 "modelIdentity": _model_identity(model_path),
                 "modelSize": model_path.stat().st_size,
-                "target": target,
-                "rank": 2,
-                "alpha": 4,
+                "target": target_pattern,
+                "targets": targets,
+                "targetLayerCount": len(targets),
+                "rank": LORA_RANK,
+                "alpha": LORA_ALPHA,
+                "epochs": LORA_EPOCHS,
+                "trainingPreset": LORA_TRAINING_PRESET,
                 "sourcePath": str(source),
                 "sourceFiles": files,
+                "sourceFileCount": len(files),
                 "createdAt": _utc_now(),
             }
             manifest_path = self._manifest_path(mascot_id)
