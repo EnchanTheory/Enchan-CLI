@@ -137,12 +137,14 @@ function renderLoraStatus(data){
   if(adapter){
     $("loraCreated").textContent=formatLoraDate(adapter.createdAt)||t("lora.unknown");
     $("loraFile").textContent=adapter.adapterPath||t("lora.unknown");
-    $("loraLoadStatus").textContent=!data.adapterExists?t("lora.loadMissing"):(data.runtimeLoaded?t("lora.loadLoaded"):t("lora.loadWaiting"));
+    $("loraLoadStatus").textContent=!data.enabled?t("lora.loadDetached"):(!data.adapterExists?t("lora.loadMissing"):(data.runtimeLoaded?t("lora.loadLoaded"):t("lora.loadWaiting")));
   }
   $("loraBrowse").disabled=state.loraBusy;
   $("loraTrain").disabled=state.loraBusy||!state.loraDirectory||!$("mascotId").value;
   $("loraCancel").hidden=!state.loraBusy;
   $("loraCancel").disabled=data.state==="cancelling";
+  $("loraDetach").hidden=!adapter||!data.enabled||state.loraBusy;
+  $("loraDetach").disabled=state.loraBusy;
   resize();
   if(wasBusy&&!state.loraBusy&&data.state==="completed")play("waving");
 }
@@ -167,6 +169,13 @@ async function startLoraTraining(){
   if(!await confirmAction({message:t("lora.confirm",{model:state.config.model})}))return;
   $("loraError").textContent="";
   try{const response=await api("/api/lora/start",{mascotId,path:state.loraDirectory});renderLoraStatus(response.job);play("waiting",{loop:true})}
+  catch(error){$("loraError").textContent=t("errors.request",{message:error.message})}
+}
+async function detachLora(){
+  const mascotId=$("mascotId").value.trim();
+  if(!mascotId||!await confirmAction({label:t("lora.detach"),message:t("lora.confirmDetach"),danger:true}))return;
+  $("loraError").textContent="";
+  try{const response=await api("/api/lora/detach",{mascotId});renderLoraStatus(response.status)}
   catch(error){$("loraError").textContent=t("errors.request",{message:error.message})}
 }
 function formatDuration(value){
@@ -335,6 +344,7 @@ $("confirmationDialog").addEventListener("wa-after-hide",()=>resolveConfirmation
 $("ragBrowse").onclick=selectRagDirectory;
 $("loraBrowse").onclick=selectLoraDirectory;
 $("loraTrain").onclick=startLoraTraining;
+$("loraDetach").onclick=detachLora;
 $("loraCancel").onclick=async()=>{try{const response=await api("/api/lora/cancel",{});renderLoraStatus(response.job)}catch(error){$("loraError").textContent=t("errors.request",{message:error.message})}};
 $("ragRegisterForm").onsubmit=async event=>{event.preventDefault();const collectionId=$("ragCollectionId").value.trim(),title=$("ragTitle").value.trim(),description=$("ragDescription").value.trim(),path=$("ragDirectory").value.trim();if(!title||!description||(!collectionId&&!path)){$("ragRegisterError").textContent=t("rag.registrationRequired");return}try{await api(collectionId?"/api/rag/update":"/api/rag/register",collectionId?{collectionId,title,description}:{title,description,path});dialogs.close("ragRegisterDialog");await loadRagStatus({showError:true})}catch(error){$("ragRegisterError").textContent=t("errors.request",{message:error.message})}};
 $("settings").onclick=()=>{dialogs.open("mascotDialog");editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};

@@ -125,6 +125,7 @@ class MascotLoraManager:
             getattr(self.args, "gguf_model", "") or getattr(self.args, "ollama_model", "")
         ).strip()
         model_match = bool(manifest and manifest.get("modelRef") == current_model)
+        enabled = bool(manifest and manifest.get("enabled", True))
         adapter_path = Path(str(manifest.get("adapterPath", ""))) if manifest else None
         adapter_exists = bool(adapter_path and adapter_path.is_file())
         runtime_loaded = False
@@ -134,7 +135,12 @@ class MascotLoraManager:
         if manifest and not job.get("sourcePath"):
             job["sourcePath"] = str(manifest.get("sourcePath", ""))
         if manifest and job["state"] in {"idle", "completed"}:
-            if not adapter_exists:
+            if not enabled:
+                state = "detached"
+                message = "LoRA is detached from this mascot"
+                message_key = "lora.status.detached"
+                message_values = {}
+            elif not adapter_exists:
                 state = "missing"
                 message = f"Adapter file is missing: {adapter_path}"
                 message_key = "lora.status.missing"
@@ -151,7 +157,7 @@ class MascotLoraManager:
                 message_values = {"model": current_model}
             else:
                 state = "ready"
-                message = f"Generated for {current_model}; it will load on the next chat"
+                message = f"Generated for {current_model}; it loads automatically when the next message is sent"
                 message_key = "lora.status.readyFor"
                 message_values = {"model": current_model}
             job.update({
@@ -166,6 +172,7 @@ class MascotLoraManager:
             "available": _trainer_path().is_file(),
             "backendSupported": self.backend_mode == "enchan",
             "modelMatch": model_match,
+            "enabled": enabled,
             "adapterExists": adapter_exists,
             "runtimeLoaded": runtime_loaded,
             "mascotId": selected,
@@ -174,10 +181,37 @@ class MascotLoraManager:
 
     def active_adapter(self, mascot_id: str, model_ref: str) -> Path | None:
         manifest = self._load_manifest(mascot_id)
-        if not manifest or manifest.get("modelRef") != model_ref:
+        if not manifest or not manifest.get("enabled", True) or manifest.get("modelRef") != model_ref:
             return None
         adapter = Path(str(manifest.get("adapterPath", "")))
         return adapter.resolve() if adapter.is_file() else None
+
+    def detach(self, mascot_id: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", mascot_id):
+            raise ValueError("Invalid mascot ID")
+        with self._lock:
+            if self.is_busy():
+                raise RuntimeError("Wait for mascot training to finish")
+        manifest = self._load_manifest(mascot_id)
+        if not manifest:
+            raise FileNotFoundError("This mascot has no LoRA training result")
+        adapter_path = Path(str(manifest.get("adapterPath", "")))
+        from backend.enchan_llama_backend import (
+            is_enchan_lora_adapter_loaded,
+            shutdown_enchan_llama,
+        )
+        was_loaded = adapter_path.is_file() and is_enchan_lora_adapter_loaded(adapter_path)
+        manifest["enabled"] = False
+        manifest["detachedAt"] = _utc_now()
+        manifest_path = self._manifest_path(mascot_id)
+        temp = manifest_path.with_suffix(".tmp")
+        temp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(manifest_path)
+        if was_loaded:
+            shutdown_enchan_llama()
+        with self._lock:
+            self._job = self._idle_job()
+        return self.status(mascot_id)
 
     def start(self, mascot_id: str, source_path: str) -> dict[str, Any]:
         if self.backend_mode != "enchan":
@@ -394,6 +428,7 @@ class MascotLoraManager:
                 "schemaVersion": 1,
                 "mascotId": mascot_id,
                 "state": "ready",
+                "enabled": True,
                 "adapterPath": str(adapter_path.resolve()),
                 "modelRef": model_ref,
                 "modelPath": str(model_path),
@@ -414,7 +449,7 @@ class MascotLoraManager:
                 state="completed",
                 phase="done",
                 percent=100,
-                message="Training complete. The adapter will attach on the next chat.",
+                message="Training complete. Send the next message normally; no new conversation or restart is needed.",
                 messageKey="lora.progress.complete",
                 finishedAt=_utc_now(),
                 error="",

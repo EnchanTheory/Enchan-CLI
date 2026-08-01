@@ -370,6 +370,17 @@ class WebChatState:
                 raise RuntimeError("Wait for RAG indexing to stop")
             return self.lora.start(mascot_id, source_path)
 
+    def detach_lora(self, mascot_id: str) -> dict[str, Any]:
+        store = _load_store()
+        if not any(str(item.get("id")) == mascot_id for item in store.get("mascots", [])):
+            raise ValueError("Unknown mascot")
+        with self._activity_lock:
+            if self._chat_active:
+                raise RuntimeError("Wait for the current chat response to finish")
+            if self.rag_jobs.is_busy():
+                raise RuntimeError("Wait for RAG indexing to stop")
+            return self.lora.detach(mascot_id)
+
     @staticmethod
     def _validate_rag_metadata(title: str, description: str) -> tuple[str, str]:
         title = title.strip()
@@ -809,6 +820,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.ACCEPTED, {"job": job})
             elif path == "/api/lora/cancel":
                 self._json(HTTPStatus.ACCEPTED, {"job": self.state.lora.cancel()})
+            elif path == "/api/lora/detach":
+                status = self.state.detach_lora(str(data.get("mascotId", "")).strip())
+                self._json(HTTPStatus.OK, {"status": status})
             elif path == "/api/rag/start":
                 reference = str(data.get("collectionId", "sessions")).strip() or "sessions"
                 self._json(HTTPStatus.ACCEPTED, {"job": self.state.start_rag_indexing(reference)})

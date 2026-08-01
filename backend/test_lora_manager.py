@@ -30,6 +30,25 @@ def _write_manifest(root: Path, adapter: Path, *, model: str = "model:test") -> 
 
 
 class MascotLoraStatusTests(unittest.TestCase):
+    def test_detach_disables_attachment_without_deleting_adapter(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = root / "tikta" / "adapter.gguf"
+            adapter.parent.mkdir(parents=True)
+            adapter.write_bytes(b"GGUF")
+            _write_manifest(root, adapter)
+            with patch.object(lora_manager, "LORA_DATA_DIR", root), patch.object(
+                llama_backend, "is_enchan_lora_adapter_loaded", return_value=True
+            ), patch.object(llama_backend, "shutdown_enchan_llama") as shutdown:
+                manager = _manager()
+                status = manager.detach("tikta")
+
+            self.assertEqual(status["state"], "detached")
+            self.assertFalse(status["enabled"])
+            self.assertTrue(adapter.is_file())
+            self.assertIsNone(manager.active_adapter("tikta", "model:test"))
+            shutdown.assert_called_once_with()
+
     def test_active_adapter_is_scoped_by_mascot_and_model(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
