@@ -1,16 +1,23 @@
 $ErrorActionPreference = "Stop"
 
 $RuntimeRepo = "EnchanTheory/Enchan-CLI"
-$RuntimeTag = "llamacpp-b10069-enchan-20260722"
+$RuntimeTag = "llamacpp-b10091-enchan-20260801"
 $RuntimeAsset = "enchan-cli-runtime-win-x64.zip"
 $RuntimeAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$RuntimeTag/$RuntimeAsset"
+$LoraAsset = "enchan-lora-runtime-win-x64.zip"
+$LoraAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$RuntimeTag/$LoraAsset"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinDir = Join-Path $ScriptDir "backend\bin\win-x64"
+$LoraBinDir = Join-Path $BinDir "lora"
 $TmpDir = Join-Path $env:TEMP ("enchan-cli-install-" + [guid]::NewGuid().ToString("N"))
 $ZipPath = Join-Path $TmpDir $RuntimeAsset
+$LoraZipPath = Join-Path $TmpDir $LoraAsset
 $RuntimeMarker = Join-Path $BinDir ".runtime-version"
 $RuntimeManifest = Join-Path $BinDir ".runtime-manifest"
 $RuntimeMarkerValue = "$RuntimeRepo $RuntimeTag $RuntimeAsset"
+$LoraMarker = Join-Path $LoraBinDir ".runtime-version"
+$LoraManifest = Join-Path $LoraBinDir ".runtime-manifest"
+$LoraMarkerValue = "$RuntimeRepo $RuntimeTag $LoraAsset"
 $RequirementsPath = Join-Path $ScriptDir "requirements.txt"
 $VenvDir = Join-Path $ScriptDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
@@ -47,6 +54,30 @@ function Download-RuntimeAsset {
     }
     gh release download $RuntimeTag --repo $RuntimeRepo --pattern $RuntimeAsset --dir $TmpDir --clobber
 }
+function Download-LoraAsset {
+    $oldProgress = $ProgressPreference
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $LoraAssetUrl -OutFile $LoraZipPath -UseBasicParsing -ErrorAction Stop
+        $ProgressPreference = $oldProgress
+        $Magic = [System.IO.File]::ReadAllBytes($LoraZipPath)
+        if ($Magic.Length -ge 2 -and $Magic[0] -eq 0x50 -and $Magic[1] -eq 0x4b) {
+            return
+        }
+        Write-Host "Direct LoRA runtime download did not return a zip; trying GitHub CLI fallback"
+    } catch {
+        $ProgressPreference = $oldProgress
+        Write-Host "Direct LoRA runtime download failed; trying GitHub CLI fallback"
+    }
+
+    Require-Command gh
+    try {
+        gh auth status | Out-Null
+    } catch {
+        throw "LoRA runtime asset is not publicly downloadable and GitHub CLI is not authenticated. Run: gh auth login"
+    }
+    gh release download $RuntimeTag --repo $RuntimeRepo --pattern $LoraAsset --dir $TmpDir --clobber
+}
 function Remove-RuntimeManifestFiles {
     if (-not (Test-Path $RuntimeManifest)) {
         return
@@ -58,6 +89,22 @@ function Remove-RuntimeManifestFiles {
             return
         }
         $Target = [System.IO.Path]::GetFullPath((Join-Path $BinDir $Rel))
+        if ($Target.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path $Target -PathType Leaf)) {
+            Remove-Item -LiteralPath $Target -Force
+        }
+    }
+}
+function Remove-LoraManifestFiles {
+    if (-not (Test-Path $LoraManifest)) {
+        return
+    }
+    $Root = [System.IO.Path]::GetFullPath($LoraBinDir)
+    Get-Content -LiteralPath $LoraManifest | ForEach-Object {
+        $Rel = $_.Trim()
+        if (-not $Rel -or $Rel.StartsWith(".")) {
+            return
+        }
+        $Target = [System.IO.Path]::GetFullPath((Join-Path $LoraBinDir $Rel))
         if ($Target.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path $Target -PathType Leaf)) {
             Remove-Item -LiteralPath $Target -Force
         }
@@ -112,6 +159,7 @@ Require-Command git
 
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
+New-Item -ItemType Directory -Path $LoraBinDir -Force | Out-Null
 
 $RuntimeReady = (Test-Path (Join-Path $BinDir "llama-server.exe")) -and (Test-Path (Join-Path $BinDir "enchan.dll")) -and (Test-Path $RuntimeMarker) -and (Test-Path $RuntimeManifest) -and ((Get-Content -LiteralPath $RuntimeMarker -Raw).Trim() -eq $RuntimeMarkerValue)
 if ($RuntimeReady) {
@@ -126,6 +174,21 @@ if ($RuntimeReady) {
     Expand-Archive -LiteralPath $ZipPath -DestinationPath $BinDir -Force
     Set-Content -LiteralPath $RuntimeManifest -Value $ManifestEntries -Encoding UTF8
     Set-Content -LiteralPath $RuntimeMarker -Value $RuntimeMarkerValue -Encoding UTF8
+}
+
+$LoraReady = (Test-Path (Join-Path $LoraBinDir "enchan-lora-train.exe")) -and (Test-Path (Join-Path $LoraBinDir "enchan_lora.dll")) -and (Test-Path $LoraMarker) -and (Test-Path $LoraManifest) -and ((Get-Content -LiteralPath $LoraMarker -Raw).Trim() -eq $LoraMarkerValue)
+if ($LoraReady) {
+    Write-Host "Enchan LoRA runtime already installed: $LoraAsset"
+} else {
+    Write-Host "Downloading Enchan LoRA runtime: $LoraAsset"
+    Download-LoraAsset
+
+    Write-Host "Installing Enchan LoRA runtime to: $LoraBinDir"
+    $LoraManifestEntries = Get-ZipFileList $LoraZipPath
+    Remove-LoraManifestFiles
+    Expand-Archive -LiteralPath $LoraZipPath -DestinationPath $LoraBinDir -Force
+    Set-Content -LiteralPath $LoraManifest -Value $LoraManifestEntries -Encoding UTF8
+    Set-Content -LiteralPath $LoraMarker -Value $LoraMarkerValue -Encoding UTF8
 }
 
 $BasePython = if ($env:ENCHAN_PYTHON) { $env:ENCHAN_PYTHON } else { "python" }

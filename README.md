@@ -90,7 +90,7 @@ chmod +x ./install.sh
 ./install.sh
 ```
 
-The installer downloads the Enchan CLI runtime from this repository's release `llamacpp-b10069-enchan-20260722`, extracts it into `backend/bin/<platform>/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
+The installer downloads the Enchan CLI and Enchan-LoRA runtimes from this repository's release `llamacpp-b10091-enchan-20260801`, extracts the standard runtime into `backend/bin/<platform>/` and the LoRA runtime into `backend/bin/<platform>/lora/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
 
 ### Uninstall
 
@@ -273,16 +273,20 @@ git pull --ff-only
 Runtime assets are published in the Enchan CLI release:
 
 - **Repo:** `EnchanTheory/Enchan-CLI`
-- **Tag:** `llamacpp-b10069-enchan-20260722`
-- **Windows asset:** `enchan-cli-runtime-win-x64.zip`
-- **macOS asset:** `enchan-cli-runtime-macos-arm64.zip`
+- **Tag:** `llamacpp-b10091-enchan-20260801`
+- **Windows runtime asset:** `enchan-cli-runtime-win-x64.zip`
+- **Windows LoRA asset:** `enchan-lora-runtime-win-x64.zip`
+- **macOS runtime asset:** `enchan-cli-runtime-macos-arm64.zip`
+- **macOS LoRA asset:** `enchan-lora-runtime-macos-arm64.zip`
 
 Expected runtime layout after install:
 
 ```text
 backend/bin/win-x64/llama-server.exe
 backend/bin/win-x64/enchan.dll
+backend/bin/win-x64/lora/enchan-lora-train.exe
 backend/bin/macos-arm64/llama-server
+backend/bin/macos-arm64/lora/enchan-lora-train
 backend/bin/macos-arm64/libenchan.dylib
 ```
 
