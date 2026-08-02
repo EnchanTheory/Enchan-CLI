@@ -32,6 +32,32 @@ LORA_RANK = 4
 LORA_ALPHA = 8
 LORA_EPOCHS = 2
 LORA_TRAINING_PRESET = "mascot-style-all-attention-output-v1"
+TRAINER_EPOCH_PATTERN = re.compile(r"\(epoch\s+(\d+)\s*/\s*(\d+)")
+
+
+def _trainer_progress(message: str) -> dict[str, Any]:
+    """Map the native trainer's phase messages onto visible job progress."""
+    if "GGUF targets" in message:
+        return {"phase": "inspecting", "percent": 22}
+    if "seed adapter" in message:
+        return {"phase": "initializing", "percent": 28}
+    if "fixed weight" in message or "固定weight" in message:
+        return {"phase": "loading", "percent": 35}
+    match = TRAINER_EPOCH_PATTERN.search(message)
+    if match:
+        epoch, epochs = (int(value) for value in match.groups())
+        fraction = (max(1, min(epoch, epochs)) - 1) / max(1, epochs)
+        return {
+            "phase": "training",
+            "percent": round(40 + 44 * fraction),
+            "epoch": epoch,
+            "epochs": epochs,
+        }
+    if "adapter GGUF" in message:
+        return {"phase": "saving", "percent": 86}
+    if message.strip() in {"完了", "Done", "Complete"}:
+        return {"phase": "finalizing", "percent": 88}
+    return {}
 
 
 def _runtime_platform_dir() -> str:
@@ -375,7 +401,12 @@ class MascotLoraManager:
                 stderr_lines.append(line)
                 message = line.strip()
                 if message.startswith("[Enchan-LoRA]"):
-                    self._set_job(message=message.removeprefix("[Enchan-LoRA]").strip(), messageKey="")
+                    trainer_message = message.removeprefix("[Enchan-LoRA]").strip()
+                    self._set_job(
+                        message=trainer_message,
+                        messageKey="",
+                        **_trainer_progress(trainer_message),
+                    )
 
         reader = threading.Thread(target=read_stderr, daemon=True)
         reader.start()

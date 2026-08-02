@@ -124,8 +124,9 @@ function renderLoraStatus(data){
   const wasBusy=state.loraBusy;
   state.loraStatus=data;
   state.loraBusy=["preparing","running","cancelling"].includes(data.state);
-  $("loraState").textContent=loraStateLabel(data.state);
-  $("loraProgress").value=Number(data.percent)||0;
+  const percent=Math.max(0,Math.min(100,Number(data.percent)||0));
+  $("loraState").textContent=`${loraStateLabel(data.state)} · ${Math.round(percent)}%`;
+  $("loraProgress").value=percent;
   $("loraMessage").textContent=data.messageKey?t(data.messageKey,data.messageValues||{},data.message||""):(data.message||"");
   $("loraError").textContent=data.state==="failed"?(data.error||data.message||""):"";
   const source=$("loraDirectory");
@@ -255,6 +256,7 @@ function renderMascotList(){
 }
 let previewImage=null;
 function updatePreviewCanvas(){if(!previewImage)return;const animName=$("previewAnimSelect").value||"idle";const anim=state.config.animations[animName]||state.config.animations.idle;const frames=anim.frames||Array.from({length:anim.count},(_,i)=>anim.row*8+i);state.previewFrame=(state.previewFrame+1)%frames.length;drawFrame(frames[state.previewFrame],"livePreviewCanvas",previewImage);state.previewTimer=setTimeout(updatePreviewCanvas,200)}
+function restartPreviewAnimation(){state.previewFrame=0;clearTimeout(state.previewTimer);state.previewTimer=null;updatePreviewCanvas()}
 function validatePetSheet(image){
   if(image.naturalWidth!==1536||image.naturalHeight!==1872)return t("mascot.sheetDimensions",{width:image.naturalWidth,height:image.naturalHeight});
   const canvas=document.createElement("canvas");canvas.width=1536;canvas.height=1872;const ctx=canvas.getContext("2d",{willReadFrequently:true});ctx.drawImage(image,0,0);const data=ctx.getImageData(0,0,1536,1872).data;const alpha=(x,y)=>data[(y*1536+x)*4+3];
@@ -347,11 +349,12 @@ $("loraTrain").onclick=startLoraTraining;
 $("loraDetach").onclick=detachLora;
 $("loraCancel").onclick=async()=>{try{const response=await api("/api/lora/cancel",{});renderLoraStatus(response.job)}catch(error){$("loraError").textContent=t("errors.request",{message:error.message})}};
 $("ragRegisterForm").onsubmit=async event=>{event.preventDefault();const collectionId=$("ragCollectionId").value.trim(),title=$("ragTitle").value.trim(),description=$("ragDescription").value.trim(),path=$("ragDirectory").value.trim();if(!title||!description||(!collectionId&&!path)){$("ragRegisterError").textContent=t("rag.registrationRequired");return}try{await api(collectionId?"/api/rag/update":"/api/rag/register",collectionId?{collectionId,title,description}:{title,description,path});dialogs.close("ragRegisterDialog");await loadRagStatus({showError:true})}catch(error){$("ragRegisterError").textContent=t("errors.request",{message:error.message})}};
-$("settings").onclick=()=>{dialogs.open("mascotDialog");editMascot(selectedMascot());$("previewAnimSelect").onchange=()=>{state.previewFrame=0;clearTimeout(state.previewTimer);updatePreviewCanvas()}};
+$("settings").onclick=()=>{dialogs.open("mascotDialog");editMascot(selectedMascot())};
+$("previewAnimSelect").addEventListener("change",restartPreviewAnimation);
 $("addMascot").onclick=()=>editMascot(null);
 $("mascotImage").onchange=async e=>{const file=e.target.files[0];if(!file)return;const url=URL.createObjectURL(file);previewImage=new Image();await new Promise((resolve,reject)=>{previewImage.onload=resolve;previewImage.onerror=reject;previewImage.src=url});URL.revokeObjectURL(url);const validationError=validatePetSheet(previewImage);$("sheetError").textContent=validationError;if(validationError){e.target.value="";state.imageData="";return}state.imageData=await new Promise(resolve=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(file)});$("sheetPreviewText").hidden=true;$("livePreviewCanvas").hidden=false;$("previewAnimSelect").hidden=false;clearTimeout(state.previewTimer);updatePreviewCanvas()};
 $("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textContent="";try{state.config=await api("/api/mascots",{id:$("mascotId").value,name:$("mascotEditName").value,description:$("mascotDescription").value,personality:$("mascotPersonality").value,image:state.imageData});renderMascotList();applyMascot();renderChatHistory(state.config.chatHistory);renderLoraStatus(state.config.loraTraining);window.dispatchEvent(new CustomEvent("enchan:mascot-change"));dialogs.close("mascotDialog");play("waving")}catch(error){$("sheetError").textContent=t("errors.request",{message:error.message})}};
-$("mascotDialog").addEventListener("wa-after-hide",()=>{clearTimeout(state.previewTimer);state.previewTimer=null});
+$("mascotDialog").addEventListener("wa-after-hide",event=>{if(event.target!==$("mascotDialog"))return;clearTimeout(state.previewTimer);state.previewTimer=null});
 setRagPanel(localStorage.getItem("enchan.rag.open")==="1");
 window.EnchanI18n.onChange(()=>{if(state.ragStatus)renderRagStatus(state.ragStatus);if(state.loraStatus)renderLoraStatus(state.loraStatus)});
 loadConfig().then(()=>Promise.all([loadRagStatus({showError:true}),loadLoraStatus({showError:true})])).catch(error=>addMessage("assistant",t("errors.init",{message:error.message}),true));setInterval(()=>loadRagStatus(),1500);setInterval(()=>loadLoraStatus(),1200);resize();prompt.focus();
