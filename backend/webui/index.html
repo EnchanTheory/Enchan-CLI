@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/assets/css/styles.css">
   <link rel="stylesheet" href="/assets/css/themes.css">
   <link rel="stylesheet" href="/assets/css/status.css">
+  <link rel="stylesheet" href="/tts/tts.css">
 </head>
 <body>
   <header>
@@ -18,6 +19,7 @@
       <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/assets/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
       <button class="header-command text-command" id="socialToggle" type="button" aria-controls="socialPanel" aria-expanded="false" data-i18n-title="social.open"><span data-i18n="social.open"></span><span id="socialBadge" class="social-notification-badge" aria-live="polite" hidden></span></button>
       <button class="header-command text-command" id="ragToggle" type="button" aria-controls="ragPanel" aria-expanded="false" data-i18n-title="rag.open"><span>RAG</span></button>
+      <button class="header-command text-command" id="ttsSettings" type="button" aria-controls="ttsDialog" aria-pressed="false" data-i18n-title="tts.open"><span>TTS</span><i class="tts-status-dot" aria-hidden="true"></i></button>
       <button class="icon-button appearance-trigger" id="appearanceSettings" data-i18n-title="header.appearance"><span aria-hidden="true">Aa</span></button>
       <button class="header-command text-command" id="settings" data-i18n-title="header.mascotSettings"><span>MASCOT</span></button>
       <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="backendStatusText"></span></span>
@@ -167,6 +169,54 @@
       <p class="appearance-note" data-i18n="appearance.note"></p>
     </div>
   </wa-dialog>
+  <wa-dialog id="ttsDialog" class="enchan-dialog tts-dialog">
+    <span slot="label" data-i18n="tts.title"></span>
+    <div class="enchan-dialog-body">
+      <p class="dialog-description" data-i18n="tts.subtitle"></p>
+      <form id="ttsForm" class="tts-form">
+        <div class="tts-switches">
+          <label class="tts-check"><input id="ttsEnabled" type="checkbox"><span data-i18n="tts.enabled"></span></label>
+          <label class="tts-check"><input id="ttsAutoSpeak" type="checkbox"><span data-i18n="tts.autoSpeak"></span></label>
+        </div>
+        <div class="tts-grid">
+          <label><span data-i18n="tts.provider"></span><select id="ttsProvider">
+            <option value="browser" data-i18n="tts.provider.browser"></option>
+            <option value="bouyomi" data-i18n="tts.provider.bouyomi"></option>
+            <option value="voicevox">VOICEVOX</option>
+            <option value="coeiroink">COEIROINK on VOICEVOX</option>
+            <option value="aivis">AivisSpeech</option>
+            <option value="openai" data-i18n="tts.provider.openai"></option>
+            <option value="http" data-i18n="tts.provider.http"></option>
+          </select></label>
+          <label data-tts-providers="bouyomi voicevox coeiroink aivis openai http"><span data-i18n="tts.host"></span><input id="ttsHost" maxlength="255"></label>
+          <label data-tts-providers="bouyomi voicevox coeiroink aivis openai http"><span data-i18n="tts.port"></span><input id="ttsPort" type="number" min="0" max="65535"></label>
+          <label class="tts-wide" data-tts-providers="openai http"><span data-i18n="tts.baseUrl"></span><input id="ttsBaseUrl" type="url" data-i18n-placeholder="tts.baseUrlPlaceholder"></label>
+          <label data-tts-providers="browser openai"><span data-i18n="tts.voice"></span><input id="ttsVoice" list="ttsVoiceSuggestions" maxlength="100"></label><datalist id="ttsVoiceSuggestions"></datalist>
+          <label data-tts-providers="voicevox coeiroink aivis"><span data-i18n="tts.speaker"></span><input id="ttsSpeaker" type="number" min="0" list="ttsVoiceSuggestions"></label>
+          <div data-tts-providers="browser voicevox coeiroink aivis"><button id="ttsRefreshVoices" class="secondary" type="button" data-i18n="tts.refreshVoices"></button></div>
+          <label class="tts-check tts-wide" data-tts-providers="openai http"><input id="ttsAllowRemote" type="checkbox"><span data-i18n="tts.allowRemote"></span></label>
+          <label data-tts-providers="openai"><span data-i18n="tts.model"></span><input id="ttsModel" maxlength="200"></label>
+          <label data-tts-providers="openai"><span data-i18n="tts.format"></span><select id="ttsFormat"><option>mp3</option><option>wav</option><option>opus</option><option>aac</option><option>flac</option></select></label>
+          <label data-tts-providers="openai"><span data-i18n="tts.speed"></span><input id="ttsSpeed" type="number" min="0.25" max="4" step="0.05"></label>
+          <label data-tts-providers="openai"><span data-i18n="tts.apiKeyEnv"></span><input id="ttsApiKeyEnv" maxlength="100" placeholder="OPENAI_API_KEY"></label>
+          <label class="tts-wide" data-tts-providers="openai"><span data-i18n="tts.instructions"></span><textarea id="ttsInstructions" rows="2" maxlength="1000"></textarea></label>
+          <label class="tts-wide" data-tts-providers="openai http"><span data-i18n="tts.path"></span><input id="ttsPath" maxlength="500"></label>
+          <label data-tts-providers="http"><span data-i18n="tts.method"></span><select id="ttsMethod"><option>POST</option><option>GET</option></select></label>
+          <label data-tts-providers="http"><span data-i18n="tts.bodyFormat"></span><select id="ttsBodyFormat"><option value="json">JSON</option><option value="form">Form</option><option value="query">Query</option></select></label>
+          <label data-tts-providers="http"><span data-i18n="tts.textField"></span><input id="ttsTextField" maxlength="100"></label>
+          <label data-tts-providers="http"><span data-i18n="tts.responseMode"></span><select id="ttsResponseMode"><option value="audio" data-i18n="tts.response.audio"></option><option value="external" data-i18n="tts.response.external"></option></select></label>
+          <label class="tts-wide" data-tts-providers="http"><span data-i18n="tts.headers"></span><textarea id="ttsHeaders" rows="3" data-i18n-placeholder="tts.headersPlaceholder"></textarea></label>
+        </div>
+        <p class="tts-provider-note" data-i18n="tts.note"></p>
+        <p id="ttsError" class="tts-error" role="alert"></p>
+      </form>
+    </div>
+    <div slot="footer" class="enchan-dialog-actions">
+      <button id="ttsSave" class="primary" type="submit" form="ttsForm" data-i18n="tts.save"></button>
+      <button id="ttsTest" class="secondary" type="button" data-i18n="tts.test"></button>
+      <button id="ttsStop" class="secondary" type="button" data-i18n="tts.stop"></button>
+    </div>
+  </wa-dialog>
   <wa-dialog id="mascotDialog" class="enchan-dialog mascot-dialog">
     <span slot="label" data-i18n="mascot.title"></span>
     <div class="enchan-dialog-body mascot-dialog-body">
@@ -235,6 +285,7 @@
   </wa-dialog>
   <script src="/assets/js/initial-scroll.js"></script>
   <script src="/assets/js/i18n.js"></script>
+  <script src="/tts/tts.js"></script>
   <script src="/assets/js/app.js"></script>
   <script src="/assets/js/appearance.js"></script>
   <script src="/assets/js/favicon.js"></script>

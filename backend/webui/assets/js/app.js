@@ -97,6 +97,9 @@ window.addEventListener("enchan:social-outing-complete",event=>{
 window.addEventListener("enchan:social-outing-error",()=>{
   state.busy=false;resize();play("failed");
 });
+window.addEventListener("enchan:tts-start",()=>play("waving",{loop:true}));
+window.addEventListener("enchan:tts-end",()=>play(restingAnimation(),{loop:state.busy}));
+window.addEventListener("enchan:tts-error",()=>play("failed"));
 function selectedMascot(){return state.config?.mascots.find(m=>m.id===state.config.selectedMascot)}
 function applyMascot(){
   state.mascot=selectedMascot();const stage=$("mascotStage");
@@ -271,7 +274,7 @@ function editMascot(m){
 }
 $("composer").addEventListener("submit",async event=>{
   event.preventDefault();
-  const text=prompt.value.trim();if(!text||state.busy)return;
+  const text=prompt.value.trim();if(!text||state.busy)return;window.EnchanTTS?.stop();
   addMessage("user",text);prompt.value="";state.busy=true;resize();play("waiting",{loop:true});
   const row=addMessage("assistant","");const textNode=row.querySelector(".message-text");
   try{
@@ -282,7 +285,7 @@ $("composer").addEventListener("submit",async event=>{
     if(!response.ok){const error=await response.json();throw new Error(error.error||`HTTP ${response.status}`)}
     play(state.config?.agentMode?"running":"waiting",{loop:true});
     const reader=response.body.getReader(),decoder=new TextDecoder("utf-8");
-    let fullText="",buffer="",isDone=false,toolFailed=false;
+    let fullText="",buffer="",isDone=false,toolFailed=false,toolDisplayOnly=false;
     while(true){
       const {value,done}=await reader.read();if(done)break;
       buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop();
@@ -302,6 +305,7 @@ $("composer").addEventListener("submit",async event=>{
         if(data.type==="error")throw new Error(data.error||t("errors.emptyResponse"));
         if(data.type==="tool_result"){
           toolFailed=!data.ok;
+          toolDisplayOnly=true;
           fullText=t(data.ok?"toolResult.success":"toolResult.failure",{tool:data.tool});
           if(data.message)fullText+=`\n\n${data.message}`;
           textNode.innerHTML=renderMarkdown(fullText);
@@ -309,6 +313,7 @@ $("composer").addEventListener("submit",async event=>{
           continue;
         }
         if(data.type==="chunk"&&data.chunk){
+          toolDisplayOnly=false;
           fullText+=data.chunk;textNode.innerHTML=renderMarkdown(fullText)||"&nbsp;";
           window.scrollTo({top:document.body.scrollHeight,behavior:"auto"});
         }
@@ -317,6 +322,7 @@ $("composer").addEventListener("submit",async event=>{
     }
     if(!fullText)textNode.textContent=t("errors.emptyResponse");
     play(toolFailed?"failed":"waving");
+    if(fullText&&!toolFailed&&!toolDisplayOnly)window.EnchanTTS?.speak(fullText);
   }catch(error){
     if(state.pendingApproval)await resolveApproval(false).catch(()=>{});
     textNode.textContent=t("errors.request",{message:error.message});row.classList.add("error");play("failed");

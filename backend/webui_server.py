@@ -28,6 +28,7 @@ from backend.session_log import append_session_event
 from backend.rag.jobs import RAGIndexJobManager
 from backend.rag.service import RAGService
 from backend.webui.lora.manager import MascotLoraManager
+from backend.webui.tts import TTSManager
 from backend.tokenizer_bridge import estimate_text_tokens_rough
 from backend.webui.sns.outing_service import SocialService
 
@@ -267,6 +268,7 @@ class WebChatState:
             generation_config=self.generation_config,
             active_mascot=self._active_mascot_id,
         )
+        self.tts = TTSManager(CLI_DIR / "data" / "tts")
         self.social = SocialService(
             self,
             CLI_DIR / "data" / "social",
@@ -651,6 +653,17 @@ class WebUIHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
+    def _bytes(self, status: int, body: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
+
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > MAX_BODY_BYTES:
@@ -679,6 +692,15 @@ class WebUIHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/lora/status":
             self._json(HTTPStatus.OK, self.state.lora.status())
+            return
+        if path == "/api/tts/status":
+            self._json(HTTPStatus.OK, self.state.tts.public_status())
+            return
+        if path == "/api/tts/voices":
+            try:
+                self._json(HTTPStatus.OK, {"voices": self.state.tts.voices()})
+            except Exception as exc:
+                self._json(HTTPStatus.BAD_GATEWAY, {"error": str(exc)})
             return
         if path.startswith("/api/mascots/"):
             self._serve_mascot(path.removeprefix("/api/mascots/"))
@@ -823,6 +845,17 @@ class WebUIHandler(BaseHTTPRequestHandler):
             elif path == "/api/lora/detach":
                 status = self.state.detach_lora(str(data.get("mascotId", "")).strip())
                 self._json(HTTPStatus.OK, {"status": status})
+            elif path == "/api/tts/settings":
+                settings = data.get("settings", data)
+                if not isinstance(settings, dict):
+                    raise ValueError("TTS settings must be an object")
+                self._json(HTTPStatus.OK, self.state.tts.save(settings))
+            elif path == "/api/tts/synthesize":
+                result = self.state.tts.synthesize(str(data.get("text", "")))
+                if result.external_playback:
+                    self._json(HTTPStatus.OK, {"externalPlayback": True})
+                else:
+                    self._bytes(HTTPStatus.OK, result.audio, result.content_type)
             elif path == "/api/rag/start":
                 reference = str(data.get("collectionId", "sessions")).strip() or "sessions"
                 self._json(HTTPStatus.ACCEPTED, {"job": self.state.start_rag_indexing(reference)})

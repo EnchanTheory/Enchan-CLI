@@ -188,6 +188,28 @@ Choose **Web UI** to open the local browser interface. It listens on `127.0.0.1:
 
 The Web UI provides animated responses, local background images, new-chat controls, and the same local model and agent capabilities as the interactive runtime. Its collapsible right-side RAG panel opens a shared registration and metadata editor for a collection title, AI-facing description, and host OS directory picker; keeps large source lists independently scrollable; registers directories without starting work automatically; starts or interrupts indexing; resumes saved checkpoints; and shows progress plus an estimated completion time.
 
+#### Text to Speech (TTS)
+
+The header TTS control can read the final AI portion of each Web UI response aloud. Thinking output, user messages, tool-only status messages, fenced code blocks, and long URLs are excluded. Starting another message, opening a new conversation, or selecting **Stop** cancels the current reading. While speech is active, the selected mascot loops its speaking-like animation and returns to its normal state when playback ends.
+
+Built-in connection presets are available for:
+
+| Provider | Default connection | Playback behavior |
+| --- | --- | --- |
+| Browser voice | Web Speech API | The browser synthesizes and plays speech |
+| BouyomiChan | `127.0.0.1:50080/Talk` | BouyomiChan plays speech externally |
+| VOICEVOX | `127.0.0.1:50021` | Enchan requests WAV audio and plays it in the Web UI |
+| COEIROINK on VOICEVOX | `127.0.0.1:50031` | Uses the VOICEVOX-compatible engine exposed by the integration |
+| AivisSpeech | `127.0.0.1:10101` | Uses the AivisSpeech Engine's VOICEVOX-compatible API directly |
+| OpenAI-compatible speech API | Configurable base URL and `/v1/audio/speech` path | Enchan requests and plays the returned audio |
+| Other HTTP API | Configurable host, port, path, method, request format, and response mode | Plays returned audio or lets the external application play it |
+
+The selected external speech application must already be running. Voice/style lists can be refreshed for VOICEVOX-compatible engines. OpenAI-compatible settings support model, voice, output format, speed, optional voice instructions, and an API-key environment-variable name. Generic HTTP settings support `GET` or `POST`, JSON/form/query text fields, and configurable headers.
+
+Browser JavaScript connects only to the Enchan Web UI origin; the local Enchan backend performs external TTS requests. Connections are restricted to loopback addresses by default. A non-local base URL requires explicit permission, redirects are not followed, and a configured API path cannot replace the validated base URL. API-key values are not stored in Web UI settings: OpenAI-compatible credentials are read from the named environment variable, while sensitive generic headers must use an environment reference such as `${TTS_TOKEN}`.
+
+TTS settings remain local under `data/tts/settings.json` and are not tracked by Git. TTS is disabled by default, and the user can enable automatic reading independently from the provider configuration.
+
 #### Mascots
 
 The Web UI supports animated custom mascots. From the settings screen, you can register or edit a mascot's name, description, personality, and spritesheet.
