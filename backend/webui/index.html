@@ -191,8 +191,9 @@
           <label data-tts-providers="bouyomi voicevox coeiroink aivis openai http"><span data-i18n="tts.host"></span><input id="ttsHost" maxlength="255"></label>
           <label data-tts-providers="bouyomi voicevox coeiroink aivis openai http"><span data-i18n="tts.port"></span><input id="ttsPort" type="number" min="0" max="65535"></label>
           <label class="tts-wide" data-tts-providers="openai http"><span data-i18n="tts.baseUrl"></span><input id="ttsBaseUrl" type="url" data-i18n-placeholder="tts.baseUrlPlaceholder"></label>
-          <label data-tts-providers="browser openai"><span data-i18n="tts.voice"></span><input id="ttsVoice" list="ttsVoiceSuggestions" maxlength="100"></label><datalist id="ttsVoiceSuggestions"></datalist>
-          <label data-tts-providers="voicevox coeiroink aivis"><span data-i18n="tts.speaker"></span><input id="ttsSpeaker" type="number" min="0" list="ttsVoiceSuggestions"></label>
+          <label data-tts-providers="browser"><span data-i18n="tts.voice"></span><select id="ttsBrowserVoice"></select></label>
+          <label data-tts-providers="openai"><span data-i18n="tts.voice"></span><input id="ttsOpenAIVoice" list="ttsOpenAIVoices" maxlength="100"><datalist id="ttsOpenAIVoices"><option value="alloy"></option><option value="ash"></option><option value="ballad"></option><option value="coral"></option><option value="echo"></option><option value="fable"></option><option value="nova"></option><option value="onyx"></option><option value="sage"></option><option value="shimmer"></option></datalist></label>
+          <label data-tts-providers="voicevox coeiroink aivis"><span data-i18n="tts.speaker"></span><select id="ttsSpeaker"></select></label>
           <div data-tts-providers="browser voicevox coeiroink aivis"><button id="ttsRefreshVoices" class="secondary" type="button" data-i18n="tts.refreshVoices"></button></div>
           <label class="tts-check tts-wide" data-tts-providers="openai http"><input id="ttsAllowRemote" type="checkbox"><span data-i18n="tts.allowRemote"></span></label>
           <label data-tts-providers="openai"><span data-i18n="tts.model"></span><input id="ttsModel" maxlength="200"></label>

@@ -19,9 +19,9 @@
   }
   function formSettings(){
     let headers={};const source=$("ttsHeaders").value.trim();if(source){try{headers=JSON.parse(source)}catch(_){throw new Error(t("tts.error.headers"))}}
-    return {enabled:$("ttsEnabled").checked,autoSpeak:$("ttsAutoSpeak").checked,provider:$("ttsProvider").value,
+    const provider=$("ttsProvider").value;return {enabled:$("ttsEnabled").checked,autoSpeak:$("ttsAutoSpeak").checked,provider,
       host:$("ttsHost").value.trim(),port:Number($("ttsPort").value),baseUrl:["openai","http"].includes($("ttsProvider").value)?$("ttsBaseUrl").value.trim():"",
-      voice:$("ttsVoice").value.trim(),speaker:Number($("ttsSpeaker").value),model:$("ttsModel").value.trim(),
+      voice:provider==="browser"?$("ttsBrowserVoice").value:(provider==="openai"?$("ttsOpenAIVoice").value.trim():""),speaker:Number($("ttsSpeaker").value),model:$("ttsModel").value.trim(),
       format:$("ttsFormat").value,speed:Number($("ttsSpeed").value),instructions:$("ttsInstructions").value.trim(),
       apiKeyEnv:$("ttsApiKeyEnv").value.trim(),allowRemote:$("ttsAllowRemote").checked,path:$("ttsPath").value.trim(),
       method:$("ttsMethod").value,bodyFormat:$("ttsBodyFormat").value,textField:$("ttsTextField").value.trim(),
@@ -29,11 +29,14 @@
   }
   function fillForm(value){
     settings=value;$("ttsEnabled").checked=!!value.enabled;$("ttsAutoSpeak").checked=!!value.autoSpeak;$("ttsProvider").value=value.provider;
-    $("ttsHost").value=value.host;$("ttsPort").value=value.port;$("ttsBaseUrl").value=value.baseUrl;$("ttsVoice").value=value.voice;
+    $("ttsHost").value=value.host;$("ttsPort").value=value.port;$("ttsBaseUrl").value=value.baseUrl;
     $("ttsSpeaker").value=value.speaker;$("ttsModel").value=value.model;$("ttsFormat").value=value.format;$("ttsSpeed").value=value.speed;
     $("ttsInstructions").value=value.instructions;$("ttsApiKeyEnv").value=value.apiKeyEnv;$("ttsAllowRemote").checked=!!value.allowRemote;
     $("ttsPath").value=value.path;$("ttsMethod").value=value.method;$("ttsBodyFormat").value=value.bodyFormat;
     $("ttsTextField").value=value.textField;$("ttsResponseMode").value=value.responseMode;$("ttsHeaders").value=Object.keys(value.headers||{}).length?JSON.stringify(value.headers,null,2):"";
+    if(value.provider==="browser")setSelectOptions($("ttsBrowserVoice"),browserVoices(),value.voice);
+    if(value.provider==="openai")$("ttsOpenAIVoice").value=value.voice||"alloy";
+    if(["voicevox","coeiroink","aivis"].includes(value.provider))setSelectOptions($("ttsSpeaker"),[],value.speaker);
     providerFields();updateButton();
   }
   async function load(){const data=await jsonApi("/api/tts/status");fillForm(data.settings);return data.settings}
@@ -42,17 +45,18 @@
     try{settings=await jsonApi("/api/tts/settings",{settings:formSettings()});fillForm(settings);if(close)window.EnchanDialogs.close("ttsDialog");return settings}
     catch(error){setError(t("tts.error.request",{message:error.message}));throw error}finally{button.disabled=false}
   }
-  function updateVoiceSuggestions(items){
-    const list=$("ttsVoiceSuggestions");list.replaceChildren();for(const item of items){const option=document.createElement("option");option.value=String(item.id);option.label=item.name;list.append(option)}
+  function setSelectOptions(select,items,selected=select.value){
+    const requested=selected===null||selected===undefined||String(selected)===""?String(items[0]?.id??""):String(selected);
+    select.replaceChildren();for(const item of items){const option=document.createElement("option");option.value=String(item.id);option.textContent=item.name;select.append(option)}
+    if(requested&&!items.some(item=>String(item.id)===requested)){const option=document.createElement("option");option.value=requested;option.textContent=requested;select.prepend(option)}
+    select.value=requested;
   }
+  function browserVoices(){return (window.speechSynthesis?.getVoices?.()||[]).map(voice=>({id:voice.name,name:voice.name+" ("+voice.lang+")"}))}
   async function refreshVoices(){
     setError();try{
       await save();const provider=settings.provider;
-      if(provider==="browser"){
-        const voices=window.speechSynthesis.getVoices().map(voice=>({id:voice.name,name:`${voice.name} (${voice.lang})`}));updateVoiceSuggestions(voices);return;
-      }
-      const data=await jsonApi("/api/tts/voices");updateVoiceSuggestions(data.voices||[]);
-      if(data.voices?.length&&!$("ttsSpeaker").value)$("ttsSpeaker").value=data.voices[0].id;
+      if(provider==="browser"){setSelectOptions($("ttsBrowserVoice"),browserVoices(),$("ttsBrowserVoice").value);return}
+      const data=await jsonApi("/api/tts/voices");const selected=$("ttsSpeaker").value||String(data.voices?.[0]?.id??"");setSelectOptions($("ttsSpeaker"),data.voices||[],selected);
     }catch(error){setError(t("tts.error.request",{message:error.message}))}
   }
   function readableText(value){return String(value||"").replace(/```[\s\S]*?```/g," ").replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g,"$1").replace(/https?:\/\/\S+/g," ").replace(/[`*_~#>]/g,"").replace(/\s+/g," ").trim().slice(0,10000)}
@@ -81,9 +85,9 @@
   async function test(){try{await save();await speak(t("tts.testText"),{force:true})}catch(_){}}
   async function init(){
     await window.EnchanI18n.ready;$("ttsSettings").onclick=()=>{setError();window.EnchanDialogs.open("ttsDialog")};$("ttsForm").onsubmit=event=>{event.preventDefault();save({close:true}).catch(()=>{})};
-    $("ttsProvider").onchange=()=>{const [host,port]=presets[$("ttsProvider").value]||presets.http;$("ttsHost").value=host;$("ttsPort").value=port;if(!["openai","http"].includes($("ttsProvider").value))$("ttsBaseUrl").value="";providerFields()};
+    $("ttsProvider").onchange=()=>{const provider=$("ttsProvider").value;const [host,port]=presets[provider]||presets.http;$("ttsHost").value=host;$("ttsPort").value=port;if(!["openai","http"].includes(provider))$("ttsBaseUrl").value="";if(provider==="browser")setSelectOptions($("ttsBrowserVoice"),browserVoices(),$("ttsBrowserVoice").value);if(provider==="openai"&&!$("ttsOpenAIVoice").value)$("ttsOpenAIVoice").value="alloy";providerFields()};
     $("ttsRefreshVoices").onclick=refreshVoices;$("ttsTest").onclick=test;$("ttsStop").onclick=stop;
-    window.addEventListener("enchan:new-chat",stop);window.EnchanI18n.onChange(updateButton);window.speechSynthesis?.addEventListener?.("voiceschanged",()=>{if(settings?.provider==="browser")updateVoiceSuggestions(window.speechSynthesis.getVoices().map(v=>({id:v.name,name:`${v.name} (${v.lang})`})))});
+    window.addEventListener("enchan:new-chat",stop);window.EnchanI18n.onChange(updateButton);window.speechSynthesis?.addEventListener?.("voiceschanged",()=>{if($("ttsProvider").value==="browser")setSelectOptions($("ttsBrowserVoice"),browserVoices(),$("ttsBrowserVoice").value)});
     try{await load()}catch(error){setError(t("tts.error.request",{message:error.message}))}
   }
   window.EnchanTTS={speak,stop,reload:load,get settings(){return settings}};init();
