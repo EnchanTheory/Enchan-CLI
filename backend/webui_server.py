@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
+import hmac
 import json
 import mimetypes
 import re
+import ssl
 import struct
 import subprocess
 import sys
@@ -21,6 +24,13 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from backend.agent_tools import get_agent_system_prompt
+from backend.webui.local_share import (
+    LocalShareError,
+    LocalShareManager,
+    SESSION_MAX_AGE_SECONDS,
+    cookie_token,
+    login_page,
+)
 from backend.context_compression import count_text_tokens
 from backend.memory_store import build_memory_prompt_section, load_memory_context
 from backend.approval import ApprovalDecision, ApprovalRequest, approval_scope
@@ -641,6 +651,59 @@ class WebUIHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", WEB_UI_CONTENT_SECURITY_POLICY)
         super().end_headers()
 
+    @property
+    def _is_share_request(self) -> bool:
+        return bool(getattr(self.server, "is_share_listener", False))
+
+    def _share_manager(self) -> LocalShareManager:
+        return self.server.local_share  # type: ignore[attr-defined]
+
+    def _remote_ip(self) -> str:
+        return str(self.client_address[0])
+
+    def _remote_authenticated(self, *, touch: bool = True) -> bool:
+        if not self._is_share_request:
+            return True
+        token = cookie_token(self.headers.get("Cookie", ""))
+        return self._share_manager().authenticate(token, self._remote_ip(), touch=touch)
+
+    def _validate_share_origin(self) -> bool:
+        if not self._is_share_request:
+            return True
+        manager = self._share_manager()
+        if not manager.validate_host(self.headers.get("Host", "")):
+            self._json(HTTPStatus.MISDIRECTED_REQUEST, {"error": "Invalid local-share host"})
+            return False
+        origin = self.headers.get("Origin", "").strip()
+        if origin:
+            parsed_origin = urlparse(origin)
+            if parsed_origin.scheme != "https" or not manager.validate_host(parsed_origin.netloc):
+                self._json(HTTPStatus.FORBIDDEN, {"error": "Invalid request origin"})
+                return False
+        return True
+
+    def _require_remote_auth(self) -> bool:
+        if self._remote_authenticated():
+            return True
+        self._json(HTTPStatus.UNAUTHORIZED, {"error": "Authentication required"})
+        return False
+
+    def _validate_local_control_origin(self) -> bool:
+        if self._is_share_request:
+            return False
+        try:
+            if not ipaddress.ip_address(self._remote_ip()).is_loopback:
+                raise ValueError
+        except ValueError:
+            self._json(HTTPStatus.FORBIDDEN, {"error": "Local control is limited to this PC"})
+            return False
+        origin = self.headers.get("Origin", "").strip().lower()
+        expected = "http://" + self.headers.get("Host", "").strip().lower()
+        if origin and not hmac.compare_digest(origin, expected):
+            self._json(HTTPStatus.FORBIDDEN, {"error": "Invalid local control origin"})
+            return False
+        return True
+
     def _json(self, status: int, payload: Any) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -664,14 +727,48 @@ class WebUIHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
-    def _read_json(self) -> dict[str, Any]:
+    def _read_body(self) -> bytes:
         length = int(self.headers.get("Content-Length", "0"))
         if length <= 0 or length > MAX_BODY_BYTES:
             raise ValueError("Invalid request size")
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        return self.rfile.read(length)
+
+    def _read_json(self) -> dict[str, Any]:
+        return json.loads(self._read_body().decode("utf-8"))
 
     def do_GET(self) -> None:
         path = unquote(urlparse(self.path).path)
+
+        if not self._validate_share_origin():
+            return
+        if self._is_share_request and path == "/" and not self._remote_authenticated(touch=False):
+            self._bytes(HTTPStatus.OK, login_page(), "text/html; charset=utf-8")
+            return
+        if path.startswith("/api/") and not self._require_remote_auth():
+            return
+        if path == "/api/local-share/status":
+            self._json(
+                HTTPStatus.OK,
+                self._share_manager().status(include_private=not self._is_share_request),
+            )
+            return
+        if path == "/api/local-share/qr":
+            if self._is_share_request:
+                self._json(HTTPStatus.FORBIDDEN, {"error": "QR access is limited to this PC"})
+                return
+            try:
+                self._bytes(HTTPStatus.OK, self._share_manager().qr_png(), "image/png")
+            except LocalShareError as exc:
+                self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
+            return
+
+        if path == "/api/local-share/background":
+            body, content_type = self._share_manager().background()
+            if not body:
+                self.send_error(HTTPStatus.NOT_FOUND)
+            else:
+                self._bytes(HTTPStatus.OK, body, content_type)
+            return
 
         if path.startswith("/api/social/"):
             try:
@@ -710,7 +807,13 @@ class WebUIHandler(BaseHTTPRequestHandler):
         if (WEB_DIR.resolve() not in asset.parents and asset != WEB_DIR.resolve()) or not asset.is_file():
             self.send_error(HTTPStatus.NOT_FOUND)
             return
-        self._serve_file(asset)
+        if self._is_share_request and relative == "index.html":
+            body = asset.read_text(encoding="utf-8").replace(
+                "<body>", '<body class="mobile-share-client">', 1
+            ).encode("utf-8")
+            self._bytes(HTTPStatus.OK, body, "text/html; charset=utf-8")
+        else:
+            self._serve_file(asset)
 
     def _serve_mascot(self, mascot_id: str) -> None:
         if not ID_PATTERN.fullmatch(mascot_id):
@@ -741,6 +844,14 @@ class WebUIHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         try:
             path = unquote(urlparse(self.path).path)
+            if not self._validate_share_origin() or not self._require_remote_auth():
+                return
+            if path == "/api/local-share/background":
+                if not self._validate_local_control_origin():
+                    return
+                self._share_manager().clear_background()
+                self._json(HTTPStatus.OK, {"ok": True})
+                return
             if path.startswith("/api/social/"):
                 try:
                     response = self.state.social.handle_delete(path)
@@ -758,11 +869,53 @@ class WebUIHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
-            data = self._read_json()
             path = unquote(urlparse(self.path).path)
+            if not self._validate_share_origin():
+                return
+            if path == "/api/local-share/login" and self._is_share_request:
+                data = self._read_json()
+                token = self._share_manager().login(
+                    str(data.get("password", "")), self._remote_ip()
+                )
+                body = b'{"ok":true}'
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header(
+                    "Set-Cookie",
+                    "enchan_share_session=" + token
+                    + f"; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_MAX_AGE_SECONDS}",
+                )
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if not self._require_remote_auth():
+                return
+            if path == "/api/local-share/background":
+                if not self._validate_local_control_origin():
+                    return
+                content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                self._share_manager().set_background(self._read_body(), content_type)
+                self._json(HTTPStatus.OK, {"ok": True})
+                return
+            data = self._read_json()
             client_id = str(data.get("clientId", "")).strip()
             approval_match = re.fullmatch(r"/api/approvals/([0-9a-f-]{36})", path)
-            if path == "/api/client/heartbeat":
+            if path == "/api/local-share/start":
+                if not self._validate_local_control_origin():
+                    return
+                self._json(
+                    HTTPStatus.CREATED,
+                    self._share_manager().start(str(data.get("locale", "en"))),
+                )
+            elif path == "/api/local-share/stop":
+                self._share_manager().stop("manual")
+                self._json(HTTPStatus.OK, {"active": False, "stopReason": "manual"})
+            elif path == "/api/local-share/logout":
+                self._share_manager().logout()
+                self._json(HTTPStatus.OK, {"ok": True})
+            elif path == "/api/client/heartbeat":
                 self.server.mark_client(client_id)  # type: ignore[attr-defined]
                 self._json(HTTPStatus.OK, {"ok": True})
             elif path == "/api/client/close":
@@ -880,6 +1033,8 @@ class WebUIHandler(BaseHTTPRequestHandler):
             self._json(HTTPStatus.GONE, {"error": str(exc)})
         except FileNotFoundError as exc:
             self._json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+        except LocalShareError as exc:
+            self._json(HTTPStatus.FORBIDDEN, {"error": str(exc)})
         except RuntimeError as exc:
             self._json(HTTPStatus.CONFLICT, {"error": str(exc)})
         except (ValueError, json.JSONDecodeError) as exc:
@@ -934,22 +1089,92 @@ class WebUIHandler(BaseHTTPRequestHandler):
 class EnchanWebServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], state: WebChatState):
+    def __init__(self, address: tuple[str, int], state: WebChatState,
+                 local_share: LocalShareManager | None = None,
+                 is_share_listener: bool = False,
+                 tls_context: ssl.SSLContext | None = None):
         super().__init__(address, WebUIHandler)
         self.state = state
+        self.is_share_listener = is_share_listener
+        self.tls_context = tls_context
+        self.local_share = local_share or LocalShareManager(
+            lambda target, manager, context: EnchanWebServer(
+                target, state, local_share=manager, is_share_listener=True,
+                tls_context=context
+            ),
+            on_stop=lambda _reason: state.approvals.cancel_all("local_share_stopped"),
+            localize=_locale_text,
+        )
         self._clients: dict[str, float] = {}
         self._client_lock = threading.Lock()
+        self._share_connections: set[Any] = set()
+        self._share_connection_lock = threading.Lock()
         self._ever_had_client = False
         self._empty_since: float | None = None
         self._watchdog_stop = threading.Event()
-        self._watchdog = threading.Thread(
-            target=self._watch_clients,
-            name="enchan-webui-client-watchdog",
-            daemon=True,
-        )
-        self._watchdog.start()
+        self._watchdog: threading.Thread | None = None
+        if not self.is_share_listener:
+            self._watchdog = threading.Thread(
+                target=self._watch_clients,
+                name="enchan-webui-client-watchdog",
+                daemon=True,
+            )
+            self._watchdog.start()
+
+    def get_request(self) -> tuple[Any, Any]:
+        request, address = super().get_request()
+        if self.is_share_listener:
+            if self.tls_context is None:
+                request.close()
+                raise RuntimeError("Local-share TLS context is unavailable")
+            try:
+                request = self.tls_context.wrap_socket(
+                    request, server_side=True, do_handshake_on_connect=False
+                )
+            except Exception:
+                request.close()
+                raise
+            with self._share_connection_lock:
+                self._share_connections.add(request)
+        return request, address
+
+    def finish_request(self, request: Any, client_address: Any) -> None:
+        if self.is_share_listener:
+            try:
+                request.settimeout(8.0)
+                request.do_handshake()
+                request.settimeout(None)
+            except (OSError, ssl.SSLError, TimeoutError) as exc:
+                print(
+                    f"[MOBILE TLS] {client_address[0]} handshake failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                return
+        super().finish_request(request, client_address)
+    def shutdown_request(self, request: Any) -> None:
+        try:
+            super().shutdown_request(request)
+        finally:
+            with self._share_connection_lock:
+                self._share_connections.discard(request)
+
+    def close_active_connections(self) -> None:
+        with self._share_connection_lock:
+            connections = list(self._share_connections)
+            self._share_connections.clear()
+        for connection in connections:
+            try:
+                connection.shutdown(2)
+            except OSError:
+                pass
+            try:
+                connection.close()
+            except OSError:
+                pass
 
     def mark_client(self, client_id: str) -> None:
+        if self.is_share_listener:
+            return
         if not client_id:
             return
         with self._client_lock:
@@ -959,6 +1184,8 @@ class EnchanWebServer(ThreadingHTTPServer):
 
     def remove_client(self, client_id: str) -> None:
         self.state.approvals.cancel_client(client_id)
+        if self.is_share_listener:
+            return
         with self._client_lock:
             self._clients.pop(client_id, None)
             if self._ever_had_client and not self._clients and self._empty_since is None:
@@ -967,6 +1194,7 @@ class EnchanWebServer(ThreadingHTTPServer):
     def _watch_clients(self) -> None:
         while not self._watchdog_stop.wait(1.0):
             now = time.monotonic()
+            should_stop_share = False
             should_shutdown = False
             with self._client_lock:
                 stale = [client_id for client_id, seen in self._clients.items() if now - seen > 120]
@@ -974,23 +1202,26 @@ class EnchanWebServer(ThreadingHTTPServer):
                     self._clients.pop(client_id, None)
                     self.state.approvals.cancel_client(client_id)
                 if self._ever_had_client and not self._clients:
-                    if self.state.rag_jobs.is_busy():
-                        self._empty_since = None
-                    elif self._empty_since is None:
+                    if self._empty_since is None:
                         self._empty_since = now
                     elif now - self._empty_since >= 5:
-                        should_shutdown = True
+                        should_stop_share = self.local_share.active
+                        should_shutdown = not self.state.rag_jobs.is_busy()
                 else:
                     self._empty_since = None
+            if should_stop_share:
+                self.local_share.stop("webui_shutdown")
             if should_shutdown:
                 threading.Thread(target=self.shutdown, name="enchan-webui-shutdown", daemon=True).start()
                 return
 
     def server_close(self) -> None:
         self._watchdog_stop.set()
-        self.state.approvals.cancel_all("server_shutdown")
-        if self.state.rag_jobs.is_busy():
-            self.state.rag_jobs.cancel()
+        if not self.is_share_listener:
+            self.local_share.stop("webui_shutdown")
+            self.state.approvals.cancel_all("server_shutdown")
+            if self.state.rag_jobs.is_busy():
+                self.state.rag_jobs.cancel()
         super().server_close()
 
 
@@ -1001,7 +1232,12 @@ def run_webui(*, backend_mode: str, args: Any, session_log_path: Path,
         generation_config["kv_cache_type"] = apply_enchan_kv_cache_patch(getattr(args, "kv_cache_type", None))
         generation_config["screen_strength"] = getattr(args, "screen_strength", 0.2)
     state = WebChatState(backend_mode, args, session_log_path, generation_config, tokenizer, agent_mode)
-    server = EnchanWebServer((args.web_host, args.web_port), state)
+    requested_host = str(getattr(args, "web_host", "127.0.0.1")).strip().lower()
+    if requested_host not in {"127.0.0.1", "localhost"}:
+        raise RuntimeError(
+            "The Web UI must bind to loopback. Enable smartphone local sharing from the Web UI instead."
+        )
+    server = EnchanWebServer((requested_host, args.web_port), state)
     host, port = server.server_address[:2]
     browser_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
     url = f"http://{browser_host}:{port}/"

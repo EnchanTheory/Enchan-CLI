@@ -4,6 +4,8 @@ const {t}=window.EnchanI18n;
 const dialogs=window.EnchanDialogs;
 const state={config:null,mascot:null,timer:null,frame:0,busy:false,ragBusy:false,ragStatus:null,loraStatus:null,loraBusy:false,loraDirectory:"",imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null,pendingConfirmation:null};
 const messages=$("messages"),welcome=$("welcome"),prompt=$("prompt"),send=$("send");
+const mobileShareClient=()=>document.body.classList.contains("mobile-share-client");
+
 
 const clientId=crypto.randomUUID?.()||`${Date.now()}-${Math.random().toString(16).slice(2)}`;
 function heartbeat(){return fetch("/api/client/heartbeat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({clientId}),keepalive:true}).catch(()=>{})}
@@ -74,11 +76,25 @@ function renderMarkdown(text){
   html=parts.map(part=>{if(part.startsWith("<pre>"))return part;let p=part.replace(/\n/g,"<br>");p=p.replace(/<br>\s*<\/?(ul|li|blockquote|h\d)/gi,m=>m.replace("<br>",""));p=p.replace(/<\/(ul|li|blockquote|h\d)>\s*<br>/gi,m=>m.replace("<br>",""));return p}).join("");
   return html.replace(/(<br>){2,}/g,"<br>").trim();
 }
+function chatViewportBottom(){
+  const composerTop=document.querySelector(".composer-wrap")?.getBoundingClientRect().top;
+  return Math.min(window.innerHeight,composerTop??window.innerHeight)-12;
+}
+function revealMessageIfNeeded(row,behavior="auto"){
+  const overflow=row.getBoundingClientRect().bottom-chatViewportBottom();
+  if(overflow<=0)return;
+  if(mobileShareClient()){
+    const scroller=messages.parentElement;
+    if(scroller.scrollHeight>scroller.clientHeight+1)scroller.scrollBy({top:overflow,behavior});
+    return;
+  }
+  window.scrollBy({top:overflow,behavior});
+}
 function addMessage(role,text,error=false){
   welcome.hidden=true;const row=document.createElement("article");row.className=`message ${role}${error?" error":""}`;
   if(role==="user"){const bubble=document.createElement("div");bubble.className="user-bubble";bubble.textContent=text;row.append(bubble)}
   else{const body=document.createElement("div");const name=document.createElement("div");name.className="assistant-name";name.textContent=state.mascot?.name||"Enchan";const content=document.createElement("div");content.className="message-text";content.innerHTML=renderMarkdown(text);body.append(name,content);row.append(body)}
-  messages.append(row);window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});return row
+  messages.append(row);revealMessageIfNeeded(row,"smooth");return row
 }
 function renderChatHistory(history=[]){
   [...messages.querySelectorAll(".message")].forEach(element=>element.remove());
@@ -314,8 +330,9 @@ $("composer").addEventListener("submit",async event=>{
         }
         if(data.type==="chunk"&&data.chunk){
           toolDisplayOnly=false;
+          const follow=row.getBoundingClientRect().bottom<=chatViewportBottom()+48;
           fullText+=data.chunk;textNode.innerHTML=renderMarkdown(fullText)||"&nbsp;";
-          window.scrollTo({top:document.body.scrollHeight,behavior:"auto"});
+          if(follow)revealMessageIfNeeded(row);
         }
       }
       if(isDone)break;
@@ -327,7 +344,7 @@ $("composer").addEventListener("submit",async event=>{
     if(state.pendingApproval)await resolveApproval(false).catch(()=>{});
     textNode.textContent=t("errors.request",{message:error.message});row.classList.add("error");play("failed");
   }finally{
-    state.busy=false;resize();prompt.focus();
+    state.busy=false;resize();if(!document.body.classList.contains("mobile-share-client"))prompt.focus();
   }
 });
 prompt.addEventListener("input",resize);prompt.addEventListener("keydown",e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("composer").requestSubmit()}});
@@ -363,7 +380,7 @@ $("mascotForm").onsubmit=async e=>{e.preventDefault();$("sheetError").textConten
 $("mascotDialog").addEventListener("wa-after-hide",event=>{if(event.target!==$("mascotDialog"))return;clearTimeout(state.previewTimer);state.previewTimer=null});
 setRagPanel(localStorage.getItem("enchan.rag.open")==="1");
 window.EnchanI18n.onChange(()=>{if(state.ragStatus)renderRagStatus(state.ragStatus);if(state.loraStatus)renderLoraStatus(state.loraStatus)});
-loadConfig().then(()=>Promise.all([loadRagStatus({showError:true}),loadLoraStatus({showError:true})])).catch(error=>addMessage("assistant",t("errors.init",{message:error.message}),true));setInterval(()=>loadRagStatus(),1500);setInterval(()=>loadLoraStatus(),1200);resize();prompt.focus();
+loadConfig().then(()=>Promise.all([loadRagStatus({showError:true}),loadLoraStatus({showError:true})])).catch(error=>addMessage("assistant",t("errors.init",{message:error.message}),true));setInterval(()=>loadRagStatus(),1500);setInterval(()=>loadLoraStatus(),1200);resize();if(!document.body.classList.contains("mobile-share-client"))prompt.focus();
 
 const mascotStage=document.querySelector(".mascot-stage");const mascotTrack=document.querySelector(".mascot-track");let mascotDragging=false,mascotGrabOffset=0,mascotLastPointerX=0;const mascotPositionKey="enchan.mascot.position";
 function clampMascotPosition(value){return Math.max(0,Math.min(value,Math.max(0,mascotTrack.clientWidth-mascotStage.offsetWidth)))}

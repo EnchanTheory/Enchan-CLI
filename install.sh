@@ -190,7 +190,7 @@ if ! "$base_python" --version >/dev/null 2>&1; then
 fi
 
 if [[ -n "${ENCHAN_PYTHON:-}" ]]; then
-  if "$base_python" -c "import prompt_toolkit, rich" >/dev/null 2>&1; then
+  if "$base_python" -c "import cryptography, prompt_toolkit, qrcode, rich" >/dev/null 2>&1; then
     echo "Python UI dependencies already installed"
   else
     echo "Installing Python UI dependencies"

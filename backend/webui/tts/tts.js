@@ -1,8 +1,9 @@
 (function(){
   const $=id=>document.getElementById(id);
   const presets={browser:["127.0.0.1",0],bouyomi:["127.0.0.1",50080],voicevox:["127.0.0.1",50021],coeiroink:["127.0.0.1",50031],aivis:["127.0.0.1",10101],openai:["127.0.0.1",8000],http:["127.0.0.1",50021]};
-  let settings=null,audio=null,controller=null,externalTimer=null;
+  let settings=null,audio=null,audioUrl="",controller=null,externalTimer=null,mediaUnlocked=false;
   const t=(key,values={},fallback=key)=>window.EnchanI18n?.t(key,values,fallback)||fallback;
+  const SILENT_AUDIO="data:audio/wav;base64,UklGRnQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
   async function jsonApi(path,body){
     const response=await fetch(path,{method:body?"POST":"GET",headers:body?{"Content-Type":"application/json"}:{},body:body?JSON.stringify(body):undefined});
     const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);return data;
@@ -61,8 +62,19 @@
   }
   function readableText(value){return String(value||"").replace(/```[\s\S]*?```/g," ").replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g,"$1").replace(/https?:\/\/\S+/g," ").replace(/[`*_~#>]/g,"").replace(/\s+/g," ").trim().slice(0,10000)}
   function notify(type,detail={}){window.dispatchEvent(new CustomEvent(`enchan:tts-${type}`,{detail}))}
+  function clearAudioUrl(){if(audioUrl){URL.revokeObjectURL(audioUrl);audioUrl=""}}
+  function unlockPlayback(){
+    if(mediaUnlocked)return;
+    const player=audio||(audio=new Audio());
+    player.src=SILENT_AUDIO;
+    const attempt=player.play();
+    if(attempt?.then)attempt.then(()=>{player.pause();player.removeAttribute("src");player.load();mediaUnlocked=true}).catch(()=>{});
+    if(window.speechSynthesis&&window.SpeechSynthesisUtterance){
+      const probe=new window.SpeechSynthesisUtterance(" ");probe.volume=0;window.speechSynthesis.speak(probe);
+    }
+  }
   function stop(){
-    controller?.abort();controller=null;if(audio){audio.pause();URL.revokeObjectURL(audio.src);audio=null}window.speechSynthesis?.cancel();clearTimeout(externalTimer);externalTimer=null;notify("end");
+    controller?.abort();controller=null;if(audio){audio.pause();clearAudioUrl();audio.removeAttribute("src");audio.load()}window.speechSynthesis?.cancel();clearTimeout(externalTimer);externalTimer=null;notify("end");
   }
   async function speak(rawText,{force=false}={}){
     if(!settings)await load();if(!force&&(!settings.enabled||!settings.autoSpeak))return;
@@ -79,12 +91,12 @@
         const result=await response.json();if(result.externalPlayback){externalTimer=setTimeout(()=>notify("end"),Math.min(30000,Math.max(1500,text.length*125)));return}
         throw new Error(t("tts.error.noAudio"));
       }
-      const blob=await response.blob();audio=new Audio(URL.createObjectURL(blob));audio.onended=()=>{URL.revokeObjectURL(audio.src);audio=null;notify("end")};audio.onerror=()=>{notify("error",{message:t("tts.error.playback")});audio=null};await audio.play();
+      const blob=await response.blob();const player=audio||(audio=new Audio());clearAudioUrl();audioUrl=URL.createObjectURL(blob);player.src=audioUrl;player.onended=()=>{clearAudioUrl();notify("end")};player.onerror=()=>{clearAudioUrl();notify("error",{message:t("tts.error.playback")})};await player.play();
     }catch(error){if(error.name!=="AbortError"){setError(t("tts.error.request",{message:error.message}));notify("error",{message:error.message})}}
   }
   async function test(){try{await save();await speak(t("tts.testText"),{force:true})}catch(_){}}
   async function init(){
-    await window.EnchanI18n.ready;$("ttsSettings").onclick=()=>{setError();window.EnchanDialogs.open("ttsDialog")};$("ttsForm").onsubmit=event=>{event.preventDefault();save({close:true}).catch(()=>{})};
+    await window.EnchanI18n.ready;document.addEventListener("pointerdown",unlockPlayback,{capture:true});$("ttsSettings").onclick=()=>{setError();window.EnchanDialogs.open("ttsDialog")};$("ttsForm").onsubmit=event=>{event.preventDefault();save({close:true}).catch(()=>{})};
     $("ttsProvider").onchange=()=>{const provider=$("ttsProvider").value;const [host,port]=presets[provider]||presets.http;$("ttsHost").value=host;$("ttsPort").value=port;if(!["openai","http"].includes(provider))$("ttsBaseUrl").value="";if(provider==="browser")setSelectOptions($("ttsBrowserVoice"),browserVoices(),$("ttsBrowserVoice").value);if(provider==="openai"&&!$("ttsOpenAIVoice").value)$("ttsOpenAIVoice").value="alloy";providerFields()};
     $("ttsRefreshVoices").onclick=refreshVoices;$("ttsTest").onclick=test;$("ttsStop").onclick=stop;
     window.addEventListener("enchan:new-chat",stop);window.EnchanI18n.onChange(updateButton);window.speechSynthesis?.addEventListener?.("voiceschanged",()=>{if($("ttsProvider").value==="browser")setSelectOptions($("ttsBrowserVoice"),browserVoices(),$("ttsBrowserVoice").value)});

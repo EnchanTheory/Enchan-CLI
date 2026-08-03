@@ -10,21 +10,27 @@
   <link rel="stylesheet" href="/assets/css/styles.css">
   <link rel="stylesheet" href="/assets/css/themes.css">
   <link rel="stylesheet" href="/assets/css/status.css">
+  <link rel="stylesheet" href="/assets/css/local-share.css">
   <link rel="stylesheet" href="/tts/tts.css">
 </head>
 <body>
   <header>
     <div class="brand"><div><strong>Enchan CLI WEB UI</strong><small id="runtime">Local</small></div></div>
     <nav>
-      <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/assets/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
-      <button class="header-command text-command" id="socialToggle" type="button" aria-controls="socialPanel" aria-expanded="false" data-i18n-title="social.open"><span data-i18n="social.open"></span><span id="socialBadge" class="social-notification-badge" aria-live="polite" hidden></span></button>
-      <button class="header-command text-command" id="ragToggle" type="button" aria-controls="ragPanel" aria-expanded="false" data-i18n-title="rag.open"><span>RAG</span></button>
-      <button class="header-command text-command" id="ttsSettings" type="button" aria-controls="ttsDialog" aria-pressed="false" data-i18n-title="tts.open"><span>TTS</span><i class="tts-status-dot" aria-hidden="true"></i></button>
-      <button class="icon-button appearance-trigger" id="appearanceSettings" data-i18n-title="header.appearance"><span aria-hidden="true">Aa</span></button>
-      <button class="header-command text-command" id="settings" data-i18n-title="header.mascotSettings"><span>MASCOT</span></button>
-      <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="backendStatusText"></span></span>
+      <button class="icon-button mobile-menu-toggle" id="mobileMenuToggle" type="button" aria-label="Menu" aria-controls="headerMenu" aria-expanded="false"><span aria-hidden="true">☰</span></button>
+      <div class="header-menu" id="headerMenu">
+        <button class="header-command" id="newChat" data-i18n-title="header.newChat"><img src="/assets/icons/edit_square.svg" alt=""><span data-i18n="header.newChat"></span></button>
+        <button class="header-command text-command" id="socialToggle" type="button" aria-controls="socialPanel" aria-expanded="false" data-i18n-title="social.open"><span data-i18n="social.open"></span><span id="socialBadge" class="social-notification-badge" aria-live="polite" hidden></span></button>
+        <button class="header-command text-command" id="ragToggle" type="button" aria-controls="ragPanel" aria-expanded="false" data-i18n-title="rag.open"><span>RAG</span></button>
+        <button class="header-command text-command" id="ttsSettings" type="button" aria-controls="ttsDialog" aria-pressed="false" data-i18n-title="tts.open"><span>TTS</span><i class="tts-status-dot" aria-hidden="true"></i></button>
+        <button class="header-command text-command local-share-header" id="localShareHeader" type="button" aria-controls="localShareDialog" data-i18n-title="localShare.open"><span>MOBILE</span></button>
+        <button class="icon-button appearance-trigger" id="appearanceSettings" data-i18n-title="header.appearance"><span aria-hidden="true">Aa</span></button>
+        <button class="header-command text-command" id="settings" data-i18n-title="header.mascotSettings"><span>MASCOT</span></button>
+        <span class="backend-status is-checking" id="backendStatus" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="backendStatusText"></span></span>
+      </div>
     </nav>
   </header>
+  <div id="localShareBanner" class="local-share-banner" role="status" aria-live="assertive" hidden><span data-i18n="localShare.banner"></span><span id="localShareBannerDevice">0/1</span><button id="localShareBannerStop" type="button" data-i18n="localShare.stop"></button></div>
   <main>
     <section id="messages" aria-live="polite">
       <div class="welcome" id="welcome"><h1 data-i18n="welcome.title"></h1><p data-i18n="welcome.body"></p></div>
@@ -271,6 +277,34 @@
     </div>
     <div slot="footer" class="enchan-dialog-actions"><button class="primary" type="submit" form="mascotForm" data-i18n="mascot.saveAndSelect"></button></div>
   </wa-dialog>
+  <wa-dialog id="localShareDialog" class="enchan-dialog local-share-dialog">
+    <span slot="label" data-i18n="localShare.title"></span>
+    <div class="enchan-dialog-body local-share-dialog-body">
+      <p class="dialog-description" data-i18n="localShare.description"></p>
+      <section id="localShareIdle" class="local-share-intro">
+        <p data-i18n="localShare.off"></p>
+        <button id="localShareEnable" class="primary local-share-enable" type="button" data-i18n="localShare.enable"></button>
+      </section>
+      <section id="localShareDetails" class="local-share-details" hidden>
+        <div class="local-share-card">
+          <div class="local-share-qr-block local-share-controller-only">
+            <img id="localShareQr" class="local-share-qr" alt="Local share QR code">
+            <p class="local-share-qr-note" data-i18n="localShare.qrCopyHint"></p>
+          </div>
+          <dl class="local-share-data">
+            <div class="local-share-controller-only"><dt data-i18n="localShare.url"></dt><dd id="localShareUrl"></dd></div>
+            <div class="local-share-controller-only"><dt data-i18n="localShare.password"></dt><dd id="localSharePassword" class="local-share-password">----</dd></div>
+            <div class="local-share-controller-only"><dt data-i18n="localShare.network"></dt><dd id="localShareNetwork"></dd></div>
+            <div><dt data-i18n="localShare.device"></dt><dd id="localShareDevice"></dd></div>
+            <div><dt data-i18n="localShare.count"></dt><dd id="localShareCount">0/1</dd></div>
+          </dl>
+        </div>
+        <p class="local-share-warning" data-i18n="localShare.warning"></p>
+        <div class="local-share-actions"><button id="localShareStop" class="secondary" type="button" data-i18n="localShare.stop"></button></div>
+      </section>
+      <p id="localShareError" class="local-share-error" role="alert"></p>
+    </div>
+  </wa-dialog>
   <wa-dialog id="approvalDialog" class="enchan-dialog approval-dialog" aria-describedby="approvalDescription">
     <span slot="label" data-i18n="approval.title"></span>
     <div class="enchan-dialog-body approval-body">
@@ -284,10 +318,10 @@
       <button id="approvalDeny" class="secondary approval-deny" type="button" data-i18n="approval.deny"></button>
     </div>
   </wa-dialog>
-  <script src="/assets/js/initial-scroll.js"></script>
   <script src="/assets/js/i18n.js"></script>
   <script src="/tts/tts.js"></script>
   <script src="/assets/js/app.js"></script>
+  <script src="/assets/js/local-share.js"></script>
   <script src="/assets/js/appearance.js"></script>
   <script src="/assets/js/favicon.js"></script>
   <script src="/assets/js/status.js"></script>

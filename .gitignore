@@ -8,6 +8,7 @@ logs/
 data/mascots/
 /data/social/
 /data/tts/
+/data/local-share-tls/
 temp_workspace/*
 !temp_workspace/.gitkeep
 memory/guidelines/*

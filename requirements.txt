@@ -3,3 +3,5 @@ rich
 ddgs
 httpx
 Pillow
+cryptography
+qrcode

@@ -200,7 +200,7 @@ try {
 
 if ($env:ENCHAN_PYTHON) {
     try {
-        & $BasePython -c "import prompt_toolkit, rich" | Out-Null
+        & $BasePython -c "import cryptography, prompt_toolkit, qrcode, rich" | Out-Null
         Write-Host "Python UI dependencies already installed"
     } catch {
         Write-Host "Installing Python UI dependencies"

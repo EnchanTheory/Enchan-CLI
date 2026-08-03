@@ -28,6 +28,7 @@ window.EnchanI18n.ready.then(()=>{
   let manifest={default:FALLBACK_THEME,themes:[]};
   let selected=localStorage.getItem(THEME_KEY)||FALLBACK_THEME;
   let backgroundUrl="";
+  let backgroundBlob=null;
   let backgroundSettings=loadBackgroundSettings();
 
   function numberOrDefault(value,fallback){const number=Number(value);return Number.isFinite(number)?number:fallback}
@@ -68,11 +69,25 @@ window.EnchanI18n.ready.then(()=>{
     if(preview){preview.classList.toggle("has-image",enabled);preview.style.backgroundImage=enabled?`linear-gradient(rgba(12,14,15,${backgroundSettings.darkness/100}),rgba(12,14,15,${backgroundSettings.darkness/100})),url("${backgroundUrl}")`:"none"}
     if(previewText)previewText.textContent=t(enabled?"appearance.background.selected":"appearance.background.none");if(darkness)darkness.value=String(backgroundSettings.darkness);if(darknessValue)darknessValue.value=`${backgroundSettings.darkness}%`;if(blur)blur.value=String(backgroundSettings.blur);if(blurValue)blurValue.value=`${backgroundSettings.blur}px`;if(position)position.value=backgroundSettings.position;setControlsEnabled(enabled);
   }
-  function replaceBackgroundUrl(blob){if(backgroundUrl)URL.revokeObjectURL(backgroundUrl);backgroundUrl=blob?URL.createObjectURL(blob):"";applyBackground()}
-  async function loadBackground(){try{const blob=await readStoredImage();if(blob instanceof Blob)replaceBackgroundUrl(blob);else applyBackground()}catch(_){applyBackground()}}
+  function replaceBackgroundUrl(blob){if(backgroundUrl)URL.revokeObjectURL(backgroundUrl);backgroundBlob=blob instanceof Blob?blob:null;backgroundUrl=backgroundBlob?URL.createObjectURL(backgroundBlob):"";applyBackground()}
+  async function loadBackground(){
+    if(document.body.classList.contains("mobile-share-client")){
+      try{const response=await fetch("/api/local-share/background?v="+Date.now(),{cache:"no-store"});if(response.ok){replaceBackgroundUrl(await response.blob());return}}catch(_){}
+      applyBackground();return;
+    }
+    try{const blob=await readStoredImage();if(blob instanceof Blob)replaceBackgroundUrl(blob);else applyBackground()}catch(_){applyBackground()}
+  }
+  async function syncBackground(){
+    if(document.body.classList.contains("mobile-share-client")||!document.getElementById("localShareHeader")?.classList.contains("is-active"))return;
+    try{
+      if(backgroundBlob)await fetch("/api/local-share/background",{method:"POST",headers:{"Content-Type":backgroundBlob.type},body:backgroundBlob});
+      else await fetch("/api/local-share/background",{method:"DELETE"});
+    }catch(_){}
+  }
+  window.EnchanAppearance={syncBackground};
 
-  imageInput?.addEventListener("change",async event=>{const file=event.target.files?.[0];if(!file)return;error.textContent="";if(!["image/png","image/jpeg","image/webp"].includes(file.type)){error.textContent=t("appearance.error.invalidType");event.target.value="";return}if(file.size>MAX_IMAGE_BYTES){error.textContent=t("appearance.error.tooLarge");event.target.value="";return}try{await writeStoredImage(file);replaceBackgroundUrl(file)}catch(err){error.textContent=err?.message||t("appearance.error.store")}finally{event.target.value=""}});
-  removeButton?.addEventListener("click",async()=>{error.textContent="";try{await deleteStoredImage();replaceBackgroundUrl(null)}catch(err){error.textContent=err?.message||t("appearance.error.remove")}});
+  imageInput?.addEventListener("change",async event=>{const file=event.target.files?.[0];if(!file)return;error.textContent="";if(!["image/png","image/jpeg","image/webp"].includes(file.type)){error.textContent=t("appearance.error.invalidType");event.target.value="";return}if(file.size>MAX_IMAGE_BYTES){error.textContent=t("appearance.error.tooLarge");event.target.value="";return}try{await writeStoredImage(file);replaceBackgroundUrl(file);await syncBackground()}catch(err){error.textContent=err?.message||t("appearance.error.store")}finally{event.target.value=""}});
+  removeButton?.addEventListener("click",async()=>{error.textContent="";try{await deleteStoredImage();replaceBackgroundUrl(null);await syncBackground()}catch(err){error.textContent=err?.message||t("appearance.error.remove")}});
   darkness?.addEventListener("input",()=>{backgroundSettings.darkness=clamp(Number(darkness.value),30,85);saveBackgroundSettings();applyBackground()});
   blur?.addEventListener("input",()=>{backgroundSettings.blur=clamp(Number(blur.value),0,12);saveBackgroundSettings();applyBackground()});
   position?.addEventListener("change",()=>{backgroundSettings.position=position.value;saveBackgroundSettings();applyBackground()});
