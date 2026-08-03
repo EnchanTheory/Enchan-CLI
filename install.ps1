@@ -208,16 +208,34 @@ if ($env:ENCHAN_PYTHON) {
     }
 } else {
     $RequirementsHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RequirementsPath).Hash
-    $VenvReady = (Test-Path $VenvPython) -and (Test-Path $VenvHashPath) -and ((Get-Content -LiteralPath $VenvHashPath -Raw).Trim() -eq $RequirementsHash)
-    if ($VenvReady) {
+    $VenvUsable = Test-Path $VenvPython
+    if ($VenvUsable) {
+        & $VenvPython --version 2>$null | Out-Null
+        $VenvUsable = $LASTEXITCODE -eq 0
+    }
+    $RequirementsCurrent = $VenvUsable -and (Test-Path $VenvHashPath) -and ((Get-Content -LiteralPath $VenvHashPath -Raw).Trim() -eq $RequirementsHash)
+    if ($RequirementsCurrent) {
         Write-Host "Python environment already installed"
+    } elseif ($VenvUsable) {
+        Write-Host "Updating Python environment"
+        & $VenvPython -m pip install -r $RequirementsPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Python dependency update failed"
+        }
+        Set-Content -LiteralPath $VenvHashPath -Value $RequirementsHash -Encoding UTF8
     } else {
         if (Test-Path $VenvDir) {
             Remove-Item -LiteralPath $VenvDir -Recurse -Force
         }
         Write-Host "Creating Python environment"
         & $BasePython -m venv $VenvDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "Python environment creation failed"
+        }
         & $VenvPython -m pip install -r $RequirementsPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Python dependency installation failed"
+        }
         Set-Content -LiteralPath $VenvHashPath -Value $RequirementsHash -Encoding UTF8
     }
 }

@@ -198,8 +198,14 @@ if [[ -n "${ENCHAN_PYTHON:-}" ]]; then
   fi
 else
   req_hash="$(requirements_hash)"
-  if [[ -x "$venv_python" && -f "$venv_hash_path" && "$(cat "$venv_hash_path")" == "$req_hash" ]]; then
-    echo "Python environment already installed"
+  if [[ -x "$venv_python" ]] && "$venv_python" --version >/dev/null 2>&1; then
+    if [[ -f "$venv_hash_path" && "$(cat "$venv_hash_path")" == "$req_hash" ]]; then
+      echo "Python environment already installed"
+    else
+      echo "Updating Python environment"
+      "$venv_python" -m pip install -r "$requirements_path"
+      printf '%s\n' "$req_hash" > "$venv_hash_path"
+    fi
   else
     rm -rf "$venv_dir"
     echo "Creating Python environment"
