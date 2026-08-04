@@ -43,9 +43,9 @@ from backend.tokenizer_bridge import estimate_text_tokens_rough
 from backend.webui.sns.outing_service import SocialService
 
 
-BACKEND_DIR = Path(__file__).resolve().parent
+WEB_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = WEB_DIR.parent
 CLI_DIR = BACKEND_DIR.parent
-WEB_DIR = BACKEND_DIR / "webui"
 LOCALE_DIR = WEB_DIR / "locales"
 BUILTIN_MASCOT_DIR = WEB_DIR / "mascots"
 MASCOT_DIR = CLI_DIR / "data" / "mascots"
@@ -1232,15 +1232,9 @@ def run_webui(*, backend_mode: str, args: Any, session_log_path: Path,
         generation_config["kv_cache_type"] = apply_enchan_kv_cache_patch(getattr(args, "kv_cache_type", None))
         generation_config["screen_strength"] = getattr(args, "screen_strength", 0.2)
     state = WebChatState(backend_mode, args, session_log_path, generation_config, tokenizer, agent_mode)
-    requested_host = str(getattr(args, "web_host", "127.0.0.1")).strip().lower()
-    if requested_host not in {"127.0.0.1", "localhost"}:
-        raise RuntimeError(
-            "The Web UI must bind to loopback. Enable smartphone local sharing from the Web UI instead."
-        )
-    server = EnchanWebServer((requested_host, args.web_port), state)
-    host, port = server.server_address[:2]
-    browser_host = "127.0.0.1" if host in ("0.0.0.0", "::") else host
-    url = f"http://{browser_host}:{port}/"
+    server = EnchanWebServer(("127.0.0.1", args.web_port), state)
+    _host, port = server.server_address[:2]
+    url = f"http://127.0.0.1:{port}/"
     print(f"[Web UI] Running at {url}")
     print("[Web UI] Press Ctrl+C to stop.")
     threading.Timer(0.35, lambda: webbrowser.open(url)).start()

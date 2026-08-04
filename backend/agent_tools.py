@@ -60,6 +60,13 @@ AGENT_SYSTEM_PROMPT = f"""You are Enchan running inside Enchan CLI (workspace ro
 - Use available capabilities to inspect large files efficiently rather than guessing from partial content.
 - Use runtime evidence, exit codes, stderr, and timestamps as diagnostic evidence.
 - Verify -> Execute -> Verify is the code change policy.
+
+## Scope & Destructive Safety
+- Interpret cleanup, organization, maintenance, and test-code requests narrowly. They do not authorize deleting similar files, adjacent features, generated data, or unrelated artifacts.
+- Before changing files, identify the exact requested targets and preserve everything outside that set. Never batch a speculative cleanup into one broad operation.
+- File and directory deletion is disabled. Move an explicitly named target to a quarantine or backup location when removal is required, or explain that the user must delete it manually.
+- A destructive-operation refusal is a hard policy boundary. Never retry it through another shell spelling, an interpreter, edit_file, a patch, a skill, or a delegated agent.
+- Do not use edit_file to delete a file, empty an existing file, or modify multiple files in one patch.
 """
 
 
@@ -307,6 +314,27 @@ def _normalize_edit_file_args(args: dict) -> dict:
     return normalized
 
 
+def _validate_patch_scope(patch: str) -> str | None:
+    """Reject file deletion and multi-file patches before git sees them."""
+    normalized = patch.replace("\r\n", "\n")
+    if re.search(r"(?m)^deleted file mode\b|^\+\+\+\s+/dev/null(?:\s|$)", normalized):
+        return "edit_file cannot delete files. Move the exact target to quarantine instead."
+    targets = {
+        line[4:].split("\t", 1)[0].strip()
+        for line in normalized.splitlines()
+        if line.startswith("+++ ") and line[4:].split("\t", 1)[0].strip() != "/dev/null"
+    }
+    if len(targets) != 1:
+        return "edit_file patches must modify exactly one file. Split broader work into separately reviewed edits."
+    return None
+
+
+def _empty_existing_file_reason(before: str, after: str) -> str | None:
+    if before.strip() and not after.strip():
+        return "edit_file cannot empty an existing file. Make a narrower edit or preserve it in quarantine."
+    return None
+
+
 def tool_edit_file(args: dict) -> dict:
     try:
         args = _normalize_edit_file_args(args)
@@ -317,6 +345,9 @@ def tool_edit_file(args: dict) -> dict:
     should_apply = not (apply_val is False or str(apply_val).lower() == "false")
     patch = args.get("patch")
     if operation == "apply_patch":
+        scope_error = _validate_patch_scope(patch)
+        if scope_error:
+            return {"ok": False, "error": scope_error}
         if not should_apply:
             return {"ok": True, "content": "DRY RUN PATCH:\n" + patch}
         temp_dir = CLI_DIR / "temp_workspace"
@@ -345,6 +376,9 @@ def tool_edit_file(args: dict) -> dict:
         if count != 1:
             return {"ok": False, "error": f"Expected exactly one match, found {count}."}
         after = before.replace(old, new, 1)
+        scope_error = _empty_existing_file_reason(before, after)
+        if scope_error:
+            return {"ok": False, "error": scope_error}
         diff = make_unified_diff(path, before, after)
         if not should_apply:
             return {"ok": True, "content": "DRY RUN DIFF:\n" + diff}
@@ -355,6 +389,9 @@ def tool_edit_file(args: dict) -> dict:
         if path.exists() and not bool(args.get("overwrite", False)):
             return {"ok": False, "error": f"File exists: {path}. Set overwrite=true to replace it."}
         before = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        scope_error = _empty_existing_file_reason(before, content)
+        if scope_error:
+            return {"ok": False, "error": scope_error}
         diff = make_unified_diff(path, before, content)
         if not should_apply:
             return {"ok": True, "content": "DRY RUN DIFF:\n" + diff}

@@ -46,7 +46,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plain", action="store_true", help="with --ask/--ask-file, print only the final assistant response")
     parser.add_argument("--agent", action="store_true", help="enable deterministic ReAct tool execution mode")
     parser.add_argument("--ui", choices=["cui", "web"], help="interactive interface (otherwise selected at startup)")
-    parser.add_argument("--web-host", default="127.0.0.1", help="Web UI bind host (default: 127.0.0.1)")
     parser.add_argument("--web-port", type=int, default=8765, help="Web UI bind port (default: 8765)")
 
     args = parser.parse_args()

@@ -337,7 +337,7 @@ def main():
         generation_config["do_sample"] = False
 
     if interface_mode == "web" and single_turn_prompt is None:
-        from backend.webui_server import run_webui
+        from backend.webui.server import run_webui
 
         run_webui(
             backend_mode=backend_mode,

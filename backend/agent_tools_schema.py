@@ -43,7 +43,7 @@ AGENT_TOOLS_SCHEMA: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Single local file editing tool. Choose exactly one operation: patch alone; exact replacement with old plus new (content is accepted as an alias for new); or write/create with content. Do not combine patch with replacement/write fields. Use apply=false for dry runs.",
+            "description": "Single local file editing tool. Each patch must modify exactly one file; file deletion and emptying an existing file are refused. Choose exactly one operation: patch alone; exact replacement with old plus new (content is accepted as an alias for new); or write/create with content. Do not combine patch with replacement/write fields. Use apply=false for dry runs.",
             "parameters": {
                 "type": "object",
                 "properties": {

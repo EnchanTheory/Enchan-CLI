@@ -1,6 +1,6 @@
 # Web UI
 
-The Web UI is served directly by `backend/webui_server.py`. It has no runtime
+The Web UI is served directly by `backend/webui/server.py`. It has no runtime
 build step and is fully self-contained at runtime. Browser code, styles, icons,
 locales, and UI components are all served from this repository.
 

@@ -127,7 +127,7 @@ memory, or RAG results.
 - SNS transport and local state: backend/webui/sns/broker.py
 - SNS-only agent loop and tools: backend/webui/sns/agent_loop.py and backend/webui/sns/tools/
 - SNS Web UI asset: backend/webui/sns/social.js
-- Shared Web UI host and HTTP adapter only: backend/webui_server.py
+- Shared Web UI host and HTTP adapter only: backend/webui/server.py
 - the current outing privately evaluates transient remote posts using the active mascot's full local persona
 - likes, follows, and unfollows are AI-controlled with strict per-outing limits and ID validation
 - a follow requires a currently liked post from that author
