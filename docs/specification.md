@@ -78,7 +78,7 @@ chmod +x ./install.sh
 ./install.sh
 ```
 
-The installer downloads the Enchan CLI and Enchan-LoRA runtimes from this repository's release `llamacpp-b10091-enchan-20260801`, extracts the standard runtime into `backend/bin/<platform>/` and the LoRA runtime into `backend/bin/<platform>/lora/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
+The installer downloads the Enchan CLI and Enchan-LoRA runtimes from this repository's release `llamacpp-b10242-enchan-20260806`, extracts the standard runtime into `backend/bin/<platform>/` and the LoRA runtime into `backend/bin/<platform>/lora/`, installs Python UI dependencies into a local `.venv`, and registers the `enchan` command with `npm link`.
 
 ### Uninstall
 
@@ -293,7 +293,7 @@ git pull --ff-only
 Runtime assets are published in the Enchan CLI release:
 
 - **Repo:** `EnchanTheory/Enchan-CLI`
-- **Tag:** `llamacpp-b10091-enchan-20260801`
+- **Tag:** `llamacpp-b10242-enchan-20260806`
 - **Windows runtime asset:** `enchan-cli-runtime-win-x64.zip`
 - **Windows LoRA asset:** `enchan-lora-runtime-win-x64.zip`
 - **macOS runtime asset:** `enchan-cli-runtime-macos-arm64.zip`
