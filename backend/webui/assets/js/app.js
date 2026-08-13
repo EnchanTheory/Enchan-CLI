@@ -2,7 +2,7 @@ window.EnchanI18n.ready.then(()=>{
 const $=id=>document.getElementById(id);
 const {t}=window.EnchanI18n;
 const dialogs=window.EnchanDialogs;
-const state={config:null,mascot:null,timer:null,frame:0,busy:false,ragBusy:false,ragStatus:null,loraStatus:null,loraBusy:false,loraDirectory:"",imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null,pendingConfirmation:null};
+const state={config:null,mascot:null,timer:null,frame:0,busy:false,chatBusy:false,cancelRequested:false,ragBusy:false,ragStatus:null,loraStatus:null,loraBusy:false,loraDirectory:"",imageData:"",mascotImage:null,previewTimer:null,previewFrame:0,currentAnimation:"",animationToken:0,pendingApproval:null,pendingConfirmation:null};
 const messages=$("messages"),welcome=$("welcome"),prompt=$("prompt"),send=$("send");
 const mobileShareClient=()=>document.body.classList.contains("mobile-share-client");
 
@@ -291,7 +291,7 @@ function editMascot(m){
 $("composer").addEventListener("submit",async event=>{
   event.preventDefault();
   const text=prompt.value.trim();if(!text||state.busy)return;window.EnchanTTS?.stop();
-  addMessage("user",text);prompt.value="";state.busy=true;resize();play("waiting",{loop:true});
+  addMessage("user",text);prompt.value="";state.busy=true;state.chatBusy=true;state.cancelRequested=false;resize();play("waiting",{loop:true});
   const row=addMessage("assistant","");const textNode=row.querySelector(".message-text");
   try{
     const response=await fetch("/api/chat_stream",{
@@ -301,7 +301,7 @@ $("composer").addEventListener("submit",async event=>{
     if(!response.ok){const error=await response.json();throw new Error(error.error||`HTTP ${response.status}`)}
     play(state.config?.agentMode?"running":"waiting",{loop:true});
     const reader=response.body.getReader(),decoder=new TextDecoder("utf-8");
-    let fullText="",buffer="",isDone=false,toolFailed=false,toolDisplayOnly=false;
+    let fullText="",buffer="",isDone=false,cancelled=false,toolFailed=false,toolDisplayOnly=false;
     while(true){
       const {value,done}=await reader.read();if(done)break;
       buffer+=decoder.decode(value,{stream:true});const lines=buffer.split("\n");buffer=lines.pop();
@@ -319,6 +319,7 @@ $("composer").addEventListener("submit",async event=>{
           continue;
         }
         if(data.type==="error")throw new Error(data.error||t("errors.emptyResponse"));
+        if(data.type==="cancelled"){cancelled=true;isDone=true;break}
         if(data.type==="tool_result"){
           toolFailed=!data.ok;
           toolDisplayOnly=true;
@@ -337,15 +338,24 @@ $("composer").addEventListener("submit",async event=>{
       }
       if(isDone)break;
     }
-    if(!fullText)textNode.textContent=t("errors.emptyResponse");
-    play(toolFailed?"failed":"waving");
-    if(fullText&&!toolFailed&&!toolDisplayOnly)window.EnchanTTS?.speak(fullText);
+    if(cancelled){if(!fullText)row.remove();play("idle")}
+    else{
+      if(!fullText)textNode.textContent=t("errors.emptyResponse");
+      play(toolFailed?"failed":"waving");
+      if(fullText&&!toolFailed&&!toolDisplayOnly)window.EnchanTTS?.speak(fullText);
+    }
   }catch(error){
     if(state.pendingApproval)await resolveApproval(false).catch(()=>{});
     textNode.textContent=t("errors.request",{message:error.message});row.classList.add("error");play("failed");
   }finally{
-    state.busy=false;resize();if(!document.body.classList.contains("mobile-share-client"))prompt.focus();
+    state.busy=false;state.chatBusy=false;resize();if(!document.body.classList.contains("mobile-share-client"))prompt.focus();
   }
+});
+document.addEventListener("keydown",event=>{
+  if(event.key!=="Escape"||!state.chatBusy||state.cancelRequested)return;
+  event.preventDefault();event.stopImmediatePropagation();state.cancelRequested=true;
+  if(state.pendingApproval)resolveApproval(false).catch(()=>{});
+  api("/api/chat/cancel",{clientId}).catch(()=>{state.cancelRequested=false});
 });
 prompt.addEventListener("input",resize);prompt.addEventListener("keydown",e=>{if(e.isComposing||e.keyCode===229)return;if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("composer").requestSubmit()}});
 $("newChat").onclick=async()=>{

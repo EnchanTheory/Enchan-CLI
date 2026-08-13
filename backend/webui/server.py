@@ -267,6 +267,8 @@ class WebChatState:
         self._activity_lock = threading.Lock()
         self._directory_dialog_lock = threading.Lock()
         self._chat_active = False
+        self._chat_client_id = ""
+        self._chat_cancel_event: threading.Event | None = None
         timeout = float(self.generation_config.get("approval_timeout_seconds", 120))
         self.approvals = WebApprovalBroker(timeout)
         self.rag_service = RAGService()
@@ -346,6 +348,21 @@ class WebChatState:
             if self._chat_active:
                 raise RuntimeError("Another chat response is already running")
             self._chat_active = True
+            self._chat_client_id = client_id
+            self._chat_cancel_event = threading.Event()
+
+    def cancel_chat(self, client_id: str) -> bool:
+        client_id = client_id.strip()
+        if not client_id:
+            raise ValueError("Browser client ID is required")
+        with self._activity_lock:
+            if not self._chat_active or self._chat_client_id != client_id:
+                return False
+            cancel_event = self._chat_cancel_event
+        if cancel_event is not None:
+            cancel_event.set()
+        self.approvals.cancel_client(client_id, "generation_cancelled")
+        return True
 
     def rag_status(self) -> dict[str, Any]:
         collections = []
@@ -455,6 +472,8 @@ class WebChatState:
         q = queue.Queue()
         mascot_id = self._active_mascot_id()
         chat_history = self._mascot_chat_history(mascot_id)
+        with self._activity_lock:
+            cancel_event = self._chat_cancel_event
 
         def worker():
             with self.lock:
@@ -476,7 +495,9 @@ class WebChatState:
                     config = dict(self.generation_config)
                     config["system_context"] = system_context
                     config["suppress_response_header"] = True
+                    config["_cancel_event"] = cancel_event
 
+                    turn_start = len(chat_history)
                     chat_history.append({"role": "user", "content": prompt})
                     append_session_event(self.session_log_path, {
                         "type": "message", "role": "user", "content": prompt,
@@ -496,7 +517,11 @@ class WebChatState:
                             config, chunk_callback=on_chunk, chat_history=chat_history,
                         )
                     if not result:
-                        chat_history.pop()
+                        del chat_history[turn_start:]
+                        if cancel_event is not None and cancel_event.is_set():
+                            q.put({"type": "cancelled"})
+                            q.put({"type": "done"})
+                            return
                         q.put({"type": "error", "error": "The model did not return a response"})
                         return
                     tool_result = result.get("toolResult")
@@ -513,6 +538,8 @@ class WebChatState:
                 finally:
                     with self._activity_lock:
                         self._chat_active = False
+                        self._chat_client_id = ""
+                        self._chat_cancel_event = None
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -948,6 +975,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     self.state.approvals.cancel_client(client_id)
+
+            elif path == "/api/chat/cancel":
+                self._json(HTTPStatus.OK, {"cancelled": self.state.cancel_chat(client_id)})
 
             elif path.startswith("/api/social/"):
                 try:

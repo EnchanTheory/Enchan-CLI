@@ -166,7 +166,8 @@ def generate_enchan_llama_response(
         try:
             with urllib.request.urlopen(req, timeout=300) as resp:
                 for raw_line in resp:
-                    if esc_pressed():
+                    cancel_event = generation_config.get("_cancel_event")
+                    if esc_pressed() or (cancel_event is not None and cancel_event.is_set()):
                         cancelled = True
                         break
 
@@ -225,7 +226,7 @@ def generate_enchan_llama_response(
                     except Exception:
                         pass
 
-                    if esc_pressed():
+                    if esc_pressed() or (cancel_event is not None and cancel_event.is_set()):
                         cancelled = True
                         break
         except urllib.error.HTTPError as e:

@@ -221,7 +221,8 @@ def generate_ollama_response(
     try:
         with urllib.request.urlopen(req, timeout=300) as resp:
             for raw_line in resp:
-                if esc_pressed():
+                cancel_event = generation_config.get("_cancel_event")
+                if esc_pressed() or (cancel_event is not None and cancel_event.is_set()):
                     cancelled = True
                     break
                 if not raw_line.strip():
@@ -263,7 +264,7 @@ def generate_ollama_response(
                                     tool_calls_merged[i]["function"]["arguments"][k] += v
                                 else:
                                     tool_calls_merged[i]["function"]["arguments"][k] = v
-                if esc_pressed():
+                if esc_pressed() or (cancel_event is not None and cancel_event.is_set()):
                     cancelled = True
                     break
     except urllib.error.HTTPError as e:
