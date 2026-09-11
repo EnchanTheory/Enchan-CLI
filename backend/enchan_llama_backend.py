@@ -15,7 +15,7 @@ import re
 import threading
 import functools
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 # Path Resolution
 BACKEND_DIR = Path(__file__).resolve().parent
