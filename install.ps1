@@ -2,10 +2,11 @@ $ErrorActionPreference = "Stop"
 
 $RuntimeRepo = "EnchanTheory/Enchan-CLI"
 $RuntimeTag = "llamacpp-b10760-enchan-20260903"
+$LoraRuntimeTag = "llamacpp-b10760-enchan-20260903"
 $RuntimeAsset = "enchan-cli-runtime-win-x64.zip"
 $RuntimeAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$RuntimeTag/$RuntimeAsset"
 $LoraAsset = "enchan-lora-runtime-win-x64.zip"
-$LoraAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$RuntimeTag/$LoraAsset"
+$LoraAssetUrl = "https://github.com/$RuntimeRepo/releases/download/$LoraRuntimeTag/$LoraAsset"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BinDir = Join-Path $ScriptDir "backend\bin\win-x64"
 $LoraBinDir = Join-Path $BinDir "lora"
@@ -17,7 +18,7 @@ $RuntimeManifest = Join-Path $BinDir ".runtime-manifest"
 $RuntimeMarkerValue = "$RuntimeRepo $RuntimeTag $RuntimeAsset"
 $LoraMarker = Join-Path $LoraBinDir ".runtime-version"
 $LoraManifest = Join-Path $LoraBinDir ".runtime-manifest"
-$LoraMarkerValue = "$RuntimeRepo $RuntimeTag $LoraAsset"
+$LoraMarkerValue = "$RuntimeRepo $LoraRuntimeTag $LoraAsset"
 $RequirementsPath = Join-Path $ScriptDir "requirements.txt"
 $VenvDir = Join-Path $ScriptDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
@@ -76,7 +77,7 @@ function Download-LoraAsset {
     } catch {
         throw "LoRA runtime asset is not publicly downloadable and GitHub CLI is not authenticated. Run: gh auth login"
     }
-    gh release download $RuntimeTag --repo $RuntimeRepo --pattern $LoraAsset --dir $TmpDir --clobber
+    gh release download $LoraRuntimeTag --repo $RuntimeRepo --pattern $LoraAsset --dir $TmpDir --clobber
 }
 function Remove-RuntimeManifestFiles {
     if (-not (Test-Path $RuntimeManifest)) {

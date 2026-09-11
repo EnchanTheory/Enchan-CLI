@@ -3,10 +3,11 @@ set -euo pipefail
 
 runtime_repo="EnchanTheory/Enchan-CLI"
 runtime_tag="llamacpp-b10760-enchan-20260903"
+lora_runtime_tag="llamacpp-b10760-enchan-20260903"
 runtime_asset="enchan-cli-runtime-macos-arm64.zip"
 runtime_asset_url="https://github.com/$runtime_repo/releases/download/$runtime_tag/$runtime_asset"
 lora_asset="enchan-lora-runtime-macos-arm64.zip"
-lora_asset_url="https://github.com/$runtime_repo/releases/download/$runtime_tag/$lora_asset"
+lora_asset_url="https://github.com/$runtime_repo/releases/download/$lora_runtime_tag/$lora_asset"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bin_dir="$script_dir/backend/bin/macos-arm64"
 lora_bin_dir="$bin_dir/lora"
@@ -18,7 +19,7 @@ runtime_manifest="$bin_dir/.runtime-manifest"
 runtime_marker_value="$runtime_repo $runtime_tag $runtime_asset"
 lora_runtime_marker="$lora_bin_dir/.runtime-version"
 lora_runtime_manifest="$lora_bin_dir/.runtime-manifest"
-lora_runtime_marker_value="$runtime_repo $runtime_tag $lora_asset"
+lora_runtime_marker_value="$runtime_repo $lora_runtime_tag $lora_asset"
 requirements_path="$script_dir/requirements.txt"
 venv_dir="$script_dir/.venv"
 venv_python="$venv_dir/bin/python"
@@ -58,7 +59,7 @@ download_lora_asset() {
     echo "LoRA runtime asset is not publicly downloadable and GitHub CLI is not authenticated. Run: gh auth login" >&2
     exit 1
   }
-  gh release download "$runtime_tag" --repo "$runtime_repo" --pattern "$lora_asset" --dir "$tmp_dir" --clobber
+  gh release download "$lora_runtime_tag" --repo "$runtime_repo" --pattern "$lora_asset" --dir "$tmp_dir" --clobber
 }
 remove_runtime_manifest_files() {
   [[ -f "$runtime_manifest" ]] || return 0
