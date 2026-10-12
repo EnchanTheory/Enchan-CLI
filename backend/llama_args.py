@@ -29,6 +29,8 @@ MANAGED_LLAMA_FLAGS = {
     "--mirostat-ent",
     "--no-mmap",
     "--mmap",
+    "-lm",
+    "--load-mode",
     "--fit",
     "--rope-scaling",
     "--rope-scale",

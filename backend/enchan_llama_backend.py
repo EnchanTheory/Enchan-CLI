@@ -33,6 +33,34 @@ ENGINE_BIN_DIR = BACKEND_DIR / "bin" / _runtime_platform_dir()
 LLAMA_SERVER_NAME = "llama-server.exe" if sys.platform == "win32" else "llama-server"
 
 
+@functools.lru_cache(maxsize=8)
+def _runtime_has_load_mode(exe_path: str, runtime_stamp: tuple) -> bool:
+    # The executable and implementation DLL stamps invalidate this cache on updates.
+    probe = subprocess.run(
+        [exe_path, "--help"],
+        cwd=str(Path(exe_path).parent),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+    if probe.returncode != 0:
+        raise RuntimeError(f"Could not inspect llama-server loading options: {probe.stdout[-1000:]}")
+    return "--load-mode" in probe.stdout
+
+
+def _runtime_model_loading_args(exe_path: Path, mmap_mode: str) -> list[str]:
+    if mmap_mode not in {"on", "off"}:
+        return []
+    runtime_files = [exe_path, exe_path.with_name("llama-server-impl.dll")]
+    stamp = tuple((file.stat().st_mtime_ns, file.stat().st_size) for file in runtime_files if file.exists())
+    if _runtime_has_load_mode(str(exe_path), stamp):
+        return ["--load-mode", "mmap" if mmap_mode == "on" else "none"]
+    return ["--mmap" if mmap_mode == "on" else "--no-mmap"]
+
+
 from backend.session_log import append_session_event
 DEFAULT_ENCHAN_LLAMA_PORT = 11435
 DEFAULT_ENCHAN_LLAMA_HOST = f"http://localhost:{DEFAULT_ENCHAN_LLAMA_PORT}"
@@ -909,10 +937,7 @@ def start_enchan_llama_server(
             details.append(f"mirostat={mirostat} (lr={mirostat_lr}, ent={mirostat_ent})")
         details.append("dynamic lookup cache enabled")
         print(f"  * Advanced parameters: {', '.join(details)}")
-    if mmap_mode == "off":
-        cmd.append("--no-mmap")
-    elif mmap_mode == "on":
-        cmd.append("--mmap")
+    cmd.extend(_runtime_model_loading_args(exe_path, mmap_mode))
     if fit_mode:
         cmd.extend(["--fit", "on"])
 
