@@ -2,7 +2,7 @@
 set -euo pipefail
 
 runtime_repo="EnchanTheory/Enchan-CLI"
-runtime_tag="llamacpp-b10760-enchan-20260903"
+runtime_tag="llamacpp-b11521-enchan-20261012"
 lora_runtime_tag="llamacpp-b10760-enchan-20260903"
 runtime_asset="enchan-cli-runtime-macos-arm64.zip"
 runtime_asset_url="https://github.com/$runtime_repo/releases/download/$runtime_tag/$runtime_asset"
