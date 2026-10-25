@@ -2,6 +2,8 @@ prompt_toolkit
 rich
 ddgs
 httpx
-Pillow
+Pillow>=13.0.0
 cryptography
 qrcode
+certifi>=2026.10.19
+Brotli>=1.2.1
