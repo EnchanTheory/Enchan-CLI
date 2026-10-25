@@ -24,6 +24,7 @@ requirements_path="$script_dir/requirements.txt"
 venv_dir="$script_dir/.venv"
 venv_python="$venv_dir/bin/python"
 venv_hash_path="$venv_dir/.requirements-sha256"
+secure_pip_requirement='pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -32,6 +33,101 @@ require_command() {
   fi
 }
 
+python_supported() {
+  "$1" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1
+}
+
+pip_security_baseline_ok() {
+  "$1" - <<'PY' >/dev/null 2>&1
+import importlib.metadata as m
+import re
+
+def version_tuple(value):
+    return tuple(int(x) for x in re.findall(r"\d+", value))
+
+try:
+    current = m.version("pip")
+except m.PackageNotFoundError:
+    raise SystemExit(1)
+raise SystemExit(0 if version_tuple(current) >= version_tuple("26.2.2") else 1)
+PY
+}
+
+ensure_pip_security_baseline() {
+  local python_exe="$1"
+  local install_mode="${2:-venv}"
+  if pip_security_baseline_ok "$python_exe"; then
+    return 0
+  fi
+  echo "Updating pip security baseline to 26.2.2"
+  if [[ "$install_mode" == "user" ]]; then
+    "$python_exe" -m pip install --user "$secure_pip_requirement"
+  else
+    "$python_exe" -m pip install "$secure_pip_requirement"
+  fi
+  if ! pip_security_baseline_ok "$python_exe"; then
+    echo "Failed to establish the secure pip 26.2.2 baseline" >&2
+    exit 1
+  fi
+}
+
+python_dependency_security_baseline_ok() {
+  "$1" - <<'PY' >/dev/null 2>&1
+import importlib.metadata as m
+import re
+
+def version_tuple(value):
+    return tuple(int(x) for x in re.findall(r"\d+", value))
+
+minimums = {
+    "certifi": "2026.10.19",
+    "Pillow": "13.0.0",
+    "Brotli": "1.2.1",
+}
+for package, minimum in minimums.items():
+    try:
+        current = m.version(package)
+    except m.PackageNotFoundError:
+        raise SystemExit(1)
+    if version_tuple(current) < version_tuple(minimum):
+        raise SystemExit(1)
+
+try:
+    current = m.version("brotlicffi")
+except m.PackageNotFoundError:
+    pass
+else:
+    if version_tuple(current) < version_tuple("1.2.1.0"):
+        raise SystemExit(1)
+raise SystemExit(0)
+PY
+}
+
+ensure_optional_brotlicffi_security_baseline() {
+  local python_exe="$1"
+  local install_mode="${2:-venv}"
+  if ! "$python_exe" -c "import importlib.metadata as m; m.version('brotlicffi')" >/dev/null 2>&1; then
+    return 0
+  fi
+  if "$python_exe" - <<'PY' >/dev/null 2>&1
+import importlib.metadata as m
+import re
+
+def version_tuple(value):
+    return tuple(int(x) for x in re.findall(r"\d+", value))
+
+raise SystemExit(0 if version_tuple(m.version("brotlicffi")) >= version_tuple("1.2.1.0") else 1)
+PY
+  then
+    return 0
+  fi
+  echo "Updating brotlicffi security baseline to 1.2.1.0"
+  if [[ "$install_mode" == "user" ]]; then
+    "$python_exe" -m pip install --user --upgrade 'brotlicffi>=1.2.1.0'
+  else
+    "$python_exe" -m pip install --upgrade 'brotlicffi>=1.2.1.0'
+  fi
+}
 
 download_runtime_asset() {
   if curl -fsSL "$runtime_asset_url" -o "$zip_path" && unzip -tq "$zip_path" >/dev/null 2>&1; then
@@ -147,7 +243,6 @@ if [[ "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 
-
 mkdir -p "$bin_dir" "$lora_bin_dir"
 
 if [[ -x "$bin_dir/llama-server" && -f "$bin_dir/libenchan.dylib" && -f "$runtime_marker" && -f "$runtime_manifest" && "$(cat "$runtime_marker")" == "$runtime_marker_value" ]]; then
@@ -186,34 +281,57 @@ link_runtime_library_versions "$lora_bin_dir" "$lora_runtime_manifest"
 
 base_python="${ENCHAN_PYTHON:-python3}"
 if ! "$base_python" --version >/dev/null 2>&1; then
-  echo "Python was not found. Install Python 3 or set ENCHAN_PYTHON to the Python executable." >&2
+  echo "Python was not found. Install Python 3.11 or newer, or set ENCHAN_PYTHON to the Python executable." >&2
+  exit 1
+fi
+if ! python_supported "$base_python"; then
+  echo "Enchan CLI requires Python 3.11 or newer because the supported Pillow security baseline requires Python 3.11+." >&2
   exit 1
 fi
 
 if [[ -n "${ENCHAN_PYTHON:-}" ]]; then
-  if "$base_python" -c "import cryptography, prompt_toolkit, qrcode, rich" >/dev/null 2>&1; then
-    echo "Python UI dependencies already installed"
-  else
-    echo "Installing Python UI dependencies"
-    "$base_python" -m pip install --user -r "$requirements_path"
+  ensure_pip_security_baseline "$base_python" user
+  echo "Ensuring Python UI dependencies and security baselines"
+  "$base_python" -m pip install --user -r "$requirements_path"
+  ensure_optional_brotlicffi_security_baseline "$base_python" user
+  if ! python_dependency_security_baseline_ok "$base_python"; then
+    echo "Python dependency security baseline verification failed" >&2
+    exit 1
   fi
 else
   req_hash="$(requirements_hash)"
-  if [[ -x "$venv_python" ]] && "$venv_python" --version >/dev/null 2>&1; then
-    if [[ -f "$venv_hash_path" && "$(cat "$venv_hash_path")" == "$req_hash" ]]; then
-      echo "Python environment already installed"
-    else
-      echo "Updating Python environment"
-      "$venv_python" -m pip install -r "$requirements_path"
-      printf '%s\n' "$req_hash" > "$venv_hash_path"
-    fi
-  else
+  venv_usable=false
+  if [[ -x "$venv_python" ]] && "$venv_python" --version >/dev/null 2>&1 && python_supported "$venv_python"; then
+    venv_usable=true
+  fi
+  if ! $venv_usable && [[ -d "$venv_dir" ]]; then
     rm -rf "$venv_dir"
+  fi
+  if ! $venv_usable; then
     echo "Creating Python environment"
     "$base_python" -m venv "$venv_dir"
+  fi
+
+  ensure_pip_security_baseline "$venv_python"
+  requirements_current=false
+  if $venv_usable && [[ -f "$venv_hash_path" && "$(cat "$venv_hash_path")" == "$req_hash" ]] && python_dependency_security_baseline_ok "$venv_python"; then
+    requirements_current=true
+  fi
+
+  if $requirements_current; then
+    echo "Python environment already installed and security baseline verified"
+  else
+    echo "Updating Python environment"
     "$venv_python" -m pip install -r "$requirements_path"
+    ensure_optional_brotlicffi_security_baseline "$venv_python"
+    if ! python_dependency_security_baseline_ok "$venv_python"; then
+      echo "Python dependency security baseline verification failed" >&2
+      exit 1
+    fi
     printf '%s\n' "$req_hash" > "$venv_hash_path"
   fi
+
+  "$venv_python" -m pip check
 fi
 
 ensure_npm_link
