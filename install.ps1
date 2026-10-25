@@ -23,6 +23,7 @@ $RequirementsPath = Join-Path $ScriptDir "requirements.txt"
 $VenvDir = Join-Path $ScriptDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $VenvHashPath = Join-Path $VenvDir ".requirements-sha256"
+$SecurePipRequirement = "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
 
 function Require-Command($Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
@@ -30,6 +31,101 @@ function Require-Command($Name) {
     }
 }
 
+function Test-PythonSupported($PythonExe) {
+    & $PythonExe -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)" 2>$null
+    return $LASTEXITCODE -eq 0
+}
+
+function Test-PipSecurityBaseline($PythonExe) {
+    $Code = @'
+import importlib.metadata as m
+import re
+import sys
+
+def version_tuple(value):
+    return tuple(int(x) for x in re.findall(r"\d+", value))
+
+try:
+    current = m.version("pip")
+except m.PackageNotFoundError:
+    raise SystemExit(1)
+raise SystemExit(0 if version_tuple(current) >= version_tuple("26.2.2") else 1)
+'@
+    & $PythonExe -c $Code 2>$null
+    return $LASTEXITCODE -eq 0
+}
+
+function Ensure-PipSecurityBaseline($PythonExe, [switch]$UserInstall) {
+    if (Test-PipSecurityBaseline $PythonExe) {
+        return
+    }
+    Write-Host "Updating pip security baseline to 26.2.2"
+    $PipArgs = @("-m", "pip", "install")
+    if ($UserInstall) {
+        $PipArgs += "--user"
+    }
+    $PipArgs += $SecurePipRequirement
+    & $PythonExe @PipArgs
+    if ($LASTEXITCODE -ne 0 -or -not (Test-PipSecurityBaseline $PythonExe)) {
+        throw "Failed to establish the secure pip 26.2.2 baseline"
+    }
+}
+
+function Test-PythonDependencySecurityBaseline($PythonExe) {
+    $Code = @'
+import importlib.metadata as m
+import re
+
+def version_tuple(value):
+    return tuple(int(x) for x in re.findall(r"\d+", value))
+
+minimums = {
+    "certifi": "2026.10.19",
+    "Pillow": "13.0.0",
+    "Brotli": "1.2.1",
+}
+for package, minimum in minimums.items():
+    try:
+        current = m.version(package)
+    except m.PackageNotFoundError:
+        raise SystemExit(1)
+    if version_tuple(current) < version_tuple(minimum):
+        raise SystemExit(1)
+
+try:
+    current = m.version("brotlicffi")
+except m.PackageNotFoundError:
+    pass
+else:
+    if version_tuple(current) < version_tuple("1.2.1.0"):
+        raise SystemExit(1)
+raise SystemExit(0)
+'@
+    & $PythonExe -c $Code 2>$null
+    return $LASTEXITCODE -eq 0
+}
+
+function Ensure-OptionalBrotliCffiSecurityBaseline($PythonExe, [switch]$UserInstall) {
+    & $PythonExe -c "import importlib.metadata as m; m.version('brotlicffi')" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return
+    }
+    $Code = "import importlib.metadata as m, re; p=lambda v: tuple(int(x) for x in re.findall(r'\d+', v)); raise SystemExit(0 if p(m.version('brotlicffi')) >= p('1.2.1.0') else 1)"
+    & $PythonExe -c $Code 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        return
+    }
+    Write-Host "Updating brotlicffi security baseline to 1.2.1.0"
+    $PipArgs = @("-m", "pip", "install", "--upgrade")
+    if ($UserInstall) {
+        $PipArgs += "--user"
+    }
+    $PipArgs += "brotlicffi>=1.2.1.0"
+    & $PythonExe @PipArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to update brotlicffi security baseline"
+    }
+}
 
 function Download-RuntimeAsset {
     $oldProgress = $ProgressPreference
@@ -157,7 +253,6 @@ Require-Command node
 Require-Command npm
 Require-Command git
 
-
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 New-Item -ItemType Directory -Path $LoraBinDir -Force | Out-Null
@@ -196,48 +291,62 @@ $BasePython = if ($env:ENCHAN_PYTHON) { $env:ENCHAN_PYTHON } else { "python" }
 try {
     & $BasePython --version | Out-Host
 } catch {
-    throw "Python was not found. Install Python or set ENCHAN_PYTHON to the Python executable."
+    throw "Python was not found. Install Python 3.11 or newer, or set ENCHAN_PYTHON to the Python executable."
+}
+if (-not (Test-PythonSupported $BasePython)) {
+    throw "Enchan CLI requires Python 3.11 or newer because the supported Pillow security baseline requires Python 3.11+."
 }
 
 if ($env:ENCHAN_PYTHON) {
-    try {
-        & $BasePython -c "import cryptography, prompt_toolkit, qrcode, rich" | Out-Null
-        Write-Host "Python UI dependencies already installed"
-    } catch {
-        Write-Host "Installing Python UI dependencies"
-        & $BasePython -m pip install --user -r $RequirementsPath
+    Ensure-PipSecurityBaseline $BasePython -UserInstall
+    Write-Host "Ensuring Python UI dependencies and security baselines"
+    & $BasePython -m pip install --user -r $RequirementsPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python dependency update failed"
+    }
+    Ensure-OptionalBrotliCffiSecurityBaseline $BasePython -UserInstall
+    if (-not (Test-PythonDependencySecurityBaseline $BasePython)) {
+        throw "Python dependency security baseline verification failed"
     }
 } else {
     $RequirementsHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $RequirementsPath).Hash
     $VenvUsable = Test-Path $VenvPython
     if ($VenvUsable) {
         & $VenvPython --version 2>$null | Out-Null
-        $VenvUsable = $LASTEXITCODE -eq 0
+        $VenvUsable = $LASTEXITCODE -eq 0 -and (Test-PythonSupported $VenvPython)
     }
-    $RequirementsCurrent = $VenvUsable -and (Test-Path $VenvHashPath) -and ((Get-Content -LiteralPath $VenvHashPath -Raw).Trim() -eq $RequirementsHash)
-    if ($RequirementsCurrent) {
-        Write-Host "Python environment already installed"
-    } elseif ($VenvUsable) {
-        Write-Host "Updating Python environment"
-        & $VenvPython -m pip install -r $RequirementsPath
-        if ($LASTEXITCODE -ne 0) {
-            throw "Python dependency update failed"
-        }
-        Set-Content -LiteralPath $VenvHashPath -Value $RequirementsHash -Encoding UTF8
-    } else {
-        if (Test-Path $VenvDir) {
-            Remove-Item -LiteralPath $VenvDir -Recurse -Force
-        }
+    if (-not $VenvUsable -and (Test-Path $VenvDir)) {
+        Remove-Item -LiteralPath $VenvDir -Recurse -Force
+    }
+
+    if (-not $VenvUsable) {
         Write-Host "Creating Python environment"
         & $BasePython -m venv $VenvDir
         if ($LASTEXITCODE -ne 0) {
             throw "Python environment creation failed"
         }
+    }
+
+    Ensure-PipSecurityBaseline $VenvPython
+    $RequirementsCurrent = $VenvUsable -and (Test-Path $VenvHashPath) -and ((Get-Content -LiteralPath $VenvHashPath -Raw).Trim() -eq $RequirementsHash) -and (Test-PythonDependencySecurityBaseline $VenvPython)
+    if ($RequirementsCurrent) {
+        Write-Host "Python environment already installed and security baseline verified"
+    } else {
+        Write-Host "Updating Python environment"
         & $VenvPython -m pip install -r $RequirementsPath
         if ($LASTEXITCODE -ne 0) {
-            throw "Python dependency installation failed"
+            throw "Python dependency update failed"
+        }
+        Ensure-OptionalBrotliCffiSecurityBaseline $VenvPython
+        if (-not (Test-PythonDependencySecurityBaseline $VenvPython)) {
+            throw "Python dependency security baseline verification failed"
         }
         Set-Content -LiteralPath $VenvHashPath -Value $RequirementsHash -Encoding UTF8
+    }
+
+    & $VenvPython -m pip check
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python dependency consistency check failed"
     }
 }
 
